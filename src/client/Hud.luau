@@ -377,49 +377,10 @@ function Hud:_refreshAim()
 	local touch = self.aimLastTouch == true or (self.aimLastTouch == nil and UserInputService.TouchEnabled)
 	self.aimHint.Text = locked and "FLIGHT PLAN LOCKED" or (selected and "D-PAD ← / → TO AIM"
 		or (touch and "TAP OR DRAG TO AIM" or "CLICK OR DRAG TO AIM"))
-	self.aimHandle.Visible, self.aimLine.Visible = interactive, interactive
 	local size = self.aimPad.AbsoluteSize
 	local short = self.lastViewport.Y < 400
-	local origin = visible and self.aimScreenOrigin - self.aimPad.AbsolutePosition or Vector2.zero
-	local function pointAt(angle, radius)
-		local radians = math.rad(angle)
-		return origin + Vector2.new(math.cos(radians), -math.sin(radians)) * radius
-	end
 	local function inside(point, margin)
 		return point.X >= margin and point.Y >= margin and point.X <= size.X - margin and point.Y <= size.Y - margin
-	end
-	local function segment(control, first, last, thickness)
-		local delta = last - first
-		control.Position = UDim2.fromOffset((first.X + last.X) / 2, (first.Y + last.Y) / 2)
-		control.Size = UDim2.fromOffset(delta.Magnitude, thickness)
-		control.Rotation = math.deg(math.atan2(delta.Y, delta.X))
-	end
-	if visible then
-		local reticleRadius = short and 48 or 64
-		local handle = pointAt(self.settings.angle, reticleRadius)
-		self.aimHandleScreen = handle + self.aimPad.AbsolutePosition
-		self.aimHandle.Position = UDim2.fromOffset(handle.X, handle.Y)
-		self.aimReticleRing.BackgroundColor3 = self.aimDrag and COLORS.gold or COLORS.cyan
-		self.aimReticleRing.BackgroundTransparency = self.aimDrag and 0.1 or 0.35
-		self.aimHandle.Visible = interactive and inside(handle, 15)
-		segment(self.aimLine, pointAt(self.settings.angle, 22), pointAt(self.settings.angle, reticleRadius - 15), 3)
-	end
-	-- The labeled arc is a compact compass for the allowed launch range.
-	local arcRadius = math.min(short and 56 or 80, math.max(28, (origin.Y - 16) / math.sin(math.rad(60)) - 18))
-	for index, arc in ipairs(self.aimArc) do
-		local first = pointAt(15 + (index - 1) * 45 / #self.aimArc, arcRadius)
-		local last = pointAt(15 + index * 45 / #self.aimArc, arcRadius)
-		arc.Visible = interactive and inside(first, 2) and inside(last, 2)
-		if arc.Visible then segment(arc, first, last, 2) end
-	end
-	for _, tick in ipairs(self.aimTicks) do
-		local inner, outer = pointAt(tick.angle, arcRadius - 4), pointAt(tick.angle, arcRadius + 5)
-		local textPoint = pointAt(tick.angle, arcRadius + 24)
-		tick.line.Visible = interactive and inside(inner, 3) and inside(outer, 3)
-		tick.label.Visible = interactive and inside(textPoint, 9)
-		if tick.line.Visible then segment(tick.line, inner, outer, 3) end
-		tick.label.Position = UDim2.fromOffset(textPoint.X, textPoint.Y)
-		tick.label.TextSize = short and 9 or 11
 	end
 	local points = self.aimScreenPoints or {}
 	local dotDiameter = short and 12 or 16
@@ -776,28 +737,6 @@ function Hud.new(callbacks)
 		BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false, Selectable = false,
 		Active = false, Visible = false, ClipsDescendants = false,
 	}, self.gui)
-	self.aimLine = frame(self.aimPad, "AimDirection", 0, 0, 30, 3, COLORS.cyan)
-	self.aimLine.AnchorPoint = Vector2.new(0.5, 0.5)
-	stroke(self.aimLine, COLORS.ink, 1)
-	self.aimArc, self.aimTicks = {}, {}
-	for index = 1, 12 do
-		local arc = frame(self.aimPad, "AimArc" .. index, 0, 0, 1, 2, COLORS.cyan)
-		arc.AnchorPoint = Vector2.new(0.5, 0.5)
-		arc.BackgroundTransparency = 0.15
-		stroke(arc, COLORS.ink, 0.75)
-		table.insert(self.aimArc, arc)
-	end
-	for _, angle in ipairs({ 15, 30, 45, 60 }) do
-		local tick = frame(self.aimPad, "AngleTick" .. angle, 0, 0, 8, 3, COLORS.white)
-		tick.AnchorPoint = Vector2.new(0.5, 0.5)
-		stroke(tick, COLORS.ink, 1)
-		local text = label(self.aimPad, "AngleLabel" .. angle, tostring(angle) .. "°", 0, 0, 26, 12, 11, COLORS.white, true)
-		text.AnchorPoint = Vector2.new(0.5, 0.5)
-		text.TextXAlignment = Enum.TextXAlignment.Center
-		text.TextStrokeColor3, text.TextStrokeTransparency = COLORS.ink, 0
-		text.ZIndex = 2
-		table.insert(self.aimTicks, { angle = angle, line = tick, label = text })
-	end
 	self.aimDots = {}
 	for index = 1, 26 do
 		local dot = frame(self.aimPad, "Trajectory" .. index, 0, 0, 16, 16, index % 5 == 0 and COLORS.gold or COLORS.white)
@@ -806,21 +745,7 @@ function Hud.new(callbacks)
 		stroke(dot, COLORS.ink, 2)
 		table.insert(self.aimDots, dot)
 	end
-	-- A 44px target surrounds the smaller reticle; the whole forward field also aims.
-	self.aimHandle = frame(self.aimPad, "AimReticle", 0, 0, 44, 44, COLORS.cyan)
-	self.aimHandle.AnchorPoint = Vector2.new(0.5, 0.5)
-	self.aimHandle.ZIndex = 3
-	self.aimHandle.BackgroundTransparency = 1
-	self.aimReticleRing = frame(self.aimHandle, "Ring", 8, 8, 28, 28, COLORS.cyan)
-	corner(self.aimReticleRing, 20)
-	stroke(self.aimReticleRing, COLORS.ink, 2)
-	local center = frame(self.aimHandle, "Center", 19, 19, 6, 6, COLORS.white)
-	corner(center, 6)
-	stroke(center, COLORS.ink, 1)
-	for index, geometry in ipairs({ { 20.5, 4, 3, 9 }, { 20.5, 31, 3, 9 }, { 4, 20.5, 9, 3 }, { 31, 20.5, 9, 3 } }) do
-		local mark = frame(self.aimHandle, "Crosshair" .. index, geometry[1], geometry[2], geometry[3], geometry[4], COLORS.white)
-		stroke(mark, COLORS.ink, 1)
-	end
+	-- The whole forward field accepts aiming input; only the trajectory is drawn.
 	self.aimPad.NextSelectionLeft, self.aimPad.NextSelectionRight = self.aimPad, self.aimPad
 	self:_connect(self.aimPad.InputBegan, function(input) self:_beginAim(input) end)
 	self:_connect(UserInputService.InputBegan, function(input)
