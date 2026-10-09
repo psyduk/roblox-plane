@@ -13,7 +13,7 @@ To test alone, press **Practice vs Ghost**. This explicitly starts a duel agains
 1. **Pair up:** two occupied pads create an independent 1v1 match and move both players into its match view.
 2. **Vote:** choose Coast, Skyline, or Storm. The vote lasts eight seconds; both pilots receive the same generated course conditions.
 3. **Choose your setup:** select a free plane, gadget and cosmetic color, then press **Next: Aim Jet**. Once both pilots confirm, or the 25-second selection timer expires, these choices lock and the selection panel closes.
-4. **Aim your jet:** on the full runway view, click or touch the jet and drag back to choose a **15–60°** launch angle. Trajectory dots start at the actual jet and preview its initial flight without future course contacts. Release sets the angle; **Ready to Launch** confirms it. Both pilots confirming, or the separate 20-second aiming timer expiring, starts the shared three-second countdown.
+4. **Aim your jet:** on the wider runway view, click or touch ahead of the jet to point it toward your chosen direction, or hold and drag to adjust within **15–60°**. A forward reticle, angle ticks and trajectory dots help line up the shot. The dotted guide previews the first three seconds without predicting future course contacts. Release sets the angle; **Ready to Launch** confirms it. Both pilots confirming, or the separate 20-second aiming timer expiring, starts the shared three-second countdown.
 5. **Watch:** the planes fly automatically through staggered clusters of numbers and missiles. Fuel marked **+5 / +10 / +20** adds forward and upward momentum. Missiles reduce speed and push the plane down. Occasional low-altitude **+20** pockets or the rescue gadget can turn a dive upward. Floating feedback shows actual pickups, hits, shield saves and fully cleared near misses; near misses award no extra distance or boost.
 6. **Touch down:** contacting the ground locks that plane's horizontal distance. The other plane continues until its own touchdown or the 45-second flight limit.
 7. **Choose what is next:** results offer **Rematch** or **Return to Lobby**. A human rematch requires both pilots; practice requires only the human's request. Results expire back to the lobby after 90 seconds, without automatically starting another match.
@@ -24,7 +24,7 @@ To test alone, press **Practice vs Ghost**. This explicitly starts a duel agains
 | --- | --- |
 | Hub and queue | Normal Roblox movement and camera; walk onto or off a paired pad |
 | Selection | Choose plane, gadget and color; **Next: Aim Jet** or **R** confirms the choices |
-| Aiming | Drag back from the jet; release sets the angle; **A / D** are an angle fallback; **Ready to Launch** or **R** marks ready |
+| Aiming | Click/tap ahead or hold and drag to aim; release sets the angle; **A / D** adjust by 1°; **Ready to Launch** or **R** marks ready |
 | Flight | Watch automatically; **Q / E** or the camera arrows switch the watched pilot |
 | Gamepad | Selectable on-screen buttons; **Y** marks ready; shoulder buttons switch the watched pilot |
 | Leaving a duel | Use **Leave Duel** during flight or **Return to Lobby** after results |

@@ -154,8 +154,8 @@ UserInputService.InputBegan:Connect(function(input,processed)
             if hud.toggleReady then hud:toggleReady()
             else local own=getEntry(localPlayer.UserId); send("ready",{ready=not (own and own.ready),settings=localSettings}) end
         end
-    elseif input.KeyCode==Enum.KeyCode.A then adjust("angle",-5,15,60)
-    elseif input.KeyCode==Enum.KeyCode.D then adjust("angle",5,15,60)
+    elseif input.KeyCode==Enum.KeyCode.A then adjust("angle",-1,15,60)
+    elseif input.KeyCode==Enum.KeyCode.D then adjust("angle",1,15,60)
     elseif input.KeyCode==Enum.KeyCode.Q or input.KeyCode==Enum.KeyCode.ButtonL1 then cycleSpectate(-1)
     elseif input.KeyCode==Enum.KeyCode.E or input.KeyCode==Enum.KeyCode.ButtonR1 then cycleSpectate(1)
     end
@@ -242,7 +242,7 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
         if phase=="Aim" or phase=="Countdown" then
             local key=localSettings.planeId..":"..tostring(localSettings.angle)..":"..localSettings.gadget
             if key~=aimTrajectoryKey then
-                aimTrajectory=Simulation.previewTrajectory(localSettings,2.5)
+                aimTrajectory=Simulation.previewTrajectory(localSettings,3)
                 aimTrajectoryKey=key
             end
         end
@@ -275,20 +275,23 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
         local footerHeight=viewport.X<560 and 98 or 64
         local fieldBottom=guiHeight-28-footerHeight-10
         local fieldHeight=math.max(42,fieldBottom-fieldTop)
-        local targetX=viewport.X*0.30
-        local targetY=fieldTop+fieldHeight*0.60+topInset.Y
+        local targetX=viewport.X*0.24
+        local targetY=fieldTop+math.min(fieldHeight*0.65,math.max(0,fieldHeight-44))+topInset.Y
         -- Fit the whole tilted jet and its pilot; long guide points are clipped
         -- by HUD at the field edges instead of changing zoom with launch angle.
-        local worldWidth=viewport.X<560 and 180 or 220
-        local pixelsPerStud=math.max(0.1,math.min(viewport.X/worldWidth,fieldHeight/42))
+        local worldWidth=viewport.X<560 and 250 or 320
+        local pixelsPerStud=math.max(0.1,math.min(viewport.X/worldWidth,fieldHeight/60))
         local visibleHeight=viewport.Y/pixelsPerStud
         local focus=World.COURSE_ORIGIN+Vector3.new(
             (viewport.X*0.5-targetX)/pixelsPerStud,
             18+(targetY-viewport.Y*0.5)/pixelsPerStud,
             0)
+        -- Widen the lens when needed to retain coverage within a 180-stud
+        -- setback. The 120-degree FOV limit takes priority on extreme aspect ratios.
+        local aimFieldOfView=math.clamp(math.deg(2*math.atan(visibleHeight/360)),50,120)
         camera.CameraType=Enum.CameraType.Scriptable
-        camera.FieldOfView=50
-        cameraPosition=focus+Vector3.new(0,0,visibleHeight/(2*math.tan(math.rad(25))))
+        camera.FieldOfView=aimFieldOfView
+        cameraPosition=focus+Vector3.new(0,0,visibleHeight/(2*math.tan(math.rad(aimFieldOfView/2))))
         camera.CFrame=CFrame.lookAt(cameraPosition,cameraPosition-Vector3.new(0,0,1))
         camera.Focus=CFrame.new(focus)
     else

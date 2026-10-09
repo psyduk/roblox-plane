@@ -122,3 +122,27 @@ Setup now has two server-controlled stages. Configure gives 25 seconds for plane
 - The final practice flight completed with both pilots landed. Returning to the lobby restored walking controls and the normal camera, hid aiming controls, and removed all flight visuals. Phone emulation was reset. Studio's native Save confirmed the place path; all 15 saved source/test scripts exactly match disk, including the rebuilt editor showroom. This also completes the native-save and portrait checks deferred by the earlier Mac lock.
 
 Previews: [selection](previews/v7-loadout.jpg), [full jet aiming](previews/v7-aim-desktop.jpg), [phone aiming](previews/v7-phone-aim.jpg), [portrait selection](previews/v7-portrait-loadout.jpg), [portrait aiming](previews/v7-portrait-aim.jpg).
+
+## Peggle-inspired precision aiming and wider view — October 9, 2026
+
+Forward pointing replaces the backward pull gesture: click, touch or drag ahead of the jet to choose its launch angle. A cyan reticle, 15/30/45/60-degree compass marks and 26 outlined trajectory dots make the setup easier to read. A/D now adjusts one degree at a time. Release commits the angle; Ready still confirms the shared countdown. The guide samples three seconds of empty-course physics and clips at the clear field edges; pickups and missiles can change the actual flight.
+
+The precision-aiming reference is the [official Peggle 2 manual](https://dlassets-ssl.xboxlive.com/public/content/efd011ea-47b6-4b61-9e86-08063a3e1cfa/GameManual/2968fc9a-311b-4beb-8ee6-3903d1bc8643/en-GB/index.html), which separates aiming, fine adjustments and firing. Skybound retains its own two-player Ready flow and art.
+
+- The aiming view spans about 39–45% more world width across the tested desktop and phone layouts, with the jet moved from 30% to 24% of screen width to expose more course ahead. Flight framing and simulation are unchanged.
+- Actual desktop clicks changed the server angle, retained it when clicking within the origin deadzone, and clamped to 15 and 60 degrees. A/D changed 51 to 52 and back to 51. Fixed Cruiser speed remained 72.25 m/s. A separate source review checked forward-pointer math, behind-pointer retention, release-to-commit and authoritative phase guards.
+- Galaxy A06 landscape emulation (705×338) emitted actual Touch input. Dragging selected 34 degrees, endpoint taps reached both angle limits, and all four compass labels stayed visible. Ready entered Countdown; a subsequent tap left the locked angle unchanged. Physical touch hardware and controller input remain untested.
+- Portrait emulation (359×718) initially exposed geometry disappearing with a distant camera. Keeping the same projected coverage through an adaptive field of view and a 180-stud target setback restored the jet, pilot, missiles and scenery. Portrait uses about 108.49-degree FOV; the tested large desktop and landscape layouts remain at 50. The 120-degree FOV cap means unusually tall aspect ratios can still require a greater setback.
+- Final portrait checks with Dart at 15 and 60 degrees retained all four angle labels. The shallow shot showed 19 guide dots before the right edge; the steep shot showed all 26. This confirms responsive clipping, not guaranteed visibility of every preview point on every screen.
+- Actual Ready input reached Flight with the chosen 35-degree Cruiser settings. Returning to Lobby hid aiming UI and removed all flight visuals. No Skybound script errors were observed. Device emulation was reset and Studio returned to Edit.
+- The source build and whitespace checks passed. Native Studio Save confirmed the local place path, and all 15 packaged source/test scripts exactly match disk.
+
+Previews: [desktop aiming](previews/v8-aim-desktop.jpg), [phone aiming](previews/v8-aim-phone.jpg), [portrait aiming](previews/v8-aim-portrait.jpg).
+
+## Larger aiming circles — October 9, 2026
+
+Enlarged the trajectory guide from 7px to 16px circles on desktop/portrait, and from 6px to 12px in short landscape layouts. Navy outlines are now 2px. Closely spaced projected samples are hidden to keep circles separate without moving them off the real trajectory; edge margins include the circle radius and outline. Angle labels and the reticle draw above the circles.
+
+Visually checked desktop, Galaxy A06 landscape (705×338) and portrait (359×718). Landscape displayed five circles and portrait nine at 35 degrees; the portrait 60-degree check also displayed nine. Runtime checks confirmed circle outlines stayed within the aim field and neighboring visible circles did not overlap. No Skybound script errors were observed. Phone emulation was reset, Studio returned to Edit, native Save confirmed the place path, and the saved HUD source exactly matches disk. This is presentation-only; launch controls and simulation are unchanged.
+
+Previews: [desktop circles](previews/v9-aim-desktop.jpg), [phone circles](previews/v9-aim-phone.jpg), [portrait circles](previews/v9-aim-portrait.jpg).

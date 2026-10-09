@@ -195,7 +195,7 @@ local function beginAim(m)
         end
     end
     m.readyAt=now()+1
-    setPhase(m,"Aim","Drag back on your jet to aim. Ready locks your launch angle.")
+    setPhase(m,"Aim","Point ahead of your jet to aim. Ready locks your launch angle.")
 end
 local function checkedMatchSettings(p, m, input)
     if m and m.phase=="Aim" then
