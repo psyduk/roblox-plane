@@ -154,21 +154,21 @@ return function(Simulation)
 	test("invalid inputs are bounded and finite", function()
 		local course = Simulation.makeCourse(0 / 0, "unknown")
 		check(course.name == "Coast" and course.seed == 1, "Course defaults failed")
-		local state = Simulation.newFlight({ angle = math.huge, power = 0 / 0, gadget = "PaidPower" }, course)
-		check(state.settings.angle == 35 and state.settings.power == 75 and state.gadget == "Shield", "Settings defaults failed")
-		local capped = Simulation.newFlight({ angle = 9999, power = -9999 }, course)
-		check(capped.settings.angle == 60 and capped.settings.power == 45, "Input clamps failed")
+		local state = Simulation.newFlight({ planeId = "unknown", angle = math.huge, speed = 0 / 0, gadget = "PaidPower" }, course)
+		check(state.settings.planeId == "cruiser" and state.settings.angle == 35 and state.settings.speed == 72.25 and state.gadget == "Shield", "Settings defaults failed")
+		local capped = Simulation.newFlight({ planeId = "dart", angle = 9999, speed = -9999, power = 100 }, course)
+		check(capped.settings.angle == 60 and capped.settings.speed == 81 and capped.settings.power == nil, "Angle clamp or fixed plane speed failed")
 		Simulation.step(state, course, 0 / 0)
 		Simulation.step(state, course, -1)
 		check(state.elapsed == 0, "Invalid timestep advanced flight")
 	end)
 
-	test("all angle power and gadget extremes finish safely", function()
+	test("all plane angle and gadget choices finish safely", function()
 		for _, variant in ipairs({ "Coast", "Skyline", "Storm" }) do
 			for _, angle in ipairs({ 15, 35, 60 }) do
-				for _, power in ipairs({ 45, 75, 100 }) do
+				for _, planeId in ipairs({ "cruiser", "skyhopper", "dart" }) do
 					for _, gadget in ipairs({ "Shield", "Magnet", "Boost" }) do
-						local state = run({ angle = angle, power = power, gadget = gadget }, Simulation.makeCourse(12345, variant))
+						local state = run({ planeId = planeId, angle = angle, gadget = gadget }, Simulation.makeCourse(12345, variant))
 						check(state.distance > 0 and state.distance < 5000 and state.elapsed <= Simulation.MAX_FLIGHT_TIME, "Invalid extreme result")
 						check(state.x == state.x and state.y == state.y, "NaN in flight")
 					end
@@ -179,9 +179,47 @@ return function(Simulation)
 
 	test("launch settings change outcome", function()
 		local course = Simulation.makeCourse(98123, "Coast")
-		local low = run({ angle = 15, power = 45, gadget = "Shield" }, course)
-		local high = run({ angle = 60, power = 100, gadget = "Shield" }, course)
+		local low = run({ planeId = "cruiser", angle = 15, gadget = "Shield" }, course)
+		local high = run({ planeId = "cruiser", angle = 60, gadget = "Shield" }, course)
 		check(math.abs(low.distance - high.distance) > 10, "Launch settings had no meaningful effect")
+	end)
+
+	test("plane profiles fix speed while launch direction follows the chosen angle", function()
+		local course = emptyCourse()
+		for _, profile in ipairs({ { "cruiser", 35, 72.25 }, { "skyhopper", 48, 64.5 }, { "dart", 24, 81 } }) do
+			local defaults = Simulation.newFlight({ planeId = profile[1] }, course)
+			check(defaults.settings.angle == profile[2], "Plane default angle was lost")
+			for _, angle in ipairs({ 15, 27.4, 60 }) do
+				local state = Simulation.newFlight({ planeId = profile[1], angle = angle, speed = 999, power = 999 }, course)
+				local radians = math.rad(math.floor(angle + 0.5))
+				check(close(state.vx, math.cos(radians) * profile[3]) and close(state.vy, math.sin(radians) * profile[3]), "Aim and velocity direction disagree")
+				check(close(math.sqrt(state.vx * state.vx + state.vy * state.vy), profile[3]), "A client field overrode plane speed")
+			end
+		end
+		local default = Simulation.newFlight(nil, course)
+		local explicit = Simulation.newFlight({ planeId = "cruiser", angle = 35, gadget = "Shield" }, course)
+		check(default.vx == explicit.vx and default.vy == explicit.vy and default.settings.speed == 72.25, "Default plane differs from explicit Cruiser")
+	end)
+
+	test("all planes repeat exactly on shared seeded conditions", function()
+		for _, planeId in ipairs({ "cruiser", "skyhopper", "dart" }) do
+			local settings = { planeId = planeId, angle = 29, gadget = "Magnet" }
+			local a = run(settings, Simulation.makeCourse(98123, "Storm"))
+			local b = run(settings, Simulation.makeCourse(98123, "Storm"))
+			check(a.distance == b.distance and a.elapsed == b.elapsed and a.eventSerial == b.eventSerial, "Plane flight is nondeterministic")
+		end
+	end)
+
+	test("aim preview uses real physics without mutating settings or live flight", function()
+		local settings = { planeId = "dart", angle = 27, gadget = "Boost" }
+		local course = emptyCourse()
+		local live = Simulation.newFlight(settings, course)
+		local points = Simulation.previewTrajectory(settings, 2)
+		check(#points == 21 and points[1].x == 0 and points[1].y == 18, "Preview origin or sampling changed")
+		check(live.elapsed == 0 and not live.boostUsed and settings.angle == 27, "Preview changed active state")
+		for _ = 1, 120 do Simulation.step(live, course, Simulation.FIXED_DT) end
+		check(close(points[#points].x, live.x) and close(points[#points].y, live.y), "Preview diverges from empty-course physics")
+		check(#Simulation.previewTrajectory(settings, math.huge) == 26 and #Simulation.previewTrajectory(settings, 99) == 41, "Preview duration is not bounded")
 	end)
 
 	test("dense course mixes values and leaves room between encounter objects", function()

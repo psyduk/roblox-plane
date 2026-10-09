@@ -7,6 +7,7 @@ local GuiService = game:GetService("GuiService")
 local localPlayer = Players.LocalPlayer
 local shared = ReplicatedStorage:WaitForChild("FlightGame")
 local Simulation = require(shared:WaitForChild("Simulation"))
+local PlaneCatalog = require(shared:WaitForChild("PlaneCatalog"))
 local World = require(shared:WaitForChild("World"))
 local Hud = require(script.Parent:WaitForChild("Hud"))
 local FlightAudio = require(script.Parent:WaitForChild("FlightAudio"))
@@ -14,7 +15,7 @@ local PilotAvatar = require(script.Parent:WaitForChild("PilotAvatar"))
 local audio = FlightAudio.new()
 local command = shared:WaitForChild("Command")
 local snapshots = shared:WaitForChild("Snapshot")
-local localSettings = {angle=35,power=75,gadget="Shield",color=1}
+local localSettings = {planeId=PlaneCatalog.DEFAULT_ID,angle=35,gadget="Shield",color=1}
 local latest = nil
 local receivedAt = 0
 local watchedUserId = localPlayer.UserId
@@ -25,6 +26,8 @@ local planes = {}
 local planeLabels = {}
 local smooth = {}
 local previewPlane = nil
+local aimTrajectory = {}
+local aimTrajectoryKey = ""
 local lastPhase = ""
 local lastRound = ""
 local cameraPosition = nil
@@ -138,7 +141,7 @@ snapshots.OnClientEvent:Connect(function(data)
 end)
 
 local function adjust(key, amount, low, high)
-    if not latest or latest.phase~="Configure" then return end
+    if not latest or latest.phase~="Aim" then return end
     local current = hud.getLocalSettings and hud:getLocalSettings() or table.clone(localSettings)
     current[key]=math.clamp(current[key]+amount,low,high)
     localSettings=current
@@ -147,14 +150,12 @@ end
 UserInputService.InputBegan:Connect(function(input,processed)
     if processed or UserInputService:GetFocusedTextBox() then return end
     if input.KeyCode==Enum.KeyCode.R or input.KeyCode==Enum.KeyCode.ButtonY then
-        if latest and latest.phase=="Configure" then
+        if latest and (latest.phase=="Configure" or latest.phase=="Aim") then
             if hud.toggleReady then hud:toggleReady()
             else local own=getEntry(localPlayer.UserId); send("ready",{ready=not (own and own.ready),settings=localSettings}) end
         end
     elseif input.KeyCode==Enum.KeyCode.A then adjust("angle",-5,15,60)
     elseif input.KeyCode==Enum.KeyCode.D then adjust("angle",5,15,60)
-    elseif input.KeyCode==Enum.KeyCode.W then adjust("power",5,45,100)
-    elseif input.KeyCode==Enum.KeyCode.S then adjust("power",-5,45,100)
     elseif input.KeyCode==Enum.KeyCode.Q or input.KeyCode==Enum.KeyCode.ButtonL1 then cycleSpectate(-1)
     elseif input.KeyCode==Enum.KeyCode.E or input.KeyCode==Enum.KeyCode.ButtonR1 then cycleSpectate(1)
     end
@@ -193,7 +194,7 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
             if p.flight then
                 present[p.userId]=true
                 if not planes[p.userId] then
-                    local model=World.createPlane(worldFolder,p.name,p.settings.color)
+                    local model=World.createPlane(worldFolder,p.name,p.settings.color,p.settings.planeId)
                     PilotAvatar.attach(model,p.userId,p.bot)
                     planes[p.userId]=model
                     local text=Instance.new("TextLabel")
@@ -225,16 +226,26 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
                 if planeLabels[id] then planeLabels[id]:Destroy(); planeLabels[id]=nil end
             end
         end
-    elseif phase=="Configure" or phase=="Countdown" or phase=="Voting" then
+    elseif phase=="Configure" or phase=="Aim" or phase=="Countdown" or phase=="Voting" then
         localSettings=hud:getLocalSettings()
-        if not previewPlane or previewPlane:GetAttribute("PreviewColor")~=localSettings.color then
+        if not previewPlane or previewPlane:GetAttribute("PreviewColor")~=localSettings.color
+            or previewPlane:GetAttribute("PreviewPlaneId")~=localSettings.planeId then
             if previewPlane then previewPlane:Destroy() end
-            previewPlane=World.createPlane(worldFolder,localPlayer.DisplayName,localSettings.color)
+            previewPlane=World.createPlane(worldFolder,localPlayer.DisplayName,localSettings.color,localSettings.planeId)
             previewPlane:SetAttribute("PreviewColor",localSettings.color)
+            previewPlane:SetAttribute("PreviewPlaneId",localSettings.planeId)
             PilotAvatar.attach(previewPlane,localPlayer.UserId,false)
         end
-        local angle=math.rad(localSettings.angle)
-        World.updatePlane(previewPlane,{x=0,y=18,vx=math.cos(angle)*50,vy=math.sin(angle)*50,elapsed=renderTime,alive=true},0,dt)
+        local profile=PlaneCatalog.get(localSettings.planeId) or PlaneCatalog.get(PlaneCatalog.DEFAULT_ID)
+        local angle=math.rad(localSettings.angle or profile.angle)
+        World.updatePlane(previewPlane,{x=0,y=18,vx=math.cos(angle)*profile.speed,vy=math.sin(angle)*profile.speed,elapsed=renderTime,alive=true},0,dt)
+        if phase=="Aim" or phase=="Countdown" then
+            local key=localSettings.planeId..":"..tostring(localSettings.angle)..":"..localSettings.gadget
+            if key~=aimTrajectoryKey then
+                aimTrajectory=Simulation.previewTrajectory(localSettings,2.5)
+                aimTrajectoryKey=key
+            end
+        end
     end
     if renderedCourse then World.updateCourse(renderedCourse,target and target.flight or nil,renderTime) end
     if lobbyView then
@@ -253,6 +264,33 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
         elseif restoreZoomAt>0 and os.clock()>=restoreZoomAt then
             localPlayer.CameraMinZoomDistance=8; restoreZoomAt=0
         end
+    elseif phase=="Aim" or phase=="Countdown" then
+        -- A fixed side-on aiming frame keeps pointer movement independent of
+        -- camera movement. Match HUD's clear field between its header/footer.
+        local viewport=camera.ViewportSize
+        local topInset,bottomInset=GuiService:GetGuiInset()
+        local guiHeight=math.max(1,viewport.Y-topInset.Y-bottomInset.Y)
+        local landscape=viewport.X>=680 and guiHeight<470
+        local fieldTop=landscape and (guiHeight<330 and 54 or 62) or 81
+        local footerHeight=viewport.X<560 and 98 or 64
+        local fieldBottom=guiHeight-28-footerHeight-10
+        local fieldHeight=math.max(42,fieldBottom-fieldTop)
+        local targetX=viewport.X*0.30
+        local targetY=fieldTop+fieldHeight*0.60+topInset.Y
+        -- Fit the whole tilted jet and its pilot; long guide points are clipped
+        -- by HUD at the field edges instead of changing zoom with launch angle.
+        local worldWidth=viewport.X<560 and 180 or 220
+        local pixelsPerStud=math.max(0.1,math.min(viewport.X/worldWidth,fieldHeight/42))
+        local visibleHeight=viewport.Y/pixelsPerStud
+        local focus=World.COURSE_ORIGIN+Vector3.new(
+            (viewport.X*0.5-targetX)/pixelsPerStud,
+            18+(targetY-viewport.Y*0.5)/pixelsPerStud,
+            0)
+        camera.CameraType=Enum.CameraType.Scriptable
+        camera.FieldOfView=50
+        cameraPosition=focus+Vector3.new(0,0,visibleHeight/(2*math.tan(math.rad(25))))
+        camera.CFrame=CFrame.lookAt(cameraPosition,cameraPosition-Vector3.new(0,0,1))
+        camera.Focus=CFrame.new(focus)
     else
         camera.CameraType=Enum.CameraType.Scriptable
         local focus
@@ -296,7 +334,18 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
     end
     if hud.setLobbyView then hud:setLobbyView(lobbyView) end
     hud:update(latest,localPlayer.UserId,watchedUserId)
-    audio:update(target and target.flight,lastRound,watchedUserId,phase=="Flight" or phase=="Results")
+    if (phase=="Aim" or phase=="Countdown") and previewPlane then
+        local origin,visible=camera:WorldToViewportPoint(previewPlane:GetPivot().Position)
+        local points=table.create(#aimTrajectory)
+        for index,point in ipairs(aimTrajectory) do
+            local projected=camera:WorldToViewportPoint(World.COURSE_ORIGIN+Vector3.new(point.x,point.y,0))
+            points[index]=Vector2.new(projected.X-inset.X,projected.Y-inset.Y)
+        end
+        hud:updateAimProjection(Vector2.new(origin.X-inset.X,origin.Y-inset.Y),points,visible)
+    else
+        hud:updateAimProjection(Vector2.zero,{},false)
+    end
+    audio:update(latest.players,lastRound,watchedUserId,phase=="Flight" or phase=="Results")
     local watchedModel=planes[watchedUserId]
     if phase=="Flight" and watchedModel and target and target.flight then
         local point, visible=camera:WorldToViewportPoint(watchedModel:GetPivot().Position)

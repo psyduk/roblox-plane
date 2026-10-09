@@ -11,7 +11,7 @@ local WINDOW_SECONDS = 60
 local PLAYER_LIMIT = 16
 local MAX_SESSIONS = 256
 local OUTCOMES = {win = true, loss = true, tie = true, forfeit = true, completed = true}
-local PHASES = {Lobby = true, Queued = true, Voting = true, Configure = true,
+local PHASES = {Lobby = true, Queued = true, Voting = true, Configure = true, Aim = true,
 	Countdown = true, Flight = true, Results = true}
 
 local function finite(value)

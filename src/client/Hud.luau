@@ -2,6 +2,8 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PlaneCatalog = require(ReplicatedStorage:WaitForChild("FlightGame"):WaitForChild("PlaneCatalog"))
 
 local Hud = {}
 Hud.__index = Hud
@@ -21,7 +23,7 @@ local COLORS = {
 local DISPLAY_TEXT = {
 	Brand = true, Title = true, Timer = true, Name = true, Votes = true,
 	Distance = true, OpponentDistance = true, YourDistance = true, BestDistance = true,
-	AngleValue = true, PowerValue = true, Lead = true, Rank = true,
+	Lead = true, Rank = true,
 }
 local PAINTS = {
 	Color3.fromRGB(255, 104, 102),
@@ -46,7 +48,8 @@ local PHASE_NAMES = {
 	Queued = "FINDING YOUR RIVAL",
 	Waiting = "GETTING READY",
 	Voting = "CHOOSE A COURSE",
-	Configure = "SET YOUR FLIGHT",
+	Configure = "CHOOSE YOUR JET",
+	Aim = "AIM YOUR JET",
 	Countdown = "CLEARED FOR TAKEOFF",
 	Flight = "GO THE DISTANCE",
 	Results = "FLIGHT RESULTS",
@@ -173,8 +176,26 @@ local function distance(value, precise)
 end
 
 local function sameSettings(a, b)
-	return a and b and a.angle == b.angle and a.power == b.power
+	return a and b and a.planeId == b.planeId and a.angle == b.angle
 		and a.gadget == b.gadget and a.color == b.color
+end
+
+local function selection(settings)
+	settings = settings or {}
+	local planeId = table.find(PlaneCatalog.ORDER, settings.planeId) and settings.planeId or PlaneCatalog.DEFAULT_ID
+	local plane = PlaneCatalog.get(planeId)
+	local angle = settings.angle
+	if type(angle) ~= "number" or angle ~= angle or math.abs(angle) == math.huge then angle = plane.angle end
+	return {
+		planeId = planeId,
+		angle = math.clamp(math.round(angle), 15, 60),
+		gadget = GADGET_COPY[settings.gadget] and settings.gadget or "Shield",
+		color = type(settings.color) == "number" and math.clamp(math.floor(settings.color), 1, #PAINTS) or 1,
+	}
+end
+
+local function statNumber(value)
+	return (string.format("%.2f", value):gsub("0+$", ""):gsub("%.$", ""))
 end
 
 function Hud:_connect(signal, handler)
@@ -212,10 +233,116 @@ function Hud:_panel(name, height)
 	return panel
 end
 
+function Hud:_stageOpen()
+	return not self.configEndsAt or self.configEndsAt <= 0 or workspace:GetServerTimeNow() < self.configEndsAt
+end
+
+function Hud:_canConfigure()
+	return self.phase == "Configure" and self:_stageOpen()
+end
+
+function Hud:_canAim()
+	return self.phase == "Aim" and self:_stageOpen()
+end
+
+-- Main projects the actual jet and physics arc into ScreenGui coordinates.
+-- Points can extend beyond the visible aim field; those dots are simply hidden.
+function Hud:updateAimProjection(origin, points, visible)
+	self.aimScreenOrigin = origin
+	self.aimScreenPoints = points or {}
+	self.aimProjectionVisible = visible == true and origin ~= nil
+	if not self.aimProjectionVisible and self.aimDrag then self:_finishAim(false) end
+	self:_refreshAim()
+	if self.aimFocusPending and self.aimPad.Selectable then
+		self.aimFocusPending = false
+		GuiService.SelectedObject = self.aimPad
+	end
+end
+
+function Hud:_refreshAim()
+	if not self.aimPad then return end
+	local inAim = self.phase == "Aim" or self.phase == "Countdown"
+	local visible = inAim and self.aimProjectionVisible == true
+	local locked = not self:_canAim()
+	self.aimPad.Visible = inAim
+	self.aimPad.Active, self.aimPad.Selectable = not locked and visible, not locked and visible
+	local selected = GuiService.SelectedObject == self.aimPad
+	self.aimHint.Text = locked and "FLIGHT PLAN LOCKED" or (selected and "D-PAD ← / → TO AIM" or "DRAG BACK FROM YOUR JET")
+	self.aimHandle.Visible, self.aimLine.Visible = visible and not locked, visible and not locked
+	local size = self.aimPad.AbsoluteSize
+	if visible then
+		local origin = self.aimScreenOrigin - self.aimPad.AbsolutePosition
+		local radians = math.rad(self.settings.angle)
+		local pullLength = self.lastViewport.Y < 400 and 35 or 48
+		local handle = origin - Vector2.new(math.cos(radians), -math.sin(radians)) * pullLength
+		self.aimHandleScreen = handle + self.aimPad.AbsolutePosition
+		self.aimHandle.Position = UDim2.fromOffset(handle.X, handle.Y)
+		self.aimHandle.BackgroundColor3 = self.aimDrag and COLORS.gold or COLORS.coral
+		self.aimLine.Position = UDim2.fromOffset((handle.X + origin.X) / 2, (handle.Y + origin.Y) / 2)
+		self.aimLine.Size, self.aimLine.Rotation = UDim2.fromOffset(pullLength, 4), -self.settings.angle
+	end
+	local points = self.aimScreenPoints or {}
+	for index, dot in ipairs(self.aimDots) do
+		local point = visible and #points > 0 and points[math.clamp(math.round(index / #self.aimDots * (#points - 1)) + 1, 1, #points)] or nil
+		local localPoint = point and point - self.aimPad.AbsolutePosition
+		dot.Visible = localPoint ~= nil and localPoint.X >= 3 and localPoint.Y >= 3 and localPoint.X <= size.X - 3 and localPoint.Y <= size.Y - 3
+		if localPoint then dot.Position = UDim2.fromOffset(localPoint.X, localPoint.Y) end
+	end
+end
+
+function Hud:_beginAim(input)
+	local touch = input.UserInputType == Enum.UserInputType.Touch
+	if self.aimDrag or not self:_canAim() or not self.aimProjectionVisible or (not touch and input.UserInputType ~= Enum.UserInputType.MouseButton1) then return end
+	local pointer = Vector2.new(input.Position.X, input.Position.Y)
+	local jetHitRadius = math.clamp(self.lastViewport.X * 0.1, 80, 220)
+	local nearJet = self.aimScreenOrigin and (pointer - self.aimScreenOrigin).Magnitude <= jetHitRadius
+	local nearHandle = self.aimHandleScreen and (pointer - self.aimHandleScreen).Magnitude <= 44
+	if not nearJet and not nearHandle then return end
+	self.aimDrag = { input = input, touch = touch, startSettings = table.clone(self.settings) }
+	-- Unready before aiming so the other pilot cannot start a countdown mid-drag.
+	if self.ready then
+		self.ready = false
+		self.pendingReady = false
+		self.readyPendingUntil = workspace:GetServerTimeNow() + 0.75
+		self:_call("ready", false)
+	end
+	self:_dragAim(input.Position)
+end
+
+function Hud:_dragAim(position)
+	if not self.aimDrag then return end
+	if not self:_canAim() then self:_finishAim(false); return end
+	-- InputObject.Position already shares the inset-adjusted GUI coordinate space.
+	local pointer = Vector2.new(position.X, position.Y)
+	local direction = self.aimScreenOrigin - pointer
+	if direction.Magnitude >= 6 then
+		self.settings.angle = math.clamp(math.round(math.deg(math.atan2(-direction.Y, direction.X))), 15, 60)
+	end
+	self:_refreshSettings()
+end
+
+function Hud:_finishAim(commit)
+	local drag = self.aimDrag
+	if not drag then return end
+	local chosen = table.clone(self.settings)
+	self.aimDrag = nil
+	self.settings = drag.startSettings
+	if commit and self:_canAim() then self:setLocalSettings({ angle = chosen.angle }) end
+	self:_refreshSettings()
+end
+
 function Hud:_refreshSettings()
 	local setting = self.settings
-	self.angleValue.Text = tostring(setting.angle) .. "°"
-	self.powerValue.Text = tostring(setting.power) .. "%"
+	local plane = PlaneCatalog.get(setting.planeId)
+	self.fixedStats.Text = "ANGLE " .. statNumber(setting.angle) .. "°   /   SPEED " .. statNumber(plane.speed) .. " m/s"
+	self.planeSpeed.Text = plane.name .. "  ·  " .. statNumber(plane.speed) .. " m/s"
+	self.planeStrategy.Text = plane.description
+	for id, control in pairs(self.planeButtons) do
+		local chosen = setting.planeId == id
+		control.Text = (chosen and "✓ " or "") .. PlaneCatalog.get(id).name
+		control.BackgroundColor3 = chosen and COLORS.green or COLORS.blue
+		self.planeStrokes[id].Thickness = chosen and 3 or 2
+	end
 	self.gadgetCopy.Text = GADGET_COPY[setting.gadget]
 	self.gadgetSummary.Text = GADGET_SHORT_COPY[setting.gadget]
 	for name, control in pairs(self.gadgetButtons) do
@@ -228,8 +355,8 @@ function Hud:_refreshSettings()
 		self.colorStrokes[index].Thickness = setting.color == index and 4 or 2
 	end
 	self.paintName.Text = PAINT_NAMES[setting.color] .. " / cosmetic only"
-	local locked = self.phase == "Countdown"
-	self.readyButton.Text = locked and "READY FOR TAKEOFF" or (self.ready and "READY ✓  ·  tap to change" or "READY TO FLY")
+	local locked = not self:_canConfigure()
+	self.readyButton.Text = self.ready and "WAITING FOR RIVAL…" or "NEXT: AIM JET"
 	self.readyButton.BackgroundColor3 = self.ready and COLORS.cyan or COLORS.green
 	self.readyButton.Active = not locked
 	self.readyButton.Selectable = not locked
@@ -238,6 +365,11 @@ function Hud:_refreshSettings()
 		control.Selectable = not locked
 		control.AutoButtonColor = not locked
 	end
+	local aimLocked = not self:_canAim()
+	self.aimReadyButton.Text = self.phase == "Countdown" and "LAUNCHING…" or (self.ready and "READY ✓ · WAITING" or "READY TO LAUNCH")
+	self.aimReadyButton.BackgroundColor3 = self.ready and COLORS.cyan or COLORS.green
+	self.aimReadyButton.Active, self.aimReadyButton.Selectable = not aimLocked, not aimLocked
+	self:_refreshAim()
 end
 
 function Hud:getLocalSettings()
@@ -251,22 +383,22 @@ end
 
 -- The keyboard/controller owner can use these to share exactly the same UI state.
 function Hud:setLocalSettings(settings)
-	if self.phase ~= "Configure" then
-		return
-	end
+	if not self:_canConfigure() and not self:_canAim() then return end
+	if self.aimDrag then self:_finishAim(false) end
 	local nextSettings = table.clone(self.settings)
-	if type(settings.angle) == "number" then
-		nextSettings.angle = math.clamp(math.round(settings.angle / 5) * 5, 15, 60)
+	if self:_canConfigure() then
+		if table.find(PlaneCatalog.ORDER, settings.planeId) and nextSettings.planeId ~= settings.planeId then
+			nextSettings.planeId = settings.planeId
+			nextSettings.angle = PlaneCatalog.get(settings.planeId).angle
+		end
+		if GADGET_COPY[settings.gadget] then nextSettings.gadget = settings.gadget end
+		if type(settings.color) == "number" and settings.color == settings.color and math.abs(settings.color) < math.huge then
+			nextSettings.color = math.clamp(math.floor(settings.color), 1, #PAINTS)
+		end
+	elseif type(settings.angle) == "number" and settings.angle == settings.angle and math.abs(settings.angle) < math.huge then
+		nextSettings.angle = math.clamp(math.round(settings.angle), 15, 60)
 	end
-	if type(settings.power) == "number" then
-		nextSettings.power = math.clamp(math.round(settings.power / 5) * 5, 45, 100)
-	end
-	if GADGET_COPY[settings.gadget] then
-		nextSettings.gadget = settings.gadget
-	end
-	if type(settings.color) == "number" then
-		nextSettings.color = math.clamp(math.floor(settings.color), 1, #PAINTS)
-	end
+	if sameSettings(nextSettings, self.settings) then return end
 	self.settings = nextSettings
 	self.pendingSettings = table.clone(nextSettings)
 	self.pendingUntil = workspace:GetServerTimeNow() + 0.75
@@ -282,9 +414,10 @@ function Hud:setLocalSettings(settings)
 end
 
 function Hud:toggleReady()
-	if self.phase ~= "Configure" then
+	if not self:_canConfigure() and not self:_canAim() then
 		return
 	end
+	if self.aimDrag then self:_finishAim(true) end
 	self.ready = not self.ready
 	self.pendingReady = self.ready
 	self.readyPendingUntil = workspace:GetServerTimeNow() + 0.75
@@ -298,7 +431,7 @@ function Hud.new(callbacks)
 	self.connections = {}
 	self.scaledPanels = {}
 	self.configControls = {}
-	self.settings = { angle = 35, power = 75, gadget = "Shield", color = 1 }
+	self.settings = selection({ planeId = PlaneCatalog.DEFAULT_ID, gadget = "Shield", color = 1 })
 	self.ready = false
 	self.phase = "Lobby"
 	self.roundId = nil
@@ -404,25 +537,58 @@ function Hud.new(callbacks)
 	label(self.votePanel, "VoteHint", "One pilot, one vote. Ties are decided fairly.", 24, 371, 422, 20, 12, COLORS.muted)
 
 	self.configPanel = self:_panel("Configure", 509)
-	label(self.configPanel, "Eyebrow", "A LITTLE PLANNING. A LOT OF SUSPENSE.", 24, 19, 422, 17, 10, COLORS.muted, true)
-	label(self.configPanel, "Title", "MAKE IT FLY", 24, 40, 422, 33, 27, COLORS.ink, true)
+	label(self.configPanel, "Eyebrow", "THREE FREE PLANES. THREE WAYS TO FLY.", 24, 19, 422, 17, 10, COLORS.muted, true)
+	label(self.configPanel, "Title", "PICK A FREE PLANE", 24, 40, 422, 33, 27, COLORS.ink, true)
 	frame(self.configPanel, "Divider", 24, 87, 422, 1, COLORS.line)
-	local function settingRow(name, title, detail, y, field, step)
-		label(self.configPanel, name .. "Title", title, 24, y + 1, 230, 24, 16, COLORS.ink, true)
-		label(self.configPanel, name .. "Detail", detail, 24, y + 29, 240, 20, 11, COLORS.muted)
-		local minus = button(self.configPanel, name .. "Minus", "−", 281, y, 43, 45)
-		local value = label(self.configPanel, name .. "Value", "", 326, y, 73, 45, 21, COLORS.ink, true)
-		value.TextXAlignment = Enum.TextXAlignment.Center
-		local plus = button(self.configPanel, name .. "Plus", "+", 402, y, 43, 45)
-		minus.TextSize, plus.TextSize = 24, 24
-		table.insert(self.configControls, minus)
-		table.insert(self.configControls, plus)
-		self:_connect(minus.Activated, function() self:setLocalSettings({ [field] = self.settings[field] - step }) end)
-		self:_connect(plus.Activated, function() self:setLocalSettings({ [field] = self.settings[field] + step }) end)
-		return value
+	self.planeButtons, self.planeStrokes = {}, {}
+	for index, id in ipairs(PlaneCatalog.ORDER) do
+		local control = button(self.configPanel, "Plane_" .. id, PlaneCatalog.get(id).name, 24 + (index - 1) * 145, 102, 132, 52, COLORS.blue)
+		self.planeButtons[id] = control
+		self.planeStrokes[id] = stroke(control, COLORS.ink, 2)
+		table.insert(self.configControls, control)
+		self:_connect(control.Activated, function() self:setLocalSettings({ planeId = id }) end)
 	end
-	self.angleValue = settingRow("Angle", "LAUNCH ANGLE", "Low and fast, or room to fall?", 102, "angle", 5)
-	self.powerValue = settingRow("Power", "LAUNCH POWER", "More power means more speed.", 163, "power", 5)
+	self.planeSpeed = label(self.configPanel, "PlaneSpeed", "", 24, 165, 422, 24, 14, COLORS.ink, true)
+	self.planeStrategy = label(self.configPanel, "PlaneStrategy", "", 24, 194, 422, 20, 12, COLORS.muted)
+	self.planeStrategy.TextTruncate = Enum.TextTruncate.AtEnd
+	self.aimPad = create("TextButton", {
+		Name = "AimPad", Text = "", Position = UDim2.fromOffset(0, 81), Size = UDim2.new(1, 0, 1, -183),
+		BackgroundTransparency = 1, BorderSizePixel = 0, AutoButtonColor = false, Selectable = false,
+		Active = false, Visible = false, ClipsDescendants = false,
+	}, self.gui)
+	self.aimLine = frame(self.aimPad, "Pullback", 0, 0, 30, 3, COLORS.coral)
+	self.aimLine.AnchorPoint = Vector2.new(0.5, 0.5)
+	self.aimDots = {}
+	for index = 1, 14 do
+		local dot = frame(self.aimPad, "Trajectory" .. index, 0, 0, 6, 6, COLORS.white)
+		dot.AnchorPoint = Vector2.new(0.5, 0.5)
+		corner(dot, 10)
+		stroke(dot, COLORS.ink, 1.5)
+		table.insert(self.aimDots, dot)
+	end
+	self.aimHandle = frame(self.aimPad, "DragHandle", 0, 0, 28, 28, COLORS.coral)
+	self.aimHandle.AnchorPoint = Vector2.new(0.5, 0.5)
+	corner(self.aimHandle, 20)
+	stroke(self.aimHandle, COLORS.ink, 2)
+	self.aimPad.NextSelectionLeft, self.aimPad.NextSelectionRight = self.aimPad, self.aimPad
+	self:_connect(self.aimPad.InputBegan, function(input) self:_beginAim(input) end)
+	self:_connect(UserInputService.InputBegan, function(input)
+		if GuiService.SelectedObject ~= self.aimPad or not self:_canAim() then return end
+		if input.KeyCode == Enum.KeyCode.DPadLeft then self:setLocalSettings({ angle = self.settings.angle - 1 })
+		elseif input.KeyCode == Enum.KeyCode.DPadRight then self:setLocalSettings({ angle = self.settings.angle + 1 }) end
+	end)
+	self:_connect(UserInputService.InputChanged, function(input)
+		local drag = self.aimDrag
+		if drag and ((drag.touch and input == drag.input) or (not drag.touch and input.UserInputType == Enum.UserInputType.MouseMovement)) then
+			self:_dragAim(input.Position)
+		end
+	end)
+	self:_connect(UserInputService.InputEnded, function(input)
+		local drag = self.aimDrag
+		if drag and ((drag.touch and input == drag.input) or (not drag.touch and input.UserInputType == Enum.UserInputType.MouseButton1)) then
+			self:_finishAim(true)
+		end
+	end)
 	label(self.configPanel, "GadgetTitle", "PICK ONE FREE GADGET", 24, 229, 422, 20, 13, COLORS.ink, true)
 	self.gadgetButtons = {}
 	for index, name in ipairs(GADGETS) do
@@ -459,6 +625,20 @@ function Hud.new(callbacks)
 	self.readyStatus.Parent = self.configActions
 	self.gadgetSummary = label(self.configActions, "GadgetSummary", "", 16, 7, 420, 21, 12, COLORS.ink, true)
 	self.gadgetSummary.Visible = false
+	self.aimActions = frame(self.gui, "AimActions", 0, 0, 690, 64)
+	self.aimActions.AnchorPoint = Vector2.new(0.5, 1)
+	self.aimActions.Position = UDim2.new(0.5, 0, 1, -28)
+	self.aimActions.Visible = false
+	corner(self.aimActions, 16)
+	stroke(self.aimActions, COLORS.ink, 3)
+	self.aimHint = label(self.aimActions, "AimHint", "DRAG BACK FROM YOUR JET", 14, 7, 380, 17, 12, COLORS.ink, true)
+	self.fixedStats = label(self.aimActions, "FixedPlaneStats", "", 14, 29, 380, 19, 12, COLORS.muted, true)
+	self.aimStatus = label(self.aimActions, "AimStatus", "", 14, 47, 380, 13, 10, COLORS.muted)
+	self.aimReadyButton = button(self.aimActions, "AimReady", "READY TO LAUNCH", 434, 8, 242, 48, COLORS.green)
+	self.aimReadyButton.TextSize = 17
+	self:_connect(self.aimReadyButton.Activated, function() self:toggleReady() end)
+	self.aimPad.NextSelectionDown, self.aimPad.NextSelectionUp = self.aimReadyButton, self.aimReadyButton
+	self.aimReadyButton.NextSelectionUp = self.aimPad
 
 	self.flightPanel = self:_panel("Flight", 126)
 	self.flightPanel.AnchorPoint = Vector2.new(0.5, 0)
@@ -758,6 +938,48 @@ function Hud:_layoutDuel(viewport, height)
 	self.returnButton.TextSize = width < 430 and 11 or 14
 end
 
+function Hud:_layoutPlaneChoices(viewport, height)
+	local width = math.min(470, math.max(260, viewport.X - 24))
+	local left, top, contentWidth, buttonHeight = 24, 102, width - 48, 52
+	local statsY, strategyY = 165, 194
+	local landscape = viewport.X >= 680 and height < 470
+	self.configPanel.Title.Visible, self.planeStrategy.Visible = true, true
+	if landscape then
+		left, contentWidth = 16, math.min(760, viewport.X - 32) / 2 - 32
+		if height < 330 then top, buttonHeight, statsY, strategyY = 28, 44, 79, 106
+		else top, buttonHeight, statsY, strategyY = 43, 48, 101, 132 end
+	end
+	local buttonWidth = (contentWidth - 16) / 3
+	for index, id in ipairs(PlaneCatalog.ORDER) do
+		local control = self.planeButtons[id]
+		control.Position = UDim2.fromOffset(left + (index - 1) * (buttonWidth + 8), top)
+		control.Size, control.TextSize = UDim2.fromOffset(buttonWidth, buttonHeight), buttonWidth < 110 and 13 or 16
+	end
+	self.planeSpeed.Position, self.planeSpeed.Size = UDim2.fromOffset(left, statsY), UDim2.fromOffset(contentWidth, 23)
+	self.planeSpeed.TextSize = landscape and 13 or 14
+	self.planeStrategy.Position, self.planeStrategy.Size = UDim2.fromOffset(left, strategyY), UDim2.fromOffset(contentWidth, 20)
+	self.planeStrategy.TextSize = landscape and 11 or 12
+	local aimWidth = math.min(690, viewport.X - 24)
+	local portrait = viewport.X < 560
+	local actionHeight = portrait and 98 or 64
+	self.aimActions.Size = UDim2.fromOffset(aimWidth, actionHeight)
+	local textWidth = portrait and aimWidth - 28 or aimWidth - 282
+	self.aimHint.Position, self.aimHint.Size = UDim2.fromOffset(14, 5), UDim2.fromOffset(textWidth, 17)
+	self.aimHint.TextSize = portrait and 11 or 12
+	self.fixedStats.Position, self.fixedStats.Size = UDim2.fromOffset(14, 25), UDim2.fromOffset(textWidth, 19)
+	self.fixedStats.TextSize = portrait and 11 or 12
+	self.aimStatus.Position, self.aimStatus.Size = UDim2.fromOffset(portrait and aimWidth / 2 or 14, portrait and 7 or 46), UDim2.fromOffset(portrait and aimWidth / 2 - 14 or textWidth, 14)
+	self.aimStatus.TextXAlignment = portrait and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+	self.aimStatus.Visible = not portrait
+	self.aimReadyButton.Position = UDim2.fromOffset(portrait and 10 or aimWidth - 258, portrait and 47 or 8)
+	self.aimReadyButton.Size = UDim2.fromOffset(portrait and aimWidth - 20 or 246, 44)
+	self.aimReadyButton.TextSize = portrait and 16 or 17
+	local fieldTop = self.header.Position.Y.Offset + self.header.Size.Y.Offset + 6
+	self.aimPad.Position = UDim2.fromOffset(0, fieldTop)
+	self.aimPad.Size = UDim2.fromOffset(viewport.X, math.max(20, height - 28 - actionHeight - 10 - fieldTop))
+	self:_refreshAim()
+end
+
 function Hud:_resize()
 	local camera = workspace.CurrentCamera
 	local viewport = camera and camera.ViewportSize or Vector2.new(960, 720)
@@ -770,7 +992,7 @@ function Hud:_resize()
 	local inner = width - 48
 	local narrowCard = width < 430
 	local available = math.max(90, height - 112)
-	local configHeight = narrowCard and 474 or 414
+	local configHeight = narrowCard and 448 or 414
 	local function place(item, x, y, w, h)
 		item.Position = UDim2.fromOffset(x, y)
 		item.Size = UDim2.fromOffset(w, h)
@@ -849,26 +1071,16 @@ function Hud:_resize()
 	end
 	self.configPanel.Eyebrow.TextSize = narrowCard and 9 or 10
 	self.configPanel.Divider.Size = UDim2.fromOffset(inner, 1)
-	for _, name in ipairs({ "Angle", "Power" }) do
-		local y = name == "Angle" and 102 or 163
-		place(self.configPanel[name .. "Title"], 24, y + 1, inner - 175, 24)
-		self.configPanel[name .. "Title"].TextSize = narrowCard and 13 or 16
-		place(self.configPanel[name .. "Detail"], 24, y + 24, inner - 175, 33)
-		self.configPanel[name .. "Detail"].TextWrapped = true
-		place(self.configPanel[name .. "Minus"], width - 188, y, 48, 48)
-		place(self.configPanel[name .. "Value"], width - 140, y, 68, 48)
-		place(self.configPanel[name .. "Plus"], width - 72, y, 48, 48)
-	end
 	local gadgetWidth = (inner - 20) / 3
 	for index, name in ipairs(GADGETS) do
 		place(self.gadgetButtons[name], 24 + (index - 1) * (gadgetWidth + 10), 258, gadgetWidth, 48)
 		self.gadgetButtons[name].TextSize = narrowCard and 14 or 16
 	end
 	place(self.gadgetCopy, 24, 314, inner, 41)
-	place(self.configPanel.PaintTitle, 24, 365, narrowCard and inner or 190, 23)
-	place(self.paintName, 24, 389, narrowCard and inner or 205, 18)
+	place(self.configPanel.PaintTitle, 24, narrowCard and 363 or 365, narrowCard and 120 or 190, 23)
+	place(self.paintName, narrowCard and (24 + inner - 146) or 24, narrowCard and 365 or 389, narrowCard and 146 or 205, 18)
 	for index, control in ipairs(self.colorButtons) do
-		place(control, narrowCard and (24 + (index - 1) * 61) or (width - 222 + (index - 1) * 51), narrowCard and 418 or 362, 48, 48)
+		place(control, narrowCard and (24 + (index - 1) * 61) or (width - 222 + (index - 1) * 51), narrowCard and 394 or 362, 48, 48)
 	end
 	self.configActions.Position = UDim2.new(0.5, 0, 0, self.configPanel.Position.Y.Offset + self.configPanel.Size.Y.Offset + 8)
 	self.configActions.Size = UDim2.fromOffset(width, 90)
@@ -879,8 +1091,6 @@ function Hud:_resize()
 	self.gadgetSummary.Visible = false
 	self.gadgetCopy.Visible = true
 	self.paintName.Visible = true
-	self.configPanel.AngleDetail.Visible = true
-	self.configPanel.PowerDetail.Visible = true
 	self.configPanel.Eyebrow.Visible = true
 	place(self.configPanel.Title, 24, 40, inner, 33)
 	self.configPanel.Title.TextSize = 27
@@ -901,15 +1111,6 @@ function Hud:_resize()
 		place(self.configPanel.Title, 16, 8, halfWidth - 32, 27)
 		self.configPanel.Title.TextSize = 21
 		place(self.configPanel.Divider, 16, 39, halfWidth - 32, 1)
-		for _, name in ipairs({ "Angle", "Power" }) do
-			local y = name == "Angle" and 48 or 110
-			place(self.configPanel[name .. "Title"], 16, y, halfWidth - 194, 23)
-			self.configPanel[name .. "Title"].TextSize = 13
-			place(self.configPanel[name .. "Detail"], 16, y + 23, halfWidth - 194, 32)
-			place(self.configPanel[name .. "Minus"], halfWidth - 176, y, 48, 48)
-			place(self.configPanel[name .. "Value"], halfWidth - 128, y, 64, 48)
-			place(self.configPanel[name .. "Plus"], halfWidth - 64, y, 48, 48)
-		end
 		place(self.configPanel.GadgetTitle, right, 13, rightInner, 20)
 		local gadgetSize = (rightInner - 16) / 3
 		for index, name in ipairs(GADGETS) do
@@ -1026,14 +1227,6 @@ function Hud:_resize()
 			place(self.configPanel.Title, 16, 1, halfWidth - 32, 24)
 			self.configPanel.Title.TextSize = 18
 			self.configPanel.Divider.Visible = false
-			for _, name in ipairs({ "Angle", "Power" }) do
-				local y = name == "Angle" and 28 or 82
-				place(self.configPanel[name .. "Title"], 16, y + 11, halfWidth - 194, 23)
-				self.configPanel[name .. "Detail"].Visible = false
-				place(self.configPanel[name .. "Minus"], halfWidth - 176, y, 48, 48)
-				place(self.configPanel[name .. "Value"], halfWidth - 128, y, 64, 48)
-				place(self.configPanel[name .. "Plus"], halfWidth - 64, y, 48, 48)
-			end
 			place(self.configPanel.GadgetTitle, right, 4, halfWidth - 32, 20)
 			for _, control in pairs(self.gadgetButtons) do
 				control.Position = UDim2.fromOffset(control.Position.X.Offset, 30)
@@ -1055,6 +1248,7 @@ function Hud:_resize()
 		self.brandSub.Position = UDim2.fromOffset(19, 35)
 		self.configPanel.Divider.Visible = true
 	end
+	self:_layoutPlaneChoices(viewport, height)
 	self:_layoutDuel(viewport, height)
 end
 
@@ -1078,7 +1272,10 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	watchedPlayer = watchedPlayer or localPlayer
 	local changedPhase = self.phase ~= phase or self.roundId ~= snapshot.roundId or self.matchId ~= snapshot.matchId
 	if changedPhase then
+		if self.aimDrag then self:_finishAim(false) end
 		self.phase = phase
+		self.aimProjectionVisible = false
+		self.aimFocusPending = phase == "Aim" and UserInputService.GamepadEnabled
 		self.roundId = snapshot.roundId
 		self.matchId = snapshot.matchId
 		self.rematchRequested = false
@@ -1104,15 +1301,18 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 			self.lobbyButton.Text = "LEAVE DUEL"
 		end
 	end
+	self.configEndsAt = snapshot.endsAt
+	if self.aimDrag and not self:_canAim() then self:_finishAim(false) end
 	if localPlayer then
-		if localPlayer.settings and (changedPhase or not self.pendingSettings
-			or sameSettings(localPlayer.settings, self.pendingSettings) or now > self.pendingUntil) then
-			if not sameSettings(self.settings, localPlayer.settings) then
-				self.settings = table.clone(localPlayer.settings)
+		local authoritative = localPlayer.settings and selection(localPlayer.settings)
+		if authoritative and not self.aimDrag and (changedPhase or not self.pendingSettings
+			or sameSettings(authoritative, self.pendingSettings) or now > self.pendingUntil) then
+			if not sameSettings(self.settings, authoritative) then
+				self.settings = authoritative
 			end
 			self.pendingSettings = nil
 		end
-		if changedPhase or self.pendingReady == nil or localPlayer.ready == self.pendingReady or now > self.readyPendingUntil then
+		if not self.aimDrag and (changedPhase or self.pendingReady == nil or localPlayer.ready == self.pendingReady or now > self.readyPendingUntil) then
 			self.ready = localPlayer.ready == true
 			self.pendingReady = nil
 		end
@@ -1142,8 +1342,10 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	self.hubAction.Visible = inHub
 	self.waitingPanel.Visible = phase == "Waiting"
 	self.votePanel.Visible = phase == "Voting"
-	self.configPanel.Visible = phase == "Configure" or phase == "Countdown"
+	self.configPanel.Visible = phase == "Configure"
 	self.configActions.Visible = self.configPanel.Visible
+	self.aimActions.Visible = phase == "Aim" or phase == "Countdown"
+	self.aimPad.Visible = self.aimActions.Visible
 	self.flightPanel.Visible = phase == "Flight"
 	self.flightControls.Visible = phase == "Flight"
 	self.resultsPanel.Visible = phase == "Results"
@@ -1165,15 +1367,16 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		for name, votes in pairs(self.voteCounts) do
 			votes.Text = tostring((snapshot.votes or {})[name] or 0)
 		end
-	elseif phase == "Configure" or phase == "Countdown" then
+	elseif phase == "Configure" then
+		self:_refreshSettings()
+		self.readyStatus.Text = self.ready and "Waiting for your rival. Tap to change choices." or "Choose your loadout. Aim your jet next."
+	elseif phase == "Aim" or phase == "Countdown" then
 		self:_refreshSettings()
 		if phase == "Countdown" then
-			self.readyStatus.Text = "Launching in " .. remaining .. "… then sit back and watch!"
+			self.aimStatus.Text = "Takeoff in " .. remaining .. "…"
 		else
-			local readyText = tostring(readyCount) .. "/" .. tostring(humanCount) .. " pilots ready"
-			self.readyStatus.Text = UserInputService.KeyboardEnabled
-				and (readyText .. "  ·  R ready  ·  A/D angle  ·  W/S power")
-				or (readyText .. "  ·  Change a setting to try a different route")
+			local readyText = tostring(readyCount) .. "/" .. tostring(humanCount) .. " ready"
+			self.aimStatus.Text = self.ready and (readyText .. " · Waiting for rival") or (readyText .. (UserInputService.KeyboardEnabled and " · A/D aim · R ready" or " · Release to set angle"))
 		end
 	elseif phase == "Flight" then
 		local flight = watchedPlayer and watchedPlayer.flight
@@ -1307,6 +1510,7 @@ function Hud:updateFlightFeedback(flight, point, visible, elapsed)
 end
 
 function Hud:destroy()
+	self.aimDrag = nil
 	for _, connection in ipairs(self.connections) do
 		connection:Disconnect()
 	end

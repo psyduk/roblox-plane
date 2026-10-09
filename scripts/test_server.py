@@ -9,6 +9,7 @@ Roblox replication, character physics, UI, or real network timing.
 """
 from pathlib import Path
 import re
+from lua_modules import load_simulation
 
 try:
     from lupa import LuaRuntime
@@ -103,13 +104,24 @@ def make_runtime(studio=True, published=False):
     end
     function Harness.send(p,kind,extra)local payload=extra or {};payload.kind=kind;command.OnServerEvent:Fire(p,payload)end
     function Harness.latest(p)return Harness.sent[p.UserId]end
+    function Harness.readyDuel(a,b)
+     assert(Harness.latest(a).phase=='Configure')
+     Harness.send(a,'ready',{ready=true});if b then Harness.send(b,'ready',{ready=true})end
+     Harness.advance(1.2)
+     assert(Harness.latest(a).phase=='Aim' and not Harness.latest(a).players[1].ready)
+     Harness.send(a,'ready',{ready=true});if b then Harness.send(b,'ready',{ready=true})end
+     Harness.advance(4.3)
+     assert(Harness.latest(a).phase=='Flight')
+    end
     function Harness.debug(action,data)return assert(storage.children.FlightDebug,'missing debug').OnInvoke(action,data)end
     Harness.services=services;Harness.shared=shared
     ''')
     L.globals().Harness.studio = studio
     L.globals().game.GameId = 123 if published else 0
     L.execute('function Harness.services.RunService:IsStudio()return Harness.studio end')
-    L.globals().Harness.shared.Simulation.module=L.execute((ROOT/'src/shared/Simulation.luau').read_text())
+    simulation, catalog = load_simulation(L)
+    L.globals().Harness.shared.Simulation.module=simulation
+    L.globals().Harness.shared.PlaneCatalog=L.table_from({'module':catalog})
     L.globals().Harness.services.ServerStorage.children.SimulationTests=L.table_from({'module':L.execute((ROOT/'tests/Simulation.spec.luau').read_text())})
     for name in ('PlayerStats', 'Telemetry'):
         module=L.execute((ROOT/f'src/server/{name}.luau').read_text())
@@ -122,6 +134,113 @@ def make_runtime(studio=True, published=False):
     return L
 
 SCENARIOS = {
+    "aim locks the loadout while accepting only bounded angle changes": r'''
+        local a,b=Harness.add(101),Harness.add(102)
+        Harness.send(a,'configure',{settings={planeId='dart',angle=24,gadget='Magnet',color=3}})
+        Harness.debug('forcePair',{ids={a.UserId,b.UserId}});Harness.debug('configure',{userId=a.UserId})
+        Harness.debug('aim',{userId=a.UserId})
+        for _,bad in ipairs({
+            {planeId='skyhopper',angle=55,gadget='Magnet',color=3},
+            {planeId='dart',angle=55,gadget='Boost',color=3},
+            {planeId='dart',angle=55,gadget='Magnet',color=4},
+            {angle=55,speed=999},{angle=55,power=100},{angle=0/0}
+        })do
+            for _,command in ipairs({'configure','ready'})do
+                Harness.send(a,command,{ready=true,settings=bad});Harness.advance(0.1)
+                local s=Harness.latest(a)
+                local own=s.players[1]
+                assert(s.phase=='Aim' and not own.ready and own.settings.angle==24)
+                assert(own.settings.planeId=='dart' and own.settings.gadget=='Magnet' and own.settings.color==3 and own.settings.speed==81)
+            end
+        end
+        Harness.send(a,'configure',{settings={angle=31.6}});Harness.advance(0.1)
+        assert(Harness.latest(a).players[1].settings.angle==32)
+        Harness.send(a,'ready',{ready=true,settings={planeId='dart',angle=41,gadget='Magnet',color=3,speed=81}});Harness.advance(0.1)
+        assert(Harness.latest(a).players[1].ready and Harness.latest(a).players[1].settings.angle==41)
+        Harness.send(a,'configure',{settings={angle=-99}});Harness.advance(0.1)
+        assert(not Harness.latest(a).players[1].ready and Harness.latest(a).players[1].settings.angle==15)
+        assert(Harness.latest(a).players[2].settings.angle==35)
+        Harness.send(a,'ready',{ready=true,settings={angle=999}})
+        Harness.send(b,'ready',{ready=true});Harness.advance(0.2)
+        assert(Harness.latest(a).phase=='Countdown' and Harness.latest(a).players[1].settings.angle==60)
+    ''',
+    "configuration readiness resets for aiming and the new phase observes its guard": r'''
+        local a,b=Harness.add(101),Harness.add(102)
+        Harness.debug('forcePair',{ids={a.UserId,b.UserId}});Harness.debug('configure',{userId=a.UserId})
+        Harness.send(a,'ready',{ready=true});Harness.advance(1.2)
+        assert(Harness.latest(a).phase=='Configure')
+        Harness.send(b,'ready',{ready=true});Harness.advance(0.1)
+        assert(Harness.latest(a).phase=='Aim')
+        for _,entry in ipairs(Harness.latest(a).players)do assert(not entry.ready and not entry.flight)end
+        Harness.send(a,'ready',{ready=true});Harness.send(b,'ready',{ready=true});Harness.advance(0.3)
+        assert(Harness.latest(a).phase=='Aim','Aim skipped its minimum visibility guard')
+        Harness.advance(0.8)
+        assert(Harness.latest(a).phase=='Countdown')
+        Harness.advance(3)
+        assert(Harness.latest(a).phase=='Flight')
+    ''',
+    "plane catalog is free and server rejects unknown IDs speed spoofing and obsolete power": r'''
+        local catalog=Harness.shared.PlaneCatalog.module
+        assert(#catalog.ORDER==3 and catalog.DEFAULT_ID=='cruiser')
+        local a=Harness.add(101)
+        assert(Harness.latest(a).players[1].settings.planeId=='cruiser')
+        for _,bad in ipairs({
+            {planeId='paid_plane',angle=35,gadget='Shield',color=1},
+            {planeId='dart',angle=35,speed=999,gadget='Shield',color=1},
+            {planeId='dart',angle=35,launchSpeed=999,gadget='Shield',color=1},
+            {planeId='dart',angle=35,power=100,gadget='Shield',color=1},
+            {planeId='dart',angle=0/0,gadget='Shield',color=1},
+            {planeId='dart',angle=math.huge,gadget='Shield',color=1},
+            {planeId='dart',gadget='Shield',color=1}
+        })do
+            assert(not Harness.debug('validateSettings',bad))
+            Harness.send(a,'configure',{settings=bad});Harness.advance(0.1)
+            assert(Harness.latest(a).players[1].settings.planeId=='cruiser')
+        end
+        for _,id in ipairs(catalog.ORDER)do
+            assert(catalog.get(id).free and catalog.isSelectable(id))
+            local checked=Harness.debug('validateSettings',{planeId=id,angle=27.6,gadget='Shield',color=2})
+            assert(checked.planeId==id and checked.angle==28 and checked.speed==catalog.get(id).speed and checked.power==nil)
+        end
+        local low=Harness.debug('validateSettings',{planeId='dart',angle=-999,gadget='Shield',color=1})
+        local high=Harness.debug('validateSettings',{planeId='dart',angle=999,gadget='Shield',color=1})
+        assert(low.angle==15 and high.angle==60)
+        Harness.send(a,'configure',{settings=high});Harness.advance(0.1)
+        assert(Harness.latest(a).players[1].settings.planeId=='dart' and Harness.latest(a).players[1].settings.angle==60)
+    ''',
+    "human planes and chosen angles launch independently at catalog speed": r'''
+        local a,b=Harness.add(101),Harness.add(102)
+        Harness.send(a,'configure',{settings={planeId='skyhopper',angle=52,gadget='Shield',color=2}})
+        Harness.send(b,'configure',{settings={planeId='dart',angle=23,gadget='Boost',color=4}})
+        Harness.debug('forcePair',{ids={a.UserId,b.UserId}})
+        local s=Harness.debug('launch',{userId=a.UserId})
+        assert(s.players[1].settings.planeId=='skyhopper' and s.players[2].settings.planeId=='dart')
+        for _,entry in ipairs(s.players)do
+            local plane=Harness.shared.PlaneCatalog.module.get(entry.settings.planeId)
+            local f=entry.flight
+            assert(math.abs(math.sqrt(f.vx*f.vx+f.vy*f.vy)-plane.speed)<0.0000001)
+            assert(math.abs(f.vy/f.vx-math.tan(math.rad(entry.settings.angle)))<0.0000001)
+        end
+        assert(s.players[1].settings.angle==52 and s.players[2].settings.angle==23)
+        Harness.advance(1)
+        assert(Harness.latest(a).players[1].flight.x~=Harness.latest(a).players[2].flight.x)
+    ''',
+    "practice ghost plane is deterministic per course and changes on rematch": r'''
+        local a=Harness.add(101)
+        Harness.send(a,'practice')
+        local first=Harness.debug('configure',{userId=a.UserId})
+        local catalog=Harness.shared.PlaneCatalog.module
+        local firstId=first.players[2].settings.planeId
+        assert(firstId==catalog.ORDER[first.courseSeed % #catalog.ORDER+1])
+        local repeated=Harness.debug('configure',{userId=a.UserId})
+        assert(repeated.players[2].settings.planeId==firstId and repeated.courseSeed==first.courseSeed)
+        Harness.debug('launch',{userId=a.UserId});Harness.advance(46)
+        Harness.send(a,'rematch')
+        local second=Harness.debug('configure',{userId=a.UserId})
+        assert(second.players[2].settings.planeId~=firstId)
+        assert(second.players[2].settings.planeId==catalog.ORDER[second.courseSeed % #catalog.ORDER+1])
+        assert(second.players[1].settings.planeId=='cruiser')
+    ''',
     "unpublished Studio explicitly uses session-only stats and no analytics": r'''
         local a=Harness.add(101)
         assert(Harness.latest(a).saveStatus=='session_only')
@@ -165,8 +284,15 @@ SCENARIOS = {
         for _,entry in ipairs(sa.players)do assert(entry.userId==a.UserId or entry.userId==b.UserId)end
         Harness.send(a,'vote',{variant='Storm',matchId=sc.matchId,userId=c.UserId})
         assert(Harness.latest(a).votes.Storm==1 and Harness.latest(c).votes.Storm==0)
-        Harness.send(a,'configure',{settings={angle=60,power=45,gadget='Boost',color=4},userId=c.UserId})
+        Harness.send(a,'configure',{settings={planeId='skyhopper',angle=60,gadget='Boost',color=4},userId=c.UserId})
+        assert(Harness.latest(a).players[1].settings.planeId=='skyhopper')
+        assert(Harness.latest(a).players[2].settings.planeId=='cruiser')
         for _,entry in ipairs(Harness.latest(c).players)do assert(entry.settings.angle==35)end
+        Harness.debug('configure',{userId=a.UserId})
+        Harness.send(a,'ready',{ready=true});Harness.send(b,'ready',{ready=true});Harness.advance(1.2)
+        assert(Harness.latest(a).phase=='Aim' and Harness.latest(c).phase=='Voting')
+        Harness.send(a,'configure',{settings={angle=28}})
+        assert(Harness.latest(a).players[1].settings.angle==28 and Harness.latest(c).players[1].settings.angle==35)
         Harness.debug('launch',{userId=a.UserId});Harness.advance(0.3)
         assert(Harness.latest(a).phase=='Flight' and Harness.latest(c).phase=='Voting')
         assert(Harness.latest(a).elapsed>0 and Harness.latest(c).elapsed==0)
@@ -175,23 +301,28 @@ SCENARIOS = {
         local a,b=Harness.add(101),Harness.add(102)
         Harness.debug('forcePair',{ids={a.UserId,b.UserId}})
         Harness.debug('configure',{userId=a.UserId})
-        Harness.send(a,'ready',{ready=true,settings={angle=45,power=85,gadget='Magnet',color=3}})
+        Harness.send(a,'ready',{ready=true,settings={planeId='dart',angle=45,gadget='Magnet',color=3}})
         Harness.send(b,'ready',{ready=true});Harness.advance(1.2)
+        assert(Harness.latest(a).phase=='Aim')
+        Harness.send(a,'ready',{ready=true});Harness.send(b,'ready',{ready=true});Harness.advance(1.2)
         assert(Harness.latest(a).phase=='Countdown')
-        Harness.send(a,'configure',{settings={angle=15,power=45,gadget='Boost',color=1}})
+        Harness.send(a,'configure',{settings={planeId='skyhopper',angle=15,gadget='Boost',color=1}})
         Harness.send(a,'ready',{ready=false})
         Harness.send(a,'unrecognized',{settings={angle=60}})
         Harness.advance(3)
         local own
         for _,entry in ipairs(Harness.latest(a).players)do if entry.userId==a.UserId then own=entry end end
-        assert(Harness.latest(a).phase=='Flight' and own.settings.angle==45 and own.settings.power==85)
+        assert(Harness.latest(a).phase=='Flight' and own.settings.angle==45 and own.settings.planeId=='dart' and own.settings.speed==81)
         assert(own.settings.gadget=='Magnet' and own.flight)
+        Harness.send(a,'configure',{settings={planeId='cruiser',angle=15,gadget='Shield',color=1}})
+        assert(Harness.latest(a).players[1].settings.planeId=='dart' and Harness.latest(a).players[1].settings.angle==45)
     ''',
     "disconnect cancels either preflight participant without an orphan match": r'''
-        for _,phase in ipairs({'Voting','Configure','Countdown'})do
+        for _,phase in ipairs({'Voting','Configure','Aim','Countdown'})do
             local a,b=Harness.add(101),Harness.add(102)
             Harness.debug('forcePair',{ids={a.UserId,b.UserId}})
             if phase~='Voting'then Harness.debug('configure',{userId=a.UserId})end
+            if phase=='Aim' or phase=='Countdown'then Harness.debug('aim',{userId=a.UserId})end
             if phase=='Countdown'then
                 Harness.send(a,'ready',{ready=true});Harness.send(b,'ready',{ready=true});Harness.advance(1.2)
             end
@@ -214,7 +345,7 @@ SCENARIOS = {
     ''',
     "leaving a flight forfeits even when ahead and permits a new match": r'''
         local a,b=Harness.add(101),Harness.add(102)
-        Harness.send(a,'configure',{settings={angle=15,power=100,gadget='Shield',color=1}})
+        Harness.send(a,'configure',{settings={planeId='dart',angle=15,gadget='Shield',color=1}})
         Harness.debug('forcePair',{ids={a.UserId,b.UserId}});Harness.debug('launch',{userId=a.UserId});Harness.advance(1)
         Harness.send(a,'returnLobby');Harness.advance(0.2)
         local result=Harness.latest(b)
@@ -283,6 +414,11 @@ SCENARIOS = {
         Harness.advance(8)
         assert(Harness.latest(a).phase=='Configure')
         Harness.advance(25)
+        assert(Harness.latest(a).phase=='Aim')
+        for _,entry in ipairs(Harness.latest(a).players)do assert(not entry.ready and not entry.flight)end
+        Harness.advance(19)
+        assert(Harness.latest(a).phase=='Aim')
+        Harness.advance(1)
         assert(Harness.latest(a).phase=='Countdown')
         Harness.advance(3)
         assert(Harness.latest(a).phase=='Flight')
@@ -308,7 +444,7 @@ LIVE_SCENARIOS = {
         local a=Harness.add(101)
         assert(Harness.latest(a).saveStatus=='saved' and Harness.store.getCalls==1)
         Harness.send(a,'practice');Harness.advance(8.2)
-        Harness.send(a,'ready',{ready=true});Harness.advance(4.3);Harness.advance(46)
+        Harness.readyDuel(a);Harness.advance(46)
         local before=Harness.latest(a).stats
         assert(before.practiceFlights==1 and before.totalFlights==1 and before.bestDistance>0)
         assert(before.wins==0 and before.losses==0 and before.currentStreak==0)
@@ -329,7 +465,7 @@ LIVE_SCENARIOS = {
     "human forfeit records a loss without an aborted best and tie preserves streak": r'''
         local a,b=Harness.add(101),Harness.add(102)
         Harness.move(a,1,1);Harness.move(b,1,2);Harness.advance(2);Harness.advance(8)
-        Harness.send(a,'ready',{ready=true});Harness.send(b,'ready',{ready=true});Harness.advance(4.3)
+        Harness.readyDuel(a,b)
         assert(Harness.latest(a).phase=='Flight')
         Harness.send(a,'returnLobby');Harness.advance(0.2)
         assert(Harness.latest(a).stats.losses==1 and Harness.latest(a).stats.bestDistance==0)
@@ -337,7 +473,7 @@ LIVE_SCENARIOS = {
         assert(Harness.latest(b).stats.bestDistance==0)
         Harness.send(b,'returnLobby');Harness.advance(2.2)
         Harness.move(a,1,1);Harness.move(b,1,2);Harness.advance(2);Harness.advance(8)
-        Harness.send(a,'ready',{ready=true});Harness.send(b,'ready',{ready=true});Harness.advance(4.3);Harness.advance(46)
+        Harness.readyDuel(a,b);Harness.advance(46)
         assert(Harness.latest(a).phase=='Results' and Harness.latest(a).stats.draws==1)
         assert(Harness.latest(b).stats.draws==1 and Harness.latest(b).stats.currentStreak==1 and Harness.latest(b).stats.bestStreak==1)
         assert(Harness.latest(a).stats.totalFlights==2 and Harness.latest(b).stats.totalFlights==2)
@@ -347,13 +483,13 @@ LIVE_SCENARIOS = {
     ''',
     "live load failure is visible and cannot replace durable history": r'''
         local a=Harness.add(101)
-        Harness.send(a,'practice');Harness.advance(8.2);Harness.send(a,'ready',{ready=true});Harness.advance(4.3);Harness.advance(46)
+        Harness.send(a,'practice');Harness.advance(8.2);Harness.readyDuel(a);Harness.advance(46)
         local oldBest=Harness.latest(a).stats.bestDistance
         Harness.remove(a);Harness.store.failures=3
         local b=Harness.add(101)
         assert(Harness.latest(b).saveStatus=='unavailable')
         local calls=Harness.store.calls
-        Harness.send(b,'practice');Harness.advance(8.2);Harness.send(b,'ready',{ready=true});Harness.advance(4.3);Harness.advance(46)
+        Harness.send(b,'practice');Harness.advance(8.2);Harness.readyDuel(b);Harness.advance(46)
         Harness.remove(b);Harness.shutdown()
         assert(Harness.store.calls==calls and Harness.store.values.player_101.stats.bestDistance==oldBest)
         assert(Harness.store.values.player_101.stats.totalFlights==1)

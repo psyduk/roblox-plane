@@ -11,11 +11,13 @@ from pathlib import Path
 import argparse
 from statistics import mean
 from lupa import LuaRuntime
+from lua_modules import load_simulation
 
 ROOT = Path(__file__).resolve().parents[1]
-PRESETS = [('Default', 35, 75, 'Shield'), ('Low', 15, 45, 'Shield'),
-           ('High', 60, 100, 'Shield'), ('Magnet', 35, 75, 'Magnet'),
-           ('Boost', 35, 75, 'Boost')]
+PRESETS = [('Cruiser', 'cruiser', 35, 'Shield'), ('Skyhopper', 'skyhopper', 48, 'Shield'),
+           ('Dart', 'dart', 24, 'Shield'), ('LowAim', 'cruiser', 15, 'Shield'),
+           ('HighAim', 'cruiser', 60, 'Shield'), ('Magnet', 'cruiser', 35, 'Magnet'),
+           ('Boost', 'cruiser', 35, 'Boost')]
 MEASURE = r'''function(s, settings, course)
  local f=s.newFlight(settings,course)
  local lowRescues,quiet,last,height=0,0,0,0
@@ -52,16 +54,20 @@ end'''
 
 def sample(path, count, label):
     runtime = LuaRuntime(unpack_returned_tuples=True)
-    simulation = runtime.execute(path.read_text())
+    simulation, catalog = load_simulation(runtime, path)
     measure = runtime.eval(MEASURE)
     all_rows = []
     print(f'\n{label}: {path}', flush=True)
     for variant in ('Coast', 'Skyline', 'Storm'):
-        for name, angle, power, gadget in PRESETS:
+        for name, plane_id, angle, gadget in PRESETS:
             rows = []
             for i in range(1, count + 1):
                 course = simulation.makeCourse(104729 + (i * 7 + 3) * 7919 + (i % 5 + 1) * 3571, variant)
-                settings = runtime.table_from(dict(angle=angle, power=power, gadget=gadget))
+                # Old baselines use power; current modules ignore it and derive
+                # speed from the catalog. Old power rounding is approximate.
+                profile = catalog.get(plane_id)
+                settings = runtime.table_from(dict(planeId=plane_id, angle=angle,
+                    power=(profile.speed-46)/0.35, gadget=gadget))
                 result = measure(simulation, settings, course)
                 rows.append({key: result[key] for key in ('time', 'distance', 'fuel', 'hits', 'near', 'lowRescues', 'quiet', 'height', 'timeout', 'objects')})
             all_rows.extend(rows)

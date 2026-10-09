@@ -7,12 +7,13 @@ local HttpService = game:GetService("HttpService")
 local PlayerStats = require(script.Parent:WaitForChild("PlayerStats"))
 local Telemetry = require(script.Parent:WaitForChild("Telemetry"))
 local shared = ReplicatedStorage:WaitForChild("FlightGame")
+local PlaneCatalog = require(shared.PlaneCatalog)
 local Simulation = require(shared.Simulation)
 local World = require(shared.World)
 local command, snapshots = shared.Command, shared.Snapshot
 World.buildLobby()
 
-local DURATIONS = {Voting=8, Configure=25, Countdown=3, Flight=45, Results=90}
+local DURATIONS = {Voting=8, Configure=25, Aim=20, Countdown=3, Flight=45, Results=90}
 local VARIANTS = {"Coast", "Skyline", "Storm"}
 local GADGETS = {Shield=true, Magnet=true, Boost=true}
 local profiles, matches, queues = {}, {}, {}
@@ -40,14 +41,35 @@ local telemetry=Telemetry.new({enabled=not sessionOnly and script:GetAttribute("
 local nextMatchId, broadcastAccumulator, queueAccumulator = 0, 0, 0
 for _,station in ipairs(World.DUEL_STATIONS) do queues[station.id]={seats={false,false}} end
 local function now() return workspace:GetServerTimeNow() end
-local function copySettings(s) return {angle=s.angle,power=s.power,gadget=s.gadget,color=s.color or 1} end
+local function copySettings(s)
+    local plane=PlaneCatalog.get(s.planeId) or PlaneCatalog.get(PlaneCatalog.DEFAULT_ID)
+    return {planeId=plane.id,angle=s.angle or plane.defaultAngle,speed=plane.speed,gadget=s.gadget,color=s.color or 1}
+end
 local function finite(v) return type(v)=="number" and v==v and v>-math.huge and v<math.huge end
 local function safeSettings(input)
-    if type(input)~="table" or not finite(input.angle) or not finite(input.power) then return nil end
+    if type(input)~="table" or not PlaneCatalog.isSelectable(input.planeId) or not finite(input.angle) then return nil end
+    local plane=PlaneCatalog.get(input.planeId)
+    -- Only the catalog can determine speed. Echoing a snapshot is allowed;
+    -- obsolete power or fabricated speed cannot change the selected profile.
+    if input.power~=nil or (input.speed~=nil and input.speed~=plane.speed)
+        or (input.launchSpeed~=nil and input.launchSpeed~=plane.speed) then return nil end
     if type(input.gadget)~="string" or not GADGETS[input.gadget] or not finite(input.color) then return nil end
-    return {angle=math.clamp(math.round(input.angle/5)*5,15,60),
-        power=math.clamp(math.round(input.power/5)*5,45,100),gadget=input.gadget,
+    return {planeId=plane.id,angle=math.clamp(math.round(input.angle),PlaneCatalog.MIN_ANGLE,PlaneCatalog.MAX_ANGLE),
+        speed=plane.speed,gadget=input.gadget,
         color=math.clamp(math.round(input.color),1,4)}
+end
+local function safeAimSettings(input, locked)
+    if type(input)~="table" or not finite(input.angle) then return nil end
+    -- The aiming view can send just an angle or echo the whole settings object.
+    -- Reject attempted loadout changes atomically, including a Ready payload.
+    if (input.planeId~=nil and input.planeId~=locked.planeId)
+        or (input.gadget~=nil and input.gadget~=locked.gadget)
+        or (input.color~=nil and input.color~=locked.color)
+        or input.power~=nil or (input.speed~=nil and input.speed~=locked.speed)
+        or (input.launchSpeed~=nil and input.launchSpeed~=locked.speed) then return nil end
+    local result=copySettings(locked)
+    result.angle=math.clamp(math.round(input.angle),PlaneCatalog.MIN_ANGLE,PlaneCatalog.MAX_ANGLE)
+    return result
 end
 local function moveCharacter(p, inMatch)
     local character=p.player.Character
@@ -155,8 +177,34 @@ local function configure(m)
     end
     m.courseName=tied[(m.round-1)%#tied+1]
     m.course=Simulation.makeCourse(104729+m.id*7919+m.round*3571,m.courseName)
+    for _,e in ipairs(m.entrants) do
+        if e.bot then
+            local plane=PlaneCatalog.get(PlaneCatalog.ORDER[m.course.seed % #PlaneCatalog.ORDER + 1])
+            e.settings=copySettings({planeId=plane.id,angle=plane.defaultAngle,gadget="Magnet",color=2})
+        end
+    end
     m.readyAt=now()+1
-    setPhase(m,"Configure","Choose your launch. Furthest distance before touchdown wins.")
+    setPhase(m,"Configure","Choose your plane, gadget and color. Aim your jet next.")
+end
+local function beginAim(m)
+    for _,e in ipairs(m.entrants) do
+        local p=profiles[e.userId]
+        if p then
+            e.settings=copySettings(p.settings)
+            p.ready=false
+        end
+    end
+    m.readyAt=now()+1
+    setPhase(m,"Aim","Drag back on your jet to aim. Ready locks your launch angle.")
+end
+local function checkedMatchSettings(p, m, input)
+    if m and m.phase=="Aim" then
+        for _,e in ipairs(m.entrants) do
+            if e.userId==p.player.UserId then return safeAimSettings(input,e.settings) end
+        end
+        return nil
+    end
+    return safeSettings(input)
 end
 local function launch(m)
     m.elapsed=0; m.accumulator=0; m.finished=false; m.aborted=false
@@ -231,7 +279,8 @@ local function createMatch(ids, practice)
         table.insert(m.entrants,{userId=id,name=p.player.DisplayName,settings=copySettings(p.settings)})
     end
     if practice then
-        table.insert(m.entrants,{userId=-100001,name="Practice · Skipper",bot=true,settings={angle=25,power=80,gadget="Magnet",color=2}})
+        table.insert(m.entrants,{userId=-100001,name="Practice · Skipper",bot=true,
+            settings=copySettings({planeId=PlaneCatalog.DEFAULT_ID,gadget="Magnet",color=2})})
     end
     beginVoting(m)
     return m
@@ -300,7 +349,7 @@ local function scanQueues()
 end
 local function joined(player)
     if shuttingDown then return end
-    local p={player=player,settings={angle=35,power=75,gadget="Shield",color=1},ready=false,best=0,
+    local p={player=player,settings=copySettings({planeId=PlaneCatalog.DEFAULT_ID,gadget="Shield",color=1}),ready=false,best=0,
         lastCommand={},message="Walk onto a 1v1 pad with another pilot."}
     profiles[player.UserId]=p
     p.statsHandle=statsService:open(player.UserId)
@@ -348,13 +397,13 @@ local function handleCommand(p,payload)
         if ready then beginVoting(m) end
     elseif m and payload.kind=="vote" and m.phase=="Voting" and table.find(VARIANTS,payload.variant) then
         m.votes[p.player.UserId]=payload.variant
-    elseif payload.kind=="configure" and (not m or m.phase=="Configure" or m.phase=="Voting") then
-        local checked=safeSettings(payload.settings)
+    elseif payload.kind=="configure" and (not m or m.phase=="Configure" or m.phase=="Voting" or m.phase=="Aim") then
+        local checked=checkedMatchSettings(p,m,payload.settings)
         if not checked then return end
         p.settings=checked; p.ready=false
-    elseif m and payload.kind=="ready" and m.phase=="Configure" and type(payload.ready)=="boolean" then
+    elseif m and payload.kind=="ready" and (m.phase=="Configure" or m.phase=="Aim") and type(payload.ready)=="boolean" then
         if payload.settings then
-            local checked=safeSettings(payload.settings)
+            local checked=checkedMatchSettings(p,m,payload.settings)
             if not checked then return end
             p.settings=checked
         end
@@ -387,14 +436,18 @@ RunService.Heartbeat:Connect(function(dt)
                 end
                 if not alive or m.elapsed>=Simulation.MAX_FLIGHT_TIME then finish(m); break end
             end
-        elseif m.phase=="Configure" and now()>=m.readyAt then
+        elseif (m.phase=="Configure" or m.phase=="Aim") and now()>=m.readyAt then
             local allReady=true
             for _,e in ipairs(m.entrants) do if not e.bot and not profiles[e.userId].ready then allReady=false end end
-            if allReady then setPhase(m,"Countdown","Both flight plans locked. Get ready!") end
+            if allReady then
+                if m.phase=="Configure" then beginAim(m)
+                else setPhase(m,"Countdown","Both flight plans locked. Get ready!") end
+            end
         end
         if now()>=m.endsAt then
             if m.phase=="Voting" then configure(m)
-            elseif m.phase=="Configure" then setPhase(m,"Countdown","Flight plans locked. Get ready!")
+            elseif m.phase=="Configure" then beginAim(m)
+            elseif m.phase=="Aim" then setPhase(m,"Countdown","Flight plans locked. Get ready!")
             elseif m.phase=="Countdown" then launch(m)
             elseif m.phase=="Flight" then finish(m)
             elseif m.phase=="Results" then
@@ -451,6 +504,7 @@ if RunService:IsStudio() then
             for _,e in ipairs(m.entrants) do e.flight=nil; if profiles[e.userId] then profiles[e.userId].ready=false end end
             configure(m)
         end
+        if action=="aim" and m and m.phase=="Configure" then beginAim(m) end
         broadcast(); return snapshot(p)
     end
 end

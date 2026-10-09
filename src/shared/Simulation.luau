@@ -2,8 +2,9 @@
 -- Pure shared simulation. The server steps flights and owns results; clients
 -- reconstruct the course and interpolate snapshots. Randomness is seeded.
 local Simulation = {}
+local PlaneCatalog = require(script.Parent.PlaneCatalog)
 
-Simulation.DEFAULT_SETTINGS = { angle = 35, power = 75, gadget = "Shield" }
+Simulation.DEFAULT_SETTINGS = { planeId = PlaneCatalog.DEFAULT_ID, angle = 35, gadget = "Shield" }
 Simulation.MAX_FLIGHT_TIME = 45
 Simulation.FIXED_DT = 1 / 60
 Simulation.PLANE_RADIUS = 6
@@ -106,19 +107,19 @@ end
 
 function Simulation.newFlight(settings, course)
 	settings = type(settings) == "table" and settings or Simulation.DEFAULT_SETTINGS
-	local angle = setting(settings.angle, 35, 15, 60)
-	local power = setting(settings.power, 75, 45, 100)
+	local profile = PlaneCatalog.get(settings.planeId) or PlaneCatalog.get(PlaneCatalog.DEFAULT_ID)
+	local angle = setting(settings.angle, profile.defaultAngle, PlaneCatalog.MIN_ANGLE, PlaneCatalog.MAX_ANGLE)
 	local gadget = settings.gadget
 	if gadget ~= "Shield" and gadget ~= "Magnet" and gadget ~= "Boost" then
 		gadget = "Shield"
 	end
 	local radians = math.rad(angle)
-	local speed = 46 + power * 0.35
+	local speed = profile.speed
 	return {
 		x = 0,
 		y = 18,
 		vx = math.cos(radians) * speed,
-		vy = math.sin(radians) * speed * 0.7 + 11,
+		vy = math.sin(radians) * speed,
 		alive = true,
 		distance = 0,
 		elapsed = 0,
@@ -133,7 +134,7 @@ function Simulation.newFlight(settings, course)
 		nearPassed = {},
 		eventSerial = 1,
 		recentEvents = { { kind = "launch", text = "Liftoff!", at = 0, serial = 1, x = 0, y = 18, value = 0 } },
-		settings = { angle = angle, power = power, gadget = gadget },
+		settings = { planeId = profile.id, angle = angle, speed = speed, gadget = gadget },
 		lastEvent = { kind = "launch", text = "Liftoff!", at = 0, serial = 1, x = 0, y = 18, value = 0 },
 	}
 end
@@ -285,6 +286,25 @@ function Simulation.step(state, course, dt)
 	end
 	state.distance = math.max(state.distance, state.x)
 	return state
+end
+
+-- A short aim guide using the same physics, without predicting course contacts.
+-- Returned points include the launch origin. Settings and active flights remain
+-- untouched, so dragging an aim control cannot consume fuel or a rescue gadget.
+function Simulation.previewTrajectory(settings, seconds)
+	seconds = finite(seconds) and clamp(seconds, 0.1, 4) or 2.5
+	local course = { items = {} }
+	local state = Simulation.newFlight(settings, course)
+	local points = { { x = state.x, y = state.y } }
+	local steps = math.ceil(seconds / Simulation.FIXED_DT)
+	for index = 1, steps do
+		Simulation.step(state, course, math.min(Simulation.FIXED_DT, seconds - state.elapsed))
+		if index % 6 == 0 or index == steps or not state.alive then
+			table.insert(points, { x = state.x, y = state.y })
+		end
+		if not state.alive then break end
+	end
+	return points
 end
 
 return Simulation

@@ -3,6 +3,7 @@
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local Simulation = require(script.Parent.Simulation)
+local PlaneCatalog = require(script.Parent.PlaneCatalog)
 
 local World = {}
 
@@ -196,22 +197,50 @@ local function rail(parent, name, position, size)
 	part(parent, name .. "Top", Vector3.new(size.X, 0.35, size.Z), CFrame.new(position + Vector3.new(0, size.Y / 2, 0)), COLORS.cyan, Enum.Material.Neon)
 end
 
-local function makePlane(parent, name, colorIndex)
+local function makePlane(parent, name, colorIndex, planeId)
+	planeId = (planeId == "skyhopper" or planeId == "dart") and planeId or PlaneCatalog.DEFAULT_ID
 	local color = PLANE_COLORS[((colorIndex or 1) - 1) % #PLANE_COLORS + 1]
 	local model = Instance.new("Model")
 	model.Name = name
+	model:SetAttribute("PlaneId", planeId)
 	model.Parent = parent
 	local pivot = part(model, "FlightPivot", Vector3.one, CFrame.identity, color)
 	pivot.Transparency = 1
 	model.PrimaryPart = pivot
-	local body = part(model, "Fuselage", Vector3.new(8.7, 3.1, 3.1), CFrame.identity, color, nil, false, Enum.PartType.Ball)
-	part(model, "MainWing", Vector3.new(3.1, 0.42, 12), CFrame.new(-0.5, -0.25, 0), color)
-	part(model, "LeftWingTip", Vector3.new(3.2, 0.5, 1), CFrame.new(-0.5, -0.21, -5.65), COLORS.cream)
-	part(model, "RightWingTip", Vector3.new(3.2, 0.5, 1), CFrame.new(-0.5, -0.21, 5.65), COLORS.cream)
-	part(model, "TailWing", Vector3.new(1.8, 0.3, 5.2), CFrame.new(-3.5, 0.35, 0), COLORS.cream)
-	part(model, "TailFin", Vector3.new(1.9, 2.2, 0.35), CFrame.new(-3.2, 1.45, 0) * CFrame.Angles(0, 0, -0.25), color)
+	local bodySize = planeId == "dart" and Vector3.new(9.6, 2.3, 2.2) or Vector3.new(8.7, 3.1, 3.1)
+	local body = part(model, "Fuselage", bodySize, CFrame.identity, color, nil, false, Enum.PartType.Ball)
+	if planeId == "skyhopper" then
+		-- Two broad wings and visible struts give the climbing plane a clear
+		-- silhouette from both the side-on match camera and the showroom.
+		-- The upper wing sits aft of the shared open cockpit and seated pilot.
+		part(model, "MainWing", Vector3.new(3.4, 0.45, 13.6), CFrame.new(-1.15, -0.45, 0), color)
+		part(model, "UpperWing", Vector3.new(2.5, 0.45, 15), CFrame.new(-1.55, 2.1, 0), color)
+		for _, side in { -1, 1 } do
+			part(model, "WingStrut", Vector3.new(0.32, 2.65, 0.32), CFrame.new(-1.45, 0.8, side * 4.9) * CFrame.Angles(0, 0, 0.12), COLORS.navy)
+			part(model, "UpperWingTip", Vector3.new(2.6, 0.52, 1.15), CFrame.new(-1.55, 2.12, side * 6.95), COLORS.cream)
+		end
+		part(model, "TailWing", Vector3.new(2.1, 0.35, 6.3), CFrame.new(-3.5, 0.35, 0), COLORS.cream)
+		part(model, "TailFin", Vector3.new(2.1, 2.7, 0.42), CFrame.new(-3.3, 1.7, 0) * CFrame.Angles(0, 0, -0.16), color)
+	elseif planeId == "dart" then
+		-- Narrow fuselage, swept panels and a raked tail read as a fast racer.
+		for _, side in { -1, 1 } do
+			local wingPose = CFrame.new(-1.25, -0.3, side * 2.9) * CFrame.Angles(0, -side * 0.48, 0)
+			part(model, "SweptWing", Vector3.new(2.7, 0.3, 6.5), wingPose, color)
+			part(model, "RacerWingTip", Vector3.new(2.4, 0.4, 0.85), wingPose * CFrame.new(0, 0, side * 2.95), COLORS.cream)
+			part(model, "RacingStripe", Vector3.new(4.5, 0.23, 0.09), CFrame.new(-0.7, 0.45, side * 1.06), COLORS.cream)
+		end
+		part(model, "TailWing", Vector3.new(1.5, 0.24, 4.6), CFrame.new(-3.9, 0.25, 0), COLORS.cream)
+		part(model, "TailFin", Vector3.new(2.2, 1.7, 0.3), CFrame.new(-3.75, 1.15, 0) * CFrame.Angles(0, 0, -0.48), color)
+	else
+		part(model, "MainWing", Vector3.new(3.1, 0.42, 12), CFrame.new(-0.5, -0.25, 0), color)
+		part(model, "LeftWingTip", Vector3.new(3.2, 0.5, 1), CFrame.new(-0.5, -0.21, -5.65), COLORS.cream)
+		part(model, "RightWingTip", Vector3.new(3.2, 0.5, 1), CFrame.new(-0.5, -0.21, 5.65), COLORS.cream)
+		part(model, "TailWing", Vector3.new(1.8, 0.3, 5.2), CFrame.new(-3.5, 0.35, 0), COLORS.cream)
+		part(model, "TailFin", Vector3.new(1.9, 2.2, 0.35), CFrame.new(-3.2, 1.45, 0) * CFrame.Angles(0, 0, -0.25), color)
+	end
 	part(model, "Cockpit", Vector3.new(3.15, 1.7, 2.25), CFrame.new(0.6, 1.3, 0), COLORS.navy, nil, false, Enum.PartType.Ball)
-	part(model, "Nose", Vector3.new(1.9, 2.7, 2.7), CFrame.new(3.7, 0, 0), COLORS.cream, nil, false, Enum.PartType.Ball)
+	local noseSize = planeId == "dart" and Vector3.new(2.3, 1.9, 1.9) or Vector3.new(1.9, 2.7, 2.7)
+	part(model, "Nose", noseSize, CFrame.new(3.7, 0, 0), COLORS.cream, nil, false, Enum.PartType.Ball)
 	local propeller = Instance.new("Model")
 	propeller.Name = "Propeller"
 	propeller.Parent = model
@@ -258,8 +287,8 @@ local function makePlane(parent, name, colorIndex)
 	return model
 end
 
-function World.createPlane(parent, name, colorIndex)
-	return makePlane(parent, name, colorIndex)
+function World.createPlane(parent, name, colorIndex, planeId)
+	return makePlane(parent, name, colorIndex, planeId)
 end
 
 -- Base-scale pilot HumanoidRootPart pose. Roblox avatars face local -Z, so
@@ -355,7 +384,7 @@ function World.buildLobby()
 		local gui = surface(display, station.name, "0 / 2 READY", accent)
 		queueLabels[station.id] = gui:FindFirstChild("Subtitle")
 	end
-	-- Open hangar with four freely selectable color exhibits and room to walk.
+	-- The fleet uses the same models as flight selection, with room to walk.
 	part(lobby, "HangarFloor", Vector3.new(69, 0.4, 70), CFrame.new(-80, 4.25, 45), COLORS.navy)
 	for _, x in { -115, -45 } do
 		for _, z in { 12, 80 } do
@@ -363,14 +392,17 @@ function World.buildLobby()
 		end
 	end
 	part(lobby, "HangarCanopy", Vector3.new(74, 2, 17), CFrame.new(-80, 29, 72), COLORS.cyan, nil, true)
-	sign(lobby, "HangarTitle", Vector3.new(-80, 25, 79), Vector3.new(64, 10, 1), "PLANE GALLERY", "YOUR COLOR. YOUR STYLE. SAME PERFORMANCE.", COLORS.yellow)
-	local exhibitPlaces = { Vector3.new(-98, 9, 28), Vector3.new(-62, 9, 28), Vector3.new(-98, 9, 60), Vector3.new(-62, 9, 60) }
-	for index, position in exhibitPlaces do
+	sign(lobby, "HangarTitle", Vector3.new(-80, 25, 79), Vector3.new(64, 10, 1), "PICK YOUR PLANE", "THREE FREE PLANES. THREE FLIGHT STYLES.", COLORS.yellow)
+	local exhibitPlaces = { Vector3.new(-98, 9, 28), Vector3.new(-62, 9, 28), Vector3.new(-80, 9, 60) }
+	for index, planeId in PlaneCatalog.ORDER do
+		local position = exhibitPlaces[index]
+		local entry = PlaneCatalog.get(planeId)
 		part(lobby, "ExhibitPlinth", Vector3.new(26, 1.7, 23), CFrame.new(position.X, 5.25, position.Z), COLORS.cream, nil, true)
 		part(lobby, "ExhibitAccent", Vector3.new(26, 0.15, 23), CFrame.new(position.X, 6.2, position.Z), PLANE_COLORS[index], Enum.Material.Neon)
-		local plane = makePlane(lobby, "ShowroomPlane" .. index, index)
+		local plane = makePlane(lobby, "ShowroomPlane" .. index, index, planeId)
 		plane:ScaleTo(1.4)
 		plane:PivotTo(CFrame.new(position) * CFrame.Angles(0, -0.55, 0))
+		sign(lobby, "FleetLabel" .. index, Vector3.new(position.X, 7.3, position.Z - 12), Vector3.new(25, 4.7, 0.5), string.upper(entry.name), "SELECT BEFORE TAKEOFF", PLANE_COLORS[index])
 	end
 	-- Central green, social seating and an original plane sculpture.
 	planter(lobby, Vector3.new(0, 6, 37), Vector3.new(29, 4, 26))
@@ -874,11 +906,12 @@ function World.updatePlane(model, state, z, dt)
 		acceptPlaneEvent(data, state, state.lastEvent, model, z)
 		updateBursts(data, frameTime)
 	end
-	local pitch = math.clamp(math.atan2(state.vy or 0, math.max(1, state.vx or 1)), -0.8, 0.9)
+	local maxPitch = math.rad(60)
+	local pitch = math.clamp(math.atan2(state.vy or 0, math.max(1, state.vx or 1)), -0.8, maxPitch)
 	local y = state.y or 10
 	local hitKick = data and math.max(0, 1 - data.hitAge / 0.48) or 0
 	local boostKick = data and math.max(0, 1 - data.boostAge / 0.58) or 0
-	pitch = math.clamp(pitch - hitKick * 0.24 + boostKick * 0.14, -1, 1)
+	pitch = math.clamp(pitch - hitKick * 0.24 + boostKick * 0.14, -1, maxPitch)
 	if state.alive == false and state.finishReason == "landed" then
 		pitch = 0
 		y = math.max(y, 1.6 * scale)
