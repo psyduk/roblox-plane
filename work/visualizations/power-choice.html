@@ -1,0 +1,80 @@
+<div id="skybound-power-choice" class="viz-dotted-background">
+  <section class="sb-stage" aria-label="Skybound power selection concept">
+    <div class="sb-top"><span>SKYBOUND / ROUND 01</span><button class="sb-sound cursor-interaction" type="button" aria-pressed="false">Sound off</button></div>
+    <div class="sb-heading">CHOOSE YOUR<br><span>SUPERPOWER.</span></div>
+    <div class="sb-sub">ONE PICK. ONE ROUND. GO HUGE.</div>
+    <div class="sb-deck" aria-label="Choose one power">
+      <button type="button" class="sb-power cursor-interaction" data-power="pinball" aria-pressed="false" style="--sb-power:#ffc936">
+        <span class="sb-art sb-bounce" aria-hidden="true"><span class="sb-orbit"></span><i data-lucide="plane"></i><b>BOING!</b></span>
+        <span class="sb-name">PINBALL</span><span class="sb-promise">Turn crashes into takeoffs.</span><span class="sb-plan">AIM LOW · BOUNCE FAR</span>
+      </button>
+      <button type="button" class="sb-power cursor-interaction" data-power="muncher" aria-pressed="false" style="--sb-power:#a5ef44">
+        <span class="sb-art sb-chomp" aria-hidden="true"><i data-lucide="plane"></i><b>CHOMP!</b></span>
+        <span class="sb-name">MISSILE<br>MUNCHER</span><span class="sb-promise">Danger is your rocket fuel.</span><span class="sb-plan">AIM AT THE MISSILES</span>
+      </button>
+      <button type="button" class="sb-power cursor-interaction" data-power="meteor" aria-pressed="false" style="--sb-power:#ff875b">
+        <span class="sb-art sb-meteor" aria-hidden="true"><i data-lucide="plane"></i><b>BOOOOM!</b></span>
+        <span class="sb-name">METEOR<br>DIVE</span><span class="sb-promise">Drop hard. Blast forward.</span><span class="sb-plan">AIM HIGH · BUILD SPEED</span>
+      </button>
+    </div>
+    <div class="sb-bottom"><div class="sb-status" aria-live="polite">What kind of flight are you making?</div><button type="button" class="sb-lock cursor-interaction" disabled>CHOOSE A POWER</button></div>
+    <div class="sb-burst" aria-hidden="true"></div>
+  </section>
+</div>
+<style>
+#skybound-power-choice{padding:8px;font-family:Arial,Helvetica,sans-serif}
+#skybound-power-choice *{box-sizing:border-box}
+#skybound-power-choice .sb-stage{--sb-ink:#102f61;--sb-impact:1;position:relative;padding:22px;border-radius:22px;background:radial-gradient(ellipse at 50% 12%,#74e9ff 0%,#25b5fa 42%,#1587ef 100%);color:var(--sb-ink);overflow:hidden;border:3px solid #0c417d;box-shadow:0 7px 0 #0c417d}
+#skybound-power-choice .sb-top{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px;font-weight:900;letter-spacing:1px}
+#skybound-power-choice button{font-family:inherit}
+#skybound-power-choice .sb-sound{background:#0b4283;color:#fff;border:0;border-radius:8px;padding:10px 13px;font-size:12px;font-weight:700;white-space:nowrap;min-height:44px}
+#skybound-power-choice .sb-heading{font-size:clamp(31px,6vw,54px);font-weight:1000;line-height:.98;text-align:center;margin:25px 0 12px;letter-spacing:-2px;color:#fff;text-shadow:0 4px 0 #143a78;transform:rotate(-2deg)}
+#skybound-power-choice .sb-heading span{color:#ffe55a}
+#skybound-power-choice .sb-sub{text-align:center;font-size:12px;font-weight:900;letter-spacing:2px;margin-bottom:26px}
+#skybound-power-choice .sb-deck{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;align-items:stretch;padding:8px 0 12px}
+#skybound-power-choice .sb-power{position:relative;display:flex;flex-direction:column;align-items:center;min-width:0;padding:0 12px 16px;border:3px solid var(--sb-ink);border-radius:17px;background:var(--sb-power);color:var(--sb-ink);box-shadow:0 7px 0 var(--sb-ink);transition:transform .2s,filter .2s,box-shadow .2s;text-align:center}
+#skybound-power-choice .sb-power:hover{transform:translateY(-5px) rotate(-1deg)}
+#skybound-power-choice .sb-power[aria-pressed=true]{transform:translateY(-9px) rotate(-2deg);box-shadow:0 9px 0 var(--sb-ink),0 0 0 5px #fff;z-index:2}
+#skybound-power-choice .sb-deck.sb-chosen .sb-power[aria-pressed=false]{filter:saturate(.55);transform:scale(.96)}
+#skybound-power-choice .sb-art{position:relative;display:flex;height:132px;width:100%;align-items:center;justify-content:center;margin:0 0 8px}
+#skybound-power-choice .sb-art svg{width:76px!important;height:76px!important;stroke-width:2.3;transform:rotate(35deg);filter:drop-shadow(0 5px 0 #ffffff88);z-index:1}
+#skybound-power-choice .sb-art b{position:absolute;bottom:2px;right:-3px;color:#fff;background:#153268;padding:5px 8px;border-radius:5px;transform:rotate(-9deg);font-size:13px;font-weight:900;letter-spacing:1px;z-index:2}
+#skybound-power-choice .sb-orbit{position:absolute;width:106px;height:106px;border:5px solid #fff;border-radius:50%;box-shadow:0 0 0 5px #ed8a21}
+#skybound-power-choice .sb-chomp:before{content:"";position:absolute;width:108px;height:95px;border-radius:50%;background:#478619;border:6px dashed #fff;transform:rotate(-15deg)}
+#skybound-power-choice .sb-chomp svg{stroke:#fff}
+#skybound-power-choice .sb-meteor:before{content:"";position:absolute;width:100px;height:52px;background:#ffe449;border-radius:50% 12% 50% 20%;transform:rotate(30deg);box-shadow:-15px -15px 0 #ff5a29,-29px -24px 0 #ffb440}
+#skybound-power-choice .sb-meteor svg{transform:rotate(95deg)}
+#skybound-power-choice .sb-name{display:flex;align-items:center;justify-content:center;min-height:60px;font-weight:1000;font-size:clamp(21px,3.5vw,28px);line-height:1.03;letter-spacing:-1px}
+#skybound-power-choice .sb-promise{font-size:13px;line-height:1.35;font-weight:700;min-height:42px;margin-top:8px}
+#skybound-power-choice .sb-plan{margin-top:auto;padding-top:10px;font-size:11px;line-height:1.4;font-weight:900;letter-spacing:.6px}
+#skybound-power-choice .sb-bottom{display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:14px}
+#skybound-power-choice .sb-status{text-align:center;font-size:14px;font-weight:800;min-height:19px}
+#skybound-power-choice .sb-lock{background:#ffe44c;color:var(--sb-ink);border:3px solid var(--sb-ink);box-shadow:0 5px 0 var(--sb-ink);border-radius:12px;padding:13px 28px;font-size:19px;font-weight:1000;max-width:100%;min-height:52px}
+#skybound-power-choice .sb-lock:disabled{background:#b6daf3;box-shadow:0 3px 0 #27598c;color:#315e84}
+#skybound-power-choice .sb-burst{pointer-events:none;position:absolute;inset:0;border:0 solid #ffe653;border-radius:20px}
+#skybound-power-choice .sb-locked .sb-burst{animation:sb-flare .65s ease-out both}
+#skybound-power-choice .sb-hit{animation:sb-stomp .38s ease-out}
+@keyframes sb-flare{0%{border-width:18px;opacity:1}100%{border-width:0;opacity:0}}
+@keyframes sb-stomp{0%{transform:scale(.96)}45%{transform:scale(1.025)}100%{transform:scale(1)}}
+@media(max-width:540px){#skybound-power-choice .sb-stage{padding:17px 13px}#skybound-power-choice .sb-deck{grid-template-columns:1fr;gap:17px}#skybound-power-choice .sb-power{display:grid;grid-template-columns:92px 1fr;text-align:left;align-items:center;padding:9px 12px;column-gap:12px}#skybound-power-choice .sb-art{grid-row:1/4;height:99px;margin:0}#skybound-power-choice .sb-art svg{width:54px!important;height:54px!important}#skybound-power-choice .sb-orbit{width:72px;height:72px}#skybound-power-choice .sb-chomp:before{width:76px;height:70px}#skybound-power-choice .sb-meteor:before{width:67px;height:37px;box-shadow:-9px -9px 0 #ff5a29}#skybound-power-choice .sb-art b{font-size:11px;right:-4px}#skybound-power-choice .sb-name{min-height:0;justify-content:flex-start;font-size:25px}#skybound-power-choice .sb-name br{display:initial}#skybound-power-choice .sb-promise{margin-top:5px;min-height:0;font-size:12px}#skybound-power-choice .sb-plan{padding-top:6px}#skybound-power-choice .sb-heading{font-size:clamp(25px,8.5vw,37px)}#skybound-power-choice .sb-sub{font-size:11px;letter-spacing:1px}}
+@media(max-width:380px){#skybound-power-choice .sb-power{grid-template-columns:72px 1fr;column-gap:10px}#skybound-power-choice .sb-name{font-size:22px}#skybound-power-choice .sb-art b{right:-6px}}
+@media(prefers-reduced-motion:reduce){#skybound-power-choice *{animation:none!important;transition:none!important;transform:none!important}}
+</style>
+<script>
+(()=>{
+const root=document.getElementById('skybound-power-choice');
+const stage=root.querySelector('.sb-stage'),deck=root.querySelector('.sb-deck'),status=root.querySelector('.sb-status'),lock=root.querySelector('.sb-lock'),sound=root.querySelector('.sb-sound');
+const names={pinball:'PINBALL',muncher:'MISSILE MUNCHER',meteor:'METEOR DIVE'};
+let chosen=null,locked=false,soundOn=false,context;
+function hit(){stage.classList.remove('sb-hit');void stage.offsetWidth;stage.classList.add('sb-hit')}
+function play(confirm){if(!soundOn)return;try{context=context||new(window.AudioContext||window.webkitAudioContext)();context.resume();const now=context.currentTime;[0,.07,.14].forEach((delay,i)=>{const osc=context.createOscillator(),gain=context.createGain();osc.type='triangle';osc.frequency.setValueAtTime((confirm?180:120)*[1,1.5,2][i],now+delay);gain.gain.setValueAtTime(.0001,now+delay);gain.gain.exponentialRampToValueAtTime(.1,now+delay+.015);gain.gain.exponentialRampToValueAtTime(.0001,now+delay+.22);osc.connect(gain);gain.connect(context.destination);osc.start(now+delay);osc.stop(now+delay+.25)})}catch{soundOn=false;sound.textContent='Sound unavailable';sound.setAttribute('aria-pressed','false')}}
+function render(){root.querySelectorAll('.sb-power').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.power===chosen)));deck.classList.toggle('sb-chosen',!!chosen);stage.classList.toggle('sb-locked',locked);lock.disabled=!chosen;lock.textContent=locked?'TRY ANOTHER POWER':chosen?'LOCK IT IN':'CHOOSE A POWER';status.textContent=locked?names[chosen]+' LOCKED. NEXT: AIM YOUR PLANE.':chosen?names[chosen]+'!':'What kind of flight are you making?'}
+function save(){if(window.openai?.setWidgetState)window.openai.setWidgetState({modelContent:{selectedPower:chosen?names[chosen]:null},privateContent:{chosen,locked}}).catch(()=>{})}
+function restore(state){const saved=state?.privateContent;if(saved&&names[saved.chosen]){chosen=saved.chosen;locked=!!saved.locked;render()}}
+root.querySelectorAll('.sb-power').forEach(b=>b.addEventListener('click',()=>{chosen=b.dataset.power;locked=false;render();hit();play(false);save()}));
+lock.addEventListener('click',()=>{if(locked){chosen=null;locked=false}else{locked=true;play(true);hit()}render();save()});
+sound.addEventListener('click',()=>{soundOn=!soundOn;sound.textContent=soundOn?'Sound on':'Sound off';sound.setAttribute('aria-pressed',String(soundOn));if(soundOn)play(false)});
+restore(window.openai?.widgetState);window.addEventListener('openai:set_globals',e=>restore(e.detail?.globals?.widgetState));
+if(globalThis.Tweak){const options={style:'Rounded',size:54};const tweak=new Tweak({container:stage,onChange:()=>{stage.style.borderRadius=options.style==='Sharp'?'5px':'22px';root.querySelector('.sb-heading').style.fontSize='min('+options.size+'px, 8vw)'}});tweak.addSelect(options,'style',{label:'Frame style',options:['Rounded','Sharp']});tweak.addSlider(options,'size',{label:'Headline size',min:32,max:64,unit:'px'})}
+})();
+</script>
