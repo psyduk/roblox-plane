@@ -123,6 +123,7 @@ def make_runtime(studio=True, published=False):
     L.globals().Harness.shared.Simulation.module=simulation
     L.globals().Harness.shared.PlaneCatalog=L.table_from({'module':catalog})
     L.globals().Harness.shared.PowerCatalog=L.table_from({'module':L.execute((ROOT/'src/shared/PowerCatalog.luau').read_text())})
+    L.globals().Harness.shared.children.CosmeticCatalog=L.table_from({'module':L.execute((ROOT/'src/shared/CosmeticCatalog.luau').read_text())})
     L.globals().Harness.services.ServerStorage.children.SimulationTests=L.table_from({'module':L.execute((ROOT/'tests/Simulation.spec.luau').read_text())})
     for name in ('PlayerStats', 'Telemetry'):
         module=L.execute((ROOT/f'src/server/{name}.luau').read_text())
@@ -135,6 +136,82 @@ def make_runtime(studio=True, published=False):
     return L
 
 SCENARIOS = {
+    "two practice flights unlock a cosmetic and explicit equip reaches the next flight": r'''
+        local a=Harness.add(101)
+        local fresh=Harness.latest(a)
+        assert(fresh.economy.credits==0 and fresh.economy.owned.classic and fresh.economy.equippedTrail=='classic')
+        assert(fresh.economy.canShop and fresh.players[1].settings.trailId=='classic')
+        Harness.send(a,'practice');Harness.debug('launch',{userId=a.UserId});Harness.advance(46)
+        local result=Harness.latest(a)
+        assert(result.economy.credits==25 and not result.economy.canShop)
+        for _,r in ipairs(result.results)do assert(r.creditsEarned==(r.bot and 0 or 25))end
+        Harness.send(a,'rematch');Harness.debug('launch',{userId=a.UserId});Harness.advance(46)
+        assert(Harness.latest(a).economy.credits==50)
+        Harness.send(a,'returnLobby');Harness.advance(0.3)
+        Harness.send(a,'buyCosmetic',{itemId='skyblue',price=0,credits=999999,owned={sunset=true},userId=999})
+        local bought=Harness.latest(a)
+        assert(bought.cosmeticFeedback.ok and bought.cosmeticFeedback.code=='purchased')
+        assert(bought.economy.credits==10 and bought.economy.owned.skyblue and not bought.economy.owned.sunset)
+        assert(bought.economy.equippedTrail=='classic' and bought.players[1].settings.trailId=='classic')
+        Harness.advance(0.3);Harness.send(a,'equipCosmetic',{itemId='skyblue'})
+        local equipped=Harness.latest(a)
+        assert(equipped.cosmeticFeedback.code=='equipped' and equipped.economy.equippedTrail=='skyblue')
+        assert(equipped.players[1].settings.trailId=='skyblue')
+        Harness.advance(0.3);Harness.send(a,'buyCosmetic',{itemId='skyblue'})
+        assert(Harness.latest(a).cosmeticFeedback.code=='already_owned' and Harness.latest(a).economy.credits==10)
+        Harness.send(a,'configure',{settings={planeId='dart',angle=25,gadget='Shield',color=2}})
+        assert(Harness.latest(a).players[1].settings.trailId=='skyblue')
+        Harness.send(a,'practice');local launch=Harness.debug('launch',{userId=a.UserId})
+        assert(launch.players[1].settings.trailId=='skyblue' and launch.players[2].settings.trailId=='classic')
+    ''',
+    "cosmetic commands require lobby and share a throttle across actions": r'''
+        local a=Harness.add(101)
+        Harness.send(a,'buyCosmetic',{itemId='skyblue'})
+        local feedback=Harness.latest(a).cosmeticFeedback
+        assert(feedback.code=='insufficient_credits')
+        Harness.send(a,'equipCosmetic',{itemId='classic'})
+        assert(Harness.latest(a).cosmeticFeedback.id==feedback.id)
+        Harness.advance(0.3);Harness.send(a,'equipCosmetic',{itemId='skyblue'})
+        assert(Harness.latest(a).cosmeticFeedback.code=='not_owned')
+        Harness.move(a,1,1);Harness.advance(0.3)
+        assert(Harness.latest(a).phase=='Queued' and not Harness.latest(a).economy.canShop)
+        Harness.send(a,'buyCosmetic',{itemId='skyblue'})
+        assert(Harness.latest(a).cosmeticFeedback.code=='not_in_lobby')
+        Harness.send(a,'leaveQueue');Harness.advance(0.3);Harness.send(a,'practice')
+        for _,phase in ipairs({'Voting','Configure','Aim','Flight','Results'})do
+            if phase=='Configure'then Harness.debug('configure',{userId=a.UserId})end
+            if phase=='Aim'then Harness.debug('aim',{userId=a.UserId})end
+            if phase=='Flight'then Harness.debug('launch',{userId=a.UserId})end
+            if phase=='Results'then Harness.advance(46)end
+            Harness.advance(0.3);assert(Harness.latest(a).phase==phase)
+            Harness.send(a,'equipCosmetic',{itemId='classic'})
+            assert(Harness.latest(a).cosmeticFeedback.code=='not_in_lobby' and not Harness.latest(a).economy.canShop)
+        end
+    ''',
+    "client settings cannot equip an unowned cosmetic or switch a locked trail": r'''
+        local a=Harness.add(101)
+        Harness.send(a,'configure',{settings={planeId='dart',angle=25,gadget='Shield',color=2,trailId='sunset'}})
+        Harness.advance(0.3)
+        assert(Harness.latest(a).players[1].settings.trailId=='classic' and Harness.latest(a).players[1].settings.planeId=='cruiser')
+        Harness.send(a,'buyCosmetic',{itemId={id='sunset',price=0}})
+        assert(Harness.latest(a).cosmeticFeedback.code=='invalid_item')
+        Harness.send(a,'practice');Harness.debug('configure',{userId=a.UserId});Harness.debug('aim',{userId=a.UserId})
+        Harness.send(a,'ready',{ready=true,settings={angle=45,trailId='sunset'}})
+        Harness.advance(0.3)
+        local own=Harness.latest(a).players[1]
+        assert(own.settings.trailId=='classic' and own.settings.angle==35 and not own.ready)
+        assert(Harness.latest(a).economy.credits==0 and not Harness.latest(a).economy.owned.sunset)
+    ''',
+    "forfeits and aborted survivors receive no credits": r'''
+        local a,b=Harness.add(101),Harness.add(102)
+        Harness.debug('forcePair',{ids={a.UserId,b.UserId}});Harness.debug('launch',{userId=a.UserId});Harness.advance(1)
+        Harness.send(a,'returnLobby');Harness.advance(0.3)
+        assert(Harness.latest(a).economy.credits==0 and Harness.latest(b).economy.credits==0)
+        for _,result in ipairs(Harness.latest(b).results)do assert(result.creditsEarned==0)end
+        Harness.send(a,'practice');Harness.debug('launch',{userId=a.UserId});Harness.advance(1)
+        Harness.send(a,'returnLobby');Harness.advance(0.3)
+        assert(Harness.latest(a).economy.credits==0)
+    ''',
     "power identity is validated and locks before launch": r'''
         local a,b=Harness.add(101),Harness.add(102)
         Harness.debug('forcePair',{ids={a.UserId,b.UserId}});Harness.debug('configure',{userId=a.UserId})
@@ -484,6 +561,24 @@ SCENARIOS = {
 }
 
 LIVE_SCENARIOS = {
+    "published earned wallet collection and equipped trail survive rejoin": r'''
+        local a=Harness.add(101)
+        for _=1,2 do
+            Harness.send(a,'practice');Harness.advance(8.2);Harness.readyDuel(a);Harness.advance(46)
+            Harness.send(a,'returnLobby');Harness.advance(0.3)
+        end
+        Harness.send(a,'buyCosmetic',{itemId='skyblue'});Harness.advance(0.3)
+        Harness.send(a,'equipCosmetic',{itemId='skyblue'})
+        assert(Harness.latest(a).saveStatus=='saved' and Harness.latest(a).economy.credits==10)
+        Harness.remove(a)
+        assert(Harness.store.values.player_101.schemaVersion==2 and Harness.store.values.player_101.lease==nil)
+        local b=Harness.add(101);local restored=Harness.latest(b)
+        assert(restored.economy.credits==10 and restored.economy.owned.skyblue and restored.economy.equippedTrail=='skyblue')
+        assert(restored.players[1].settings.trailId=='skyblue')
+        Harness.send(b,'practice');Harness.advance(8.2);Harness.readyDuel(b)
+        assert(Harness.latest(b).players[1].settings.trailId=='skyblue')
+        Harness.shutdown()
+    ''',
     "published practice statistics survive leave and rejoin": r'''
         local a=Harness.add(101)
         assert(Harness.latest(a).saveStatus=='saved' and Harness.store.getCalls==1)
@@ -542,6 +637,12 @@ LIVE_SCENARIOS = {
 
 
 def main():
+    runtime = make_runtime()
+    for name, module in (
+        ("PlayerStats", runtime.globals().Harness.services.ServerScriptService.children.PlayerStats.module),
+        ("CosmeticCatalog", runtime.globals().Harness.shared.CosmeticCatalog.module),
+    ):
+        print(runtime.execute((ROOT / f"tests/{name}.spec.luau").read_text())(module))
     for name, scenario in SCENARIOS.items():
         runtime = make_runtime()
         try:

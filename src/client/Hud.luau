@@ -598,7 +598,7 @@ function Hud.new(callbacks)
 	self.timer = label(self.header, "Timer", "--", 0, 10, 58, 44, 28, COLORS.white, true)
 	self.timer.Position = UDim2.new(1, -68, 0, 10)
 	self.timer.TextXAlignment = Enum.TextXAlignment.Center
-	self.footer = label(self.gui, "Prototype", "LOCAL PROTOTYPE · cosmetic colors are free", 0, 0, 500, 16, 10, COLORS.white, true)
+    self.footer = label(self.gui, "Prototype", "FLY · EARN CREDITS · COLLECT FLIGHT EFFECTS", 0, 0, 500, 16, 10, COLORS.white, true)
 	self.footer.AnchorPoint = Vector2.new(0.5, 1)
 	self.footer.Position = UDim2.new(0.5, 0, 1, -5)
 	self.footer.TextXAlignment = Enum.TextXAlignment.Center
@@ -1621,8 +1621,8 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	end
 	self.waitingMessage.Text = snapshot.message or "Getting the runway ready…"
 	if phase == "Lobby" then
-		self.hubTitle.Text = "SKYBOUND / FLIGHT CLUB"
-		self.hubInstruction.Text = "Walk onto a 1v1 pad with an opponent."
+        self.hubTitle.Text = "SKYBOUND / THE HANGAR"
+        self.hubInstruction.Text = PlaneCatalog.get(self.settings.planeId).name.." selected · Duel gates ahead.\nFleet left. Flight effects right."
 		self.hubAction.Text = "PRACTICE VS GHOST"
 		self.hubAction.Visible = self.callbacks.practice ~= nil
 	elseif phase == "Queued" then
@@ -1733,7 +1733,13 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		self.resultMessage.Text = snapshot.message or "Change your setup. Chase a little farther."
 		self.resultsPanel.Title.Text = yourResult and yourResult.rank == 1
 			and (hasForfeit and "YOU WIN THE DUEL." or "YOU WENT FURTHEST.") or "ONE MORE FLIGHT?"
-		self.nextRoundLabel.Text = (snapshot.endsAt or 0) > 0 and ("Return to lobby in " .. remaining .. "s") or "Request a rematch or head back to the club."
+        self.nextRoundLabel.Text = (snapshot.endsAt or 0) > 0 and ("Return to lobby in " .. remaining .. "s") or "Request a rematch or head back to the club."
+        if yourResult and (yourResult.creditsEarned or 0)>0 then
+            self.nextRoundLabel.Text = "+"..yourResult.creditsEarned.." CREDITS  ·  "..tostring(snapshot.economy and snapshot.economy.credits or 0).." TOTAL  ·  SHOP IN HANGAR"
+            if not self.nextRoundLabel.Visible then
+                self.resultMessage.Text = "+"..yourResult.creditsEarned.." CREDITS  ·  "..self.resultMessage.Text
+            end
+        end
 		self.canRematch = snapshot.canRematch == true
 		self.rematchRequested = localPlayer ~= nil and localPlayer.rematchReady == true
 		if not self.canRematch then

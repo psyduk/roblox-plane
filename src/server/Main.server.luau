@@ -9,6 +9,7 @@ local Telemetry = require(script.Parent:WaitForChild("Telemetry"))
 local shared = ReplicatedStorage:WaitForChild("FlightGame")
 local PlaneCatalog = require(shared.PlaneCatalog)
 local PowerCatalog = require(shared.PowerCatalog)
+local CosmeticCatalog = require(shared.CosmeticCatalog)
 local Simulation = require(shared.Simulation)
 local World = require(shared.World)
 local command, snapshots = shared.Command, shared.Snapshot
@@ -34,6 +35,7 @@ statsService=PlayerStats.new({store=statsStore,sessionId=serverSession,sessionOn
         if p and p.statsHandle then
             local _,status=statsService:get(p.statsHandle)
             p.player:SetAttribute("StatsSaveStatus",status)
+            if not p.matchId then p.settings.trailId=statsService:getEconomy(p.statsHandle).equippedTrail end
         end
     end})
 -- Starter analytics run in published live servers; set this Script attribute to
@@ -46,15 +48,17 @@ local function copySettings(s)
     local plane=PlaneCatalog.get(s.planeId) or PlaneCatalog.get(PlaneCatalog.DEFAULT_ID)
     local power=PowerCatalog.get(s.powerId) or PowerCatalog.get(PowerCatalog.DEFAULT_ID)
     return {planeId=plane.id,angle=s.angle or plane.defaultAngle,speed=plane.speed,
-        powerId=power.id,gadget=s.gadget or "Shield",color=s.color or 1}
+        powerId=power.id,gadget=s.gadget or "Shield",color=s.color or 1,
+        trailId=CosmeticCatalog.get(s.trailId) and s.trailId or CosmeticCatalog.DEFAULT_ID}
 end
 local function finite(v) return type(v)=="number" and v==v and v>-math.huge and v<math.huge end
-local function safeSettings(input)
+local function safeSettings(input, trailId)
+    trailId=trailId or CosmeticCatalog.DEFAULT_ID
     if type(input)~="table" or not PlaneCatalog.isSelectable(input.planeId) or not finite(input.angle) then return nil end
     local plane=PlaneCatalog.get(input.planeId)
     -- Only the catalog can determine speed. Echoing a snapshot is allowed;
     -- obsolete power or fabricated speed cannot change the selected profile.
-    if input.power~=nil or (input.speed~=nil and input.speed~=plane.speed)
+    if (input.trailId~=nil and input.trailId~=trailId) or input.power~=nil or (input.speed~=nil and input.speed~=plane.speed)
         or (input.launchSpeed~=nil and input.launchSpeed~=plane.speed) then return nil end
     if type(input.gadget)~="string" or not GADGETS[input.gadget] or not finite(input.color) then return nil end
     -- Power identity is the only power field clients may choose. Charges,
@@ -64,7 +68,7 @@ local function safeSettings(input)
     if not power then return nil end
     return {planeId=plane.id,angle=math.clamp(math.round(input.angle),PlaneCatalog.MIN_ANGLE,PlaneCatalog.MAX_ANGLE),
         speed=plane.speed,gadget=input.gadget,powerId=power.id,
-        color=math.clamp(math.round(input.color),1,4)}
+        color=math.clamp(math.round(input.color),1,4),trailId=trailId}
 end
 local function safeAimSettings(input, locked)
     if type(input)~="table" or not finite(input.angle) then return nil end
@@ -74,6 +78,7 @@ local function safeAimSettings(input, locked)
         or (input.powerId~=nil and input.powerId~=locked.powerId)
         or (input.gadget~=nil and input.gadget~=locked.gadget)
         or (input.color~=nil and input.color~=locked.color)
+        or (input.trailId~=nil and input.trailId~=locked.trailId)
         or input.power~=nil or (input.speed~=nil and input.speed~=locked.speed)
         or (input.launchSpeed~=nil and input.launchSpeed~=locked.speed) then return nil end
     local result=copySettings(locked)
@@ -99,6 +104,7 @@ end
 local function release(p, message)
     clearQueue(p)
     p.matchId=nil; p.ready=false; p.queueCooldown=now()+2
+    p.settings.trailId=statsService:getEconomy(p.statsHandle).equippedTrail
     p.message=message or "Walk onto a 1v1 pad with another pilot."
     moveCharacter(p,false)
 end
@@ -152,12 +158,15 @@ local function snapshot(p)
         table.insert(list,{userId=p.player.UserId,name=p.player.DisplayName,settings=copySettings(p.settings),ready=false,best=p.best})
     end
     local personalStats,saveStatus=statsService:get(p.statsHandle)
+    local economy=statsService:getEconomy(p.statsHandle)
+    economy.canShop=economy.canShop and not m and not p.queue
     return {phase=m and m.phase or (p.queue and "Queued" or "Lobby"),
         matchId=m and m.id or 0,roundId=m and m.round or 0,
         endsAt=m and m.endsAt or 0,courseName=m and m.courseName or "Coast",
         courseSeed=m and m.course.seed or 104729,votes=m and voteCounts(m) or {},players=list,
         results=m and m.results or {},message=m and m.message or p.message,
         elapsed=m and m.elapsed or 0,serverTime=now(),prototype=true,stats=personalStats,saveStatus=saveStatus,
+        economy=economy,cosmeticFeedback=p.cosmeticFeedback,
         queue=p.queue,queues=queueSnapshot(),canRematch=m and canRematch(m) or false}
 end
 local function broadcast()
@@ -217,7 +226,7 @@ local function checkedMatchSettings(p, m, input)
         end
         return nil
     end
-    return safeSettings(input)
+    return safeSettings(input,p.settings.trailId)
 end
 local function launch(m)
     m.elapsed=0; m.accumulator=0; m.finished=false; m.aborted=false
@@ -240,7 +249,7 @@ local function finish(m)
             local distance=math.floor(f.distance*10+0.5)/10
             local completed=not e.forfeit and (f.finishReason=="landed" or f.finishReason=="timeout" or f.finishReason=="time_limit")
             table.insert(m.results,{userId=e.userId,name=e.name,distance=distance,bot=e.bot or false,
-                forfeit=e.forfeit or false,completed=completed})
+                forfeit=e.forfeit or false,completed=completed,creditsEarned=0})
             forfeited=forfeited or e.forfeit
         end
     end
@@ -260,8 +269,9 @@ local function finish(m)
         local p=profiles[r.userId]
         if p and not r.bot then
             local outcome=r.forfeit and "loss" or (sharedWin and "draw" or (r.rank==1 and "win" or "loss"))
-            statsService:recordFlight(p.statsHandle,resultId,{distance=r.distance,practice=m.practice,
-                outcome=outcome,forfeit=r.forfeit,completed=r.completed})
+            local _,credits=statsService:recordFlight(p.statsHandle,resultId,{distance=r.distance,practice=m.practice,
+                outcome=outcome,forfeit=r.forfeit,completed=r.completed,aborted=m.aborted})
+            r.creditsEarned=credits or 0
             if r.completed and not r.forfeit then
                 p.best=math.max(p.best,r.distance); p.player:SetAttribute("SessionBest",p.best)
             end
@@ -391,7 +401,13 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 for _,player in ipairs(Players:GetPlayers()) do joined(player) end
 
-local ALLOWED={request=true,vote=true,configure=true,ready=true,practice=true,leaveQueue=true,returnLobby=true,rematch=true}
+local ALLOWED={request=true,vote=true,configure=true,ready=true,practice=true,leaveQueue=true,returnLobby=true,rematch=true,
+    buyCosmetic=true,equipCosmetic=true}
+local function cosmeticFeedback(p,result)
+    p.cosmeticFeedbackSequence=(p.cosmeticFeedbackSequence or 0)+1
+    result.id=p.cosmeticFeedbackSequence
+    p.cosmeticFeedback=result
+end
 local function handleCommand(p,payload)
     if shuttingDown then return end
     if type(payload)~="table" or type(payload.kind)~="string" or not ALLOWED[payload.kind] then return end
@@ -399,6 +415,24 @@ local function handleCommand(p,payload)
     p.lastCommand[payload.kind]=now()
     local m=p.matchId and matches[p.matchId]
     if payload.kind=="request" then snapshots:FireClient(p.player,snapshot(p)); return end
+    if payload.kind=="buyCosmetic" or payload.kind=="equipCosmetic" then
+        -- One shared limit prevents alternating buy/equip from bypassing it.
+        if now()-(p.lastCosmeticCommand or -math.huge)<0.25 then return end
+        p.lastCosmeticCommand=now()
+        if m or p.queue then
+            cosmeticFeedback(p,{ok=false,code="not_in_lobby",message="Return to the hangar before changing your collection."})
+        else
+            local result
+            if payload.kind=="buyCosmetic" then result=statsService:buyCosmetic(p.statsHandle,payload.itemId)
+            else result=statsService:equipCosmetic(p.statsHandle,payload.itemId) end
+            cosmeticFeedback(p,result)
+            if result.ok then
+                p.settings.trailId=statsService:getEconomy(p.statsHandle).equippedTrail
+                task.spawn(function() statsService:save(p.statsHandle,false) end)
+            end
+        end
+        snapshots:FireClient(p.player,snapshot(p)); return
+    end
     if payload.kind=="practice" and not m then createMatch({p.player.UserId},true)
     elseif payload.kind=="leaveQueue" and not m then leaveMatch(p)
     elseif payload.kind=="returnLobby" then leaveMatch(p)

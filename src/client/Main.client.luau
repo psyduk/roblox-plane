@@ -11,6 +11,7 @@ local PlaneCatalog = require(shared:WaitForChild("PlaneCatalog"))
 local PowerCatalog = require(shared:WaitForChild("PowerCatalog"))
 local World = require(shared:WaitForChild("World"))
 local Hud = require(script.Parent:WaitForChild("Hud"))
+local EffectsShop = require(script.Parent:WaitForChild("EffectsShop"))
 local FlightAudio = require(script.Parent:WaitForChild("FlightAudio"))
 local PilotAvatar = require(script.Parent:WaitForChild("PilotAvatar"))
 local audio = FlightAudio.new()
@@ -55,6 +56,25 @@ local function send(kind, values)
     payload.kind=kind
     command:FireServer(payload)
 end
+local effectsShop=EffectsShop.new(send)
+game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt,player)
+    if player and player~=localPlayer then return end
+    if prompt.Name=="EffectsShopPrompt" then effectsShop:open()
+    elseif prompt.Name=="PracticePrompt" and latest and latest.phase=="Lobby" and not effectsShop:isOpen() then send("practice")
+    elseif prompt.Name=="FleetPrompt" and latest and latest.phase=="Lobby" and not effectsShop:isOpen() then
+        local plane=PlaneCatalog.get(prompt:GetAttribute("PlaneId"))
+        if plane then
+            for _,entry in ipairs(latest.players) do
+                if entry.userId==localPlayer.UserId then
+                    local settings=table.clone(entry.settings)
+                    settings.planeId=plane.id; settings.angle=plane.defaultAngle; settings.speed=nil
+                    send("configure",{settings=settings})
+                    break
+                end
+            end
+        end
+    end
+end)
 local function cycleSpectate(delta)
     if not latest then return end
     local choices={}
@@ -168,9 +188,10 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
     if not latest or not camera then return end
     local phase=latest.phase
     -- Roblox may re-enable avatar controls when a character finishes spawning.
-    if characterControls and (controlsEnabled~=lobbyView or characterControls.controlsEnabled~=lobbyView) then
-        controlsEnabled=lobbyView
-        if lobbyView then characterControls:Enable() else characterControls:Disable() end
+    local allowMovement=lobbyView and not effectsShop:isOpen()
+    if characterControls and (controlsEnabled~=allowMovement or characterControls.controlsEnabled~=allowMovement) then
+        controlsEnabled=allowMovement
+        if allowMovement then characterControls:Enable() else characterControls:Disable() end
         localPlayer:SetAttribute("SkyboundLobbyControls",characterControls.controlsEnabled)
     end
     local active=phase=="Flight" or phase=="Results"
@@ -196,7 +217,7 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
             if p.flight then
                 present[p.userId]=true
                 if not planes[p.userId] then
-                    local model=World.createPlane(worldFolder,p.name,p.settings.color,p.settings.planeId)
+                    local model=World.createPlane(worldFolder,p.name,p.settings.color,p.settings.planeId,p.settings.trailId)
                     PilotAvatar.attach(model,p.userId,p.bot)
                     planes[p.userId]=model
                     local text=Instance.new("TextLabel")
@@ -230,11 +251,12 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
         end
     elseif phase=="Configure" or phase=="Aim" or phase=="Countdown" or phase=="Voting" then
         localSettings=hud:getLocalSettings()
+        localSettings.trailId=own and own.settings.trailId or "classic"
         if not previewPlane or previewPlane:GetAttribute("PreviewColor")~=localSettings.color
             or previewPlane:GetAttribute("PreviewPlaneId")~=localSettings.planeId
             or previewPlane:GetAttribute("PreviewPowerId")~=localSettings.powerId then
             if previewPlane then previewPlane:Destroy() end
-            previewPlane=World.createPlane(worldFolder,localPlayer.DisplayName,localSettings.color,localSettings.planeId)
+            previewPlane=World.createPlane(worldFolder,localPlayer.DisplayName,localSettings.color,localSettings.planeId,localSettings.trailId)
             previewPlane:SetAttribute("PreviewColor",localSettings.color)
             previewPlane:SetAttribute("PreviewPlaneId",localSettings.planeId)
             previewPlane:SetAttribute("PreviewPowerId",localSettings.powerId)
@@ -264,7 +286,7 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
             local focus=character.HumanoidRootPart.Position+Vector3.new(0,2,0)
             localPlayer.CameraMinZoomDistance=32
             localPlayer.CameraMaxZoomDistance=70
-            camera.CFrame=CFrame.lookAt(focus+Vector3.new(16,18,24),focus)
+            camera.CFrame=CFrame.lookAt(focus+Vector3.new(8,10,29),focus)
             camera.Focus=CFrame.new(focus)
             lobbyCameraReset=false; restoreZoomAt=os.clock()+0.2
         elseif restoreZoomAt>0 and os.clock()>=restoreZoomAt then
@@ -343,6 +365,7 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
     end
     if hud.setLobbyView then hud:setLobbyView(lobbyView) end
     hud:update(latest,localPlayer.UserId,watchedUserId)
+    effectsShop:update(latest,own and own.settings)
     if (phase=="Aim" or phase=="Countdown") and previewPlane then
         local origin,visible=camera:WorldToViewportPoint(previewPlane:GetPivot().Position)
         local points=table.create(#aimTrajectory)

@@ -4,6 +4,7 @@ local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local Simulation = require(script.Parent.Simulation)
 local PlaneCatalog = require(script.Parent.PlaneCatalog)
+local CosmeticCatalog = require(script.Parent.CosmeticCatalog)
 
 local World = {}
 
@@ -192,11 +193,6 @@ local function sign(parent, name, position, size, title, subtitle, accent, rotat
 	return frame
 end
 
-local function rail(parent, name, position, size)
-	part(parent, name .. "Barrier", size, CFrame.new(position), COLORS.cyan, Enum.Material.SmoothPlastic, true).Transparency = 0.76
-	part(parent, name .. "Top", Vector3.new(size.X, 0.35, size.Z), CFrame.new(position + Vector3.new(0, size.Y / 2, 0)), COLORS.cyan, Enum.Material.Neon)
-end
-
 local function makePlane(parent, name, colorIndex, planeId)
 	planeId = (planeId == "skyhopper" or planeId == "dart") and planeId or PlaneCatalog.DEFAULT_ID
 	local color = PLANE_COLORS[((colorIndex or 1) - 1) % #PLANE_COLORS + 1]
@@ -289,8 +285,35 @@ local function makePlane(parent, name, colorIndex, planeId)
 	return model
 end
 
-function World.createPlane(parent, name, colorIndex, planeId)
-	return makePlane(parent, name, colorIndex, planeId)
+local function cosmeticColor(channels)
+	return Color3.fromRGB(channels.r, channels.g, channels.b)
+end
+
+local function restoreNormalTrail(data)
+	data.trail.Color = data.trailColors.normal
+	data.trail.Lifetime = data.normalTrail.lifetime
+	data.trail.LightEmission = data.normalTrail.emission
+	data.trail.WidthScale = NumberSequence.new(data.normalTrail.width)
+end
+
+function World.applyCosmeticTrail(model, trailId)
+	local data = planeData[model]
+	if not data then return end
+	local entry = CosmeticCatalog.get(trailId) or CosmeticCatalog.get(CosmeticCatalog.DEFAULT_ID)
+	if data.trailId == entry.id then return end
+	data.trailId = entry.id
+	data.normalTrail = entry
+	data.trailColors.normal = ColorSequence.new(cosmeticColor(entry.color), cosmeticColor(entry.secondaryColor))
+	data.trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.18), NumberSequenceKeypoint.new(1, 1) })
+	model:SetAttribute("TrailId", entry.id)
+	-- A mid-flight equipment update must not erase a current power/hit cue.
+	if data.trailMode == "normal" then restoreNormalTrail(data) end
+end
+
+function World.createPlane(parent, name, colorIndex, planeId, trailId)
+	local model = makePlane(parent, name, colorIndex, planeId)
+	World.applyCosmeticTrail(model, trailId)
+	return model
 end
 
 -- Base-scale pilot HumanoidRootPart pose. Roblox avatars face local -Z, so
@@ -429,47 +452,106 @@ local function updatePowerVisual(model, data, state, pose, scale)
 	end
 end
 
-local function planter(parent, position, size)
-	part(parent, "PlanterBase", size, CFrame.new(position), COLORS.navy, nil, true)
-	part(parent, "PlanterGrass", Vector3.new(size.X - 1, 0.4, size.Z - 1), CFrame.new(position + Vector3.new(0, size.Y / 2 + 0.1, 0)), Color3.fromRGB(127, 202, 114))
-	local top = position.Y + size.Y / 2
-	part(parent, "Topiary", Vector3.new(size.X * 0.75, 5, size.Z * 0.75), CFrame.new(position.X, top + 2, position.Z), Color3.fromRGB(66, 153, 111), nil, false, Enum.PartType.Ball)
+local HANGAR = {
+	steel = Color3.fromRGB(48, 67, 83),
+	wall = Color3.fromRGB(133, 151, 157),
+	roof = Color3.fromRGB(182, 191, 188),
+	concrete = Color3.fromRGB(163, 172, 168),
+	lane = Color3.fromRGB(88, 105, 112),
+	white = Color3.fromRGB(238, 236, 216),
+	amber = Color3.fromRGB(250, 185, 65),
+}
+
+local function beam(parent, name, first, last, thickness, color)
+	return part(parent, name, Vector3.new(thickness, thickness, (last - first).Magnitude),
+		CFrame.lookAt((first + last) / 2, last), color, Enum.Material.Metal)
 end
 
-local function bench(parent, position, rotation)
-	local pose = CFrame.new(position) * CFrame.Angles(0, rotation or 0, 0)
-	part(parent, "BenchSeat", Vector3.new(12, 0.8, 4), pose, COLORS.cream, nil, true)
-	part(parent, "BenchBack", Vector3.new(12, 3.5, 0.6), pose * CFrame.new(0, 1.4, 1.7), COLORS.coral, nil, true)
-	for _, x in { -4, 4 } do
-		part(parent, "BenchLeg", Vector3.new(1, 2, 3), pose * CFrame.new(x, -1.2, 0), COLORS.navy, nil, true)
+local function lobbyPrompt(parent, name, action, object, distance)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = name
+	prompt.ActionText = action
+	prompt.ObjectText = object
+	prompt.MaxActivationDistance = distance or 13
+	prompt.RequiresLineOfSight = false
+	prompt.HoldDuration = 0
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.Parent = parent
+	return prompt
+end
+
+local function floorLabel(parent, name, position, size, title, color)
+	local plate = part(parent, name, Vector3.new(size.X, 0.05, size.Y), CFrame.new(position), HANGAR.lane)
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = Enum.NormalId.Top
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 18
+	gui.LightInfluence = 0.3
+	gui.Parent = plate
+	textLabel(gui, title, UDim2.fromScale(0.03, 0.03), UDim2.fromScale(0.94, 0.94), color, Enum.Font.GothamBold)
+	return plate
+end
+
+local function parkedPlane(parent, name, colorIndex, planeId, position, rotation, scale, trailId)
+	local model = World.createPlane(parent, name, colorIndex, planeId, trailId)
+	model:ScaleTo(scale)
+	-- Parked aircraft have landing gear, so the fleet reads as a working
+	-- hangar instead of floating models on shop pedestals.
+	for _, side in { -1, 1 } do
+		part(model, "LandingStrut", Vector3.new(0.22, 1.6, 0.22) * scale,
+			CFrame.new(0.7 * scale, -1.65 * scale, side * 1.5 * scale), HANGAR.steel, Enum.Material.Metal)
+		part(model, "LandingWheel", Vector3.new(0.5, 1.4, 1.4) * scale,
+			CFrame.new(0.7 * scale, -2.1 * scale, side * 1.5 * scale) * CFrame.Angles(0, math.pi / 2, 0),
+			COLORS.deep, Enum.Material.SmoothPlastic, false, Enum.PartType.Cylinder)
+	end
+	part(model, "TailWheel", Vector3.new(0.4, 0.8, 0.8) * scale,
+		CFrame.new(-3.25 * scale, -2.4 * scale, 0) * CFrame.Angles(0, math.pi / 2, 0),
+		COLORS.deep, Enum.Material.SmoothPlastic, false, Enum.PartType.Cylinder)
+	model:PivotTo(CFrame.new(position) * CFrame.Angles(0, rotation, 0))
+	return model
+end
+
+local function maintenanceCart(parent, position, accent)
+	part(parent, "ToolChest", Vector3.new(7, 4, 4), CFrame.new(position), accent, Enum.Material.Metal, true)
+	part(parent, "ToolChestTop", Vector3.new(7.5, 0.4, 4.4), CFrame.new(position + Vector3.new(0, 2.15, 0)), HANGAR.steel, Enum.Material.Metal)
+	for _, y in { -0.9, 0.15, 1.2 } do
+		part(parent, "DrawerHandle", Vector3.new(4, 0.15, 0.22), CFrame.new(position + Vector3.new(0, y, -2.1)), HANGAR.white, Enum.Material.Metal)
+	end
+	for _, x in { -2.5, 2.5 } do
+		part(parent, "CartWheels", Vector3.new(0.5, 1.3, 4.1), CFrame.new(position + Vector3.new(x, -2.3, 0)), COLORS.deep)
 	end
 end
 
 function World.buildLobby()
-	-- Set the same arcade palette in an imported Studio place and a fresh build.
-	Lighting.ClockTime = 14
-	Lighting.Brightness = 1.7
-	Lighting.Ambient = Color3.fromRGB(80, 85, 100)
-	Lighting.OutdoorAmbient = Color3.fromRGB(100, 105, 120)
-	Lighting.ExposureCompensation = -0.2
+	World.resetTheme()
 	local existing = Workspace:FindFirstChild("FlightLobby")
 	if existing then existing:Destroy() end
 	queueLabels = {}
 	local lobby = Instance.new("Folder")
 	lobby.Name = "FlightLobby"
 	lobby.Parent = Workspace
-	-- A walkable social plaza. Matches render in a separate client-only location.
-	part(lobby, "Landscape", Vector3.new(900, 8, 900), CFrame.new(0, -6, 0), Color3.fromRGB(113, 184, 103), nil, true)
-	part(lobby, "Foundation", Vector3.new(254, 8, 204), CFrame.new(0, -2, 0), COLORS.navy, nil, true)
-	part(lobby, "Concourse", Vector3.new(250, 2, 200), CFrame.new(0, 3, 0), Color3.fromRGB(221, 214, 198), nil, true)
-	part(lobby, "MainPromenade", Vector3.new(232, 0.12, 22), CFrame.new(0, 4.08, 0), Color3.fromRGB(177, 207, 193))
-	part(lobby, "CenterPromenade", Vector3.new(22, 0.12, 169), CFrame.new(0, 4.09, -4), Color3.fromRGB(177, 207, 193))
-	for _, z in { -98.5, 98.5 } do
-		rail(lobby, "Perimeter", Vector3.new(0, 6.1, z), Vector3.new(248, 4, 0.7))
+	-- The established spawn and queue coordinates remain inside one real
+	-- hangar. A clear center aisle connects arrivals to the four duel gates.
+	part(lobby, "AirfieldGround", Vector3.new(1200, 8, 1400), CFrame.new(0, -6, -280), Color3.fromRGB(111, 154, 119), Enum.Material.Grass, true)
+	part(lobby, "HangarFoundation", Vector3.new(258, 8, 210), CFrame.new(0, -2, 2), HANGAR.steel, Enum.Material.Concrete, true)
+	local slab = part(lobby, "PolishedConcrete", Vector3.new(252, 2, 204), CFrame.new(0, 3, 2), HANGAR.concrete, Enum.Material.Concrete, true)
+	slab.Reflectance = 0.045
+	for _, x in { -84, -42, 0, 42, 84 } do
+		part(lobby, "ConcreteJoint", Vector3.new(0.08, 0.035, 202), CFrame.new(x, 4.025, 2), HANGAR.lane)
 	end
-	for _, x in { -123.5, 123.5 } do
-		rail(lobby, "Perimeter", Vector3.new(x, 6.1, 0), Vector3.new(0.7, 4, 197))
+	for _, z in { -64, -22, 20, 62 } do
+		part(lobby, "ConcreteJoint", Vector3.new(250, 0.035, 0.08), CFrame.new(0, 4.025, z), HANGAR.lane)
 	end
+	part(lobby, "CentralTaxiway", Vector3.new(28, 0.05, 132), CFrame.new(0, 4.05, 24), HANGAR.lane)
+	for _, x in { -14.5, 14.5 } do
+		part(lobby, "TaxiwayEdge", Vector3.new(0.45, 0.06, 132), CFrame.new(x, 4.09, 24), HANGAR.amber)
+	end
+	for z = -27, 84, 17 do
+		part(lobby, "TaxiwayDash", Vector3.new(0.65, 0.06, 7), CFrame.new(0, 4.1, z), HANGAR.amber)
+	end
+	floorLabel(lobby, "DepartureWayfinding", Vector3.new(0, 4.16, 12), Vector2.new(24, 7), "DEPARTURES", HANGAR.white)
+	floorLabel(lobby, "ArrivalsWayfinding", Vector3.new(0, 4.16, 72), Vector2.new(24, 7), "HANGAR 01", HANGAR.white)
+
 	local spawn = Instance.new("SpawnLocation")
 	spawn.Name = "LobbySpawn"
 	spawn.Size = Vector3.new(8, 1, 8)
@@ -480,24 +562,140 @@ function World.buildLobby()
 	spawn.Transparency = 1
 	spawn.CanCollide = false
 	spawn.Parent = lobby
-	for _, x in { -116, 116 } do
-		for _, z in { -87, 85 } do
-			part(lobby, "LightColumn", Vector3.new(1.5, 22, 1.5), CFrame.new(x, 15, z), COLORS.navy, nil, true)
-			part(lobby, "LightCap", Vector3.new(5, 2, 5), CFrame.new(x, 27, z), COLORS.cyan, Enum.Material.Neon)
+
+	-- Corrugated sidewalls, a back wall, and a faceted barrel roof establish
+	-- an aircraft-scale interior. Skylight strips break up the metal roof.
+	for _, side in { -1, 1 } do
+		local wall = part(lobby, "HangarSideWall", Vector3.new(2, 30, 204), CFrame.new(side * 126, 19, 2), HANGAR.wall, Enum.Material.Metal, true)
+		wall.CastShadow = true
+		part(lobby, "WallWainscot", Vector3.new(2.3, 7, 204), CFrame.new(side * 124.7, 7.5, 2), HANGAR.steel, Enum.Material.Metal, true)
+		part(lobby, "WallSafetyStripe", Vector3.new(2.4, 0.7, 204), CFrame.new(side * 124.5, 11.3, 2), HANGAR.amber)
+		for z = -90, 100, 19 do
+			part(lobby, "WallRib", Vector3.new(0.65, 23, 0.8), CFrame.new(side * 124.6, 22.5, z), HANGAR.roof, Enum.Material.Metal)
 		end
 	end
-	for _, x in { -50, 50 } do
-		part(lobby, "ClubSignPost", Vector3.new(3, 35, 3), CFrame.new(x, 21.5, -88), COLORS.navy, nil, true)
+	local backWall = part(lobby, "HangarBackWall", Vector3.new(254, 30, 2), CFrame.new(0, 19, 104), HANGAR.wall, Enum.Material.Metal, true)
+	backWall.CastShadow = true
+	part(lobby, "BackWainscot", Vector3.new(251, 7, 2), CFrame.new(0, 7.5, 102.8), HANGAR.steel, Enum.Material.Metal)
+	part(lobby, "BackSafetyStripe", Vector3.new(251, 0.7, 0.5), CFrame.new(0, 11.3, 102.5), HANGAR.amber)
+	local roofProfile = {
+		Vector2.new(-127, 34), Vector2.new(-98, 47), Vector2.new(-62, 56),
+		Vector2.new(0, 62), Vector2.new(62, 56), Vector2.new(98, 47), Vector2.new(127, 34),
+	}
+	local roofRuns = { -100, -78, -48, -4, 26, 64, 86, 105 }
+	for index = 1, #roofProfile - 1 do
+		local a, b = roofProfile[index], roofProfile[index + 1]
+		local angle = math.atan2(b.Y - a.Y, b.X - a.X)
+		for run = 1, #roofRuns - 1 do
+			local first, last = roofRuns[run], roofRuns[run + 1]
+			local skylight = (index == 3 or index == 4) and (run == 2 or run == 4 or run == 6)
+			local panel = part(lobby, skylight and "RoofSkylight" or "RoofPanel",
+				Vector3.new((b - a).Magnitude + 0.5, 0.8, last - first + 0.1),
+				CFrame.new((a.X + b.X) / 2, (a.Y + b.Y) / 2, (first + last) / 2) * CFrame.Angles(0, 0, angle),
+				skylight and Color3.fromRGB(185, 225, 228) or HANGAR.roof,
+				skylight and Enum.Material.Glass or Enum.Material.Metal, true)
+			panel.Transparency = skylight and 0.68 or 0
+			panel.CastShadow = not skylight
+		end
 	end
-	sign(lobby, "ClubSign", Vector3.new(0, 33, -88), Vector3.new(96, 18, 1.5), "SKYBOUND", "F L I G H T   C L U B", COLORS.cyan, math.pi)
-	sign(lobby, "QueueInstructions", Vector3.new(0, 16, -88), Vector3.new(87, 9, 1), "PICK A PARTNER. CLAIM A PAD.", "1v1 FLIGHTS  /  FURTHEST DISTANCE WINS", COLORS.coral, math.pi)
+	for _, z in { -98, -32, 36, 103 } do
+		for index = 1, #roofProfile - 1 do
+			local a, b = roofProfile[index], roofProfile[index + 1]
+			local upperA, upperB = Vector3.new(a.X, a.Y - 0.8, z), Vector3.new(b.X, b.Y - 0.8, z)
+			local lowerA, lowerB = upperA - Vector3.new(0, 4, 0), upperB - Vector3.new(0, 4, 0)
+			beam(lobby, "RoofRib", upperA, upperB, 1.35, HANGAR.steel)
+			beam(lobby, "RoofTrussChord", lowerA, lowerB, 0.85, HANGAR.steel)
+			beam(lobby, "RoofTrussBrace", index % 2 == 0 and upperA or lowerA, index % 2 == 0 and lowerB or upperB, 0.55, HANGAR.steel)
+		end
+		for _, side in { -1, 1 } do
+			part(lobby, "StructuralColumn", Vector3.new(2.1, 30, 2.1), CFrame.new(side * 122, 19, z), HANGAR.steel, Enum.Material.Metal, true)
+			part(lobby, "ColumnGuard", Vector3.new(2.4, 5, 2.4), CFrame.new(side * 122, 6.5, z), HANGAR.amber, Enum.Material.Metal)
+		end
+	end
+	for _, x in { -98, -62, 0, 62, 98 } do
+		local height = x == 0 and 60.8 or (math.abs(x) == 62 and 54.8 or 45.8)
+		part(lobby, "RoofPurlin", Vector3.new(0.7, 0.9, 204), CFrame.new(x, height, 2), HANGAR.steel, Enum.Material.Metal)
+	end
+	-- End infill closes the roof above the entrance and rear wall without
+	-- lowering the open doorway or obstructing the central view to the runway.
+	for index = 1, #roofProfile - 1 do
+		local a, b = roofProfile[index], roofProfile[index + 1]
+		local bottom, top = 34, math.min(a.Y, b.Y)
+		if top > bottom then
+			for _, z in { -99, 104 } do
+				local infill = part(lobby, "GableInfill", Vector3.new(b.X - a.X, top - bottom, 1.5), CFrame.new((a.X + b.X) / 2, (top + bottom) / 2, z), HANGAR.wall, Enum.Material.Metal, true)
+				infill.CastShadow = true
+			end
+		end
+		for _, z in { -99, 104 } do
+			local infill = Instance.new("WedgePart")
+			infill.Name = "SlopedGableInfill"
+			infill.Size = Vector3.new(1.5, math.abs(b.Y - a.Y), b.X - a.X)
+			infill.CFrame = CFrame.new((a.X + b.X) / 2, (a.Y + b.Y) / 2, z) * CFrame.Angles(0, b.Y > a.Y and math.pi / 2 or -math.pi / 2, 0)
+			infill.Color = HANGAR.wall
+			infill.Material = Enum.Material.Metal
+			infill.Anchored = true
+			infill.CastShadow = true
+			infill.Parent = lobby
+		end
+	end
+	for _, x in { -43, 43 } do
+		for _, z in { -62, 12, 78 } do
+			beam(lobby, "LightSuspension", Vector3.new(x, 54, z), Vector3.new(x, 29.5, z), 0.15, HANGAR.steel)
+			part(lobby, "LightHousing", Vector3.new(17, 0.65, 2.5), CFrame.new(x, 29.5, z), HANGAR.steel, Enum.Material.Metal)
+			local fixture = part(lobby, "HangarWorkLight", Vector3.new(15.8, 0.18, 1.8), CFrame.new(x, 29.08, z), HANGAR.white, Enum.Material.Neon)
+			local light = Instance.new("PointLight")
+			light.Color = Color3.fromRGB(255, 240, 210)
+			light.Brightness = 1.2
+			light.Range = 60
+			light.Shadows = false
+			light.Parent = fixture
+		end
+	end
+	for _, side in { -1, 1 } do
+		part(lobby, "OpenDoorStack", Vector3.new(12, 30, 4), CFrame.new(side * 118, 19, -99), HANGAR.steel, Enum.Material.Metal, true)
+		for _, offset in { -3.7, 0, 3.7 } do
+			part(lobby, "DoorPanelSeam", Vector3.new(0.18, 29, 0.2), CFrame.new(side * 118 + offset, 19, -96.8), HANGAR.wall)
+		end
+	end
+	part(lobby, "DoorLintel", Vector3.new(250, 2, 4), CFrame.new(0, 34.1, -99), HANGAR.steel, Enum.Material.Metal)
+	part(lobby, "DoorTrack", Vector3.new(226, 0.07, 1), CFrame.new(0, 4.08, -97), HANGAR.steel, Enum.Material.Metal)
+	sign(lobby, "ClubSign", Vector3.new(0, 38, -96), Vector3.new(94, 8, 0.7), "SKYBOUND", "F L I G H T   C L U B", COLORS.cyan, math.pi)
+
+	-- The broad apron and runway are visible through the open hangar doors.
+	part(lobby, "AircraftApron", Vector3.new(360, 6, 220), CFrame.new(0, 1, -210), Color3.fromRGB(126, 141, 143), Enum.Material.Concrete, true)
+	part(lobby, "Runway", Vector3.new(94, 6, 620), CFrame.new(0, 1, -430), HANGAR.lane, Enum.Material.Asphalt, true)
+	for _, side in { -1, 1 } do
+		part(lobby, "RunwayEdge", Vector3.new(0.8, 0.08, 618), CFrame.new(side * 44, 4.07, -430), HANGAR.white)
+		for z = -148, -700, -55 do
+			part(lobby, "RunwayLamp", Vector3.new(1.1, 0.45, 1.1), CFrame.new(side * 48, 4.3, z), COLORS.cyan, Enum.Material.Neon)
+		end
+	end
+	for z = -163, -690, -45 do
+		part(lobby, "RunwayCenterMark", Vector3.new(2.1, 0.08, 18), CFrame.new(0, 4.08, z), HANGAR.white)
+	end
+	for _, x in { -30, -22, -14, 14, 22, 30 } do
+		part(lobby, "RunwayThreshold", Vector3.new(3.5, 0.08, 22), CFrame.new(x, 4.08, -124), HANGAR.white)
+	end
+	parkedPlane(lobby, "ApronAircraftLeft", 1, "skyhopper", Vector3.new(-88, 9.1, -152), math.pi / 2, 1.8)
+	parkedPlane(lobby, "ApronAircraftRight", 3, "dart", Vector3.new(89, 9.1, -170), math.pi / 2, 1.8)
+	for _, x in { -93, 93 } do
+		for _, z in { -182, -118 } do
+			part(lobby, "ApronBayMark", Vector3.new(45, 0.08, 0.4), CFrame.new(x, 4.08, z), HANGAR.amber)
+		end
+	end
+
+	-- All four existing queue stations retain their exact pad coordinates.
 	for index, station in World.DUEL_STATIONS do
 		local x = (station.seats[1].X + station.seats[2].X) / 2
 		local accent = PLANE_COLORS[index]
-		part(lobby, "QueueApproach", Vector3.new(32, 0.13, 36), CFrame.new(x, 4.08, -28), Color3.fromRGB(177, 207, 193))
+		part(lobby, "QueueApproach", Vector3.new(34, 0.06, 28), CFrame.new(x, 4.09, -29), HANGAR.lane)
+		for _, offset in { -17, 17 } do
+			part(lobby, "QueueLaneMark", Vector3.new(0.45, 0.09, 42), CFrame.new(x + offset, 4.11, -35), HANGAR.white)
+		end
 		part(lobby, "QueueBase", Vector3.new(38, 0.3, 22), CFrame.new(x, 4.15, -47), COLORS.navy)
 		for seatIndex, seat in station.seats do
-			local pad = part(lobby, station.id .. "Pad" .. seatIndex, Vector3.new(12, 0.3, 12), CFrame.new(seat), accent, nil, true)
+			part(lobby, station.id .. "Pad" .. seatIndex, Vector3.new(12, 0.3, 12), CFrame.new(seat), accent, nil, true)
 			local inset = part(lobby, "PadInset", Vector3.new(10.4, 0.08, 10.4), CFrame.new(seat + Vector3.new(0, 0.19, 0)), COLORS.navy)
 			local gui = Instance.new("SurfaceGui")
 			gui.Face = Enum.NormalId.Top
@@ -507,56 +705,76 @@ function World.buildLobby()
 			textLabel(gui, tostring(seatIndex), UDim2.fromScale(0.12, 0.12), UDim2.fromScale(0.76, 0.76), COLORS.cream)
 		end
 		for _, offset in { -20, 20 } do
-			part(lobby, "QueueArchPost", Vector3.new(1.5, 17, 1.5), CFrame.new(x + offset, 12.5, -60), COLORS.navy, nil, true)
+			part(lobby, "DepartureGatePost", Vector3.new(1.2, 15.5, 1.2), CFrame.new(x + offset, 11.75, -62), HANGAR.steel, Enum.Material.Metal, true)
 		end
-		part(lobby, "QueueArch", Vector3.new(42, 1.5, 2), CFrame.new(x, 21, -60), accent, Enum.Material.Neon)
-		local display = part(lobby, station.id .. "Display", Vector3.new(30, 9, 1), CFrame.new(x, 16, -60) * CFrame.Angles(0, math.pi, 0), COLORS.navy)
+		part(lobby, "DepartureGateAccent", Vector3.new(41, 0.5, 1.1), CFrame.new(x, 19.5, -62), accent, Enum.Material.Neon)
+		local display = part(lobby, station.id .. "Display", Vector3.new(31, 7, 0.8), CFrame.new(x, 15.5, -62) * CFrame.Angles(0, math.pi, 0), COLORS.navy)
 		local gui = surface(display, station.name, "0 / 2 READY", accent)
 		queueLabels[station.id] = gui:FindFirstChild("Subtitle")
+		floorLabel(lobby, station.id .. "GroundLabel", Vector3.new(x, 4.17, -25), Vector2.new(28, 6), "1v1  /  STEP ON A PAD", HANGAR.white)
 	end
-	-- The fleet uses the same models as flight selection, with room to walk.
-	part(lobby, "HangarFloor", Vector3.new(69, 0.4, 70), CFrame.new(-80, 4.25, 45), COLORS.navy)
-	for _, x in { -115, -45 } do
-		for _, z in { 12, 80 } do
-			part(lobby, "HangarPillar", Vector3.new(2.5, 25, 2.5), CFrame.new(x, 16.5, z), COLORS.navy, nil, true)
+
+	-- Aircraft are parked nose-out in three service bays along the left wall.
+	part(lobby, "FleetServiceFloor", Vector3.new(71, 0.1, 95), CFrame.new(-85, 4.12, 49), HANGAR.lane)
+	for _, z in { 2, 33, 64, 96 } do
+		part(lobby, "FleetBayLine", Vector3.new(67, 0.1, 0.4), CFrame.new(-85, 4.21, z), HANGAR.amber)
+	end
+	part(lobby, "FleetAisleEdge", Vector3.new(0.45, 0.1, 94), CFrame.new(-49.5, 4.21, 49), HANGAR.amber)
+	sign(lobby, "FleetTitle", Vector3.new(-119, 23, 50), Vector3.new(78, 8, 0.6), "THE FLEET", "THREE PLANES. FIND YOUR FLIGHT STYLE.", COLORS.yellow, -math.pi / 2)
+	for index, planeId in PlaneCatalog.ORDER do
+		local z = 17 + (index - 1) * 31
+		local entry = PlaneCatalog.get(planeId)
+		parkedPlane(lobby, "ShowroomPlane" .. index, index, planeId, Vector3.new(-85, 8.95, z), 0, 1.65)
+		local fleetStand = sign(lobby, "FleetLabel" .. index, Vector3.new(-53, 8, z), Vector3.new(24, 5.5, 0.6), string.upper(entry.name), "FREE TO FLY", PLANE_COLORS[index], -math.pi / 2)
+		local prompt = lobbyPrompt(fleetStand, "FleetPrompt", "Select plane", entry.name)
+		prompt:SetAttribute("PlaneId", planeId)
+		for _, side in { -1, 1 } do
+			part(lobby, "WheelChock", Vector3.new(1.3, 0.55, 2), CFrame.new(-83.7 + side * 1.7, 4.4, z - 2.5), HANGAR.amber)
 		end
 	end
-	part(lobby, "HangarCanopy", Vector3.new(74, 2, 17), CFrame.new(-80, 29, 72), COLORS.cyan, nil, true)
-	sign(lobby, "HangarTitle", Vector3.new(-80, 25, 79), Vector3.new(64, 10, 1), "PICK YOUR PLANE", "THREE FREE PLANES. THREE FLIGHT STYLES.", COLORS.yellow)
-	local exhibitPlaces = { Vector3.new(-98, 9, 28), Vector3.new(-62, 9, 28), Vector3.new(-80, 9, 60) }
-	for index, planeId in PlaneCatalog.ORDER do
-		local position = exhibitPlaces[index]
-		local entry = PlaneCatalog.get(planeId)
-		part(lobby, "ExhibitPlinth", Vector3.new(26, 1.7, 23), CFrame.new(position.X, 5.25, position.Z), COLORS.cream, nil, true)
-		part(lobby, "ExhibitAccent", Vector3.new(26, 0.15, 23), CFrame.new(position.X, 6.2, position.Z), PLANE_COLORS[index], Enum.Material.Neon)
-		local plane = makePlane(lobby, "ShowroomPlane" .. index, index, planeId)
-		plane:ScaleTo(1.4)
-		plane:PivotTo(CFrame.new(position) * CFrame.Angles(0, -0.55, 0))
-		sign(lobby, "FleetLabel" .. index, Vector3.new(position.X, 7.3, position.Z - 12), Vector3.new(25, 4.7, 0.5), string.upper(entry.name), "SELECT BEFORE TAKEOFF", PLANE_COLORS[index])
+	local fleetConsole = part(lobby, "FleetSelectionConsole", Vector3.new(4, 5, 6), CFrame.new(-46, 6.5, 49), HANGAR.steel, Enum.Material.Metal, true)
+	part(lobby, "FleetConsoleScreen", Vector3.new(0.15, 2.2, 4.8), CFrame.new(-43.9, 7.4, 49), COLORS.cyan, Enum.Material.Neon)
+	maintenanceCart(lobby, Vector3.new(-112, 6.75, 91), COLORS.coral)
+
+	-- A staffed-looking service counter and three trail demonstrations make
+	-- effects a destination that can be understood from the spawn aisle.
+	part(lobby, "EffectsServiceFloor", Vector3.new(72, 0.1, 95), CFrame.new(86, 4.12, 49), HANGAR.lane)
+	part(lobby, "EffectsAisleEdge", Vector3.new(0.45, 0.1, 94), CFrame.new(50, 4.21, 49), COLORS.cyan)
+	part(lobby, "EffectsBackboard", Vector3.new(1.2, 20, 82), CFrame.new(120, 18, 49), COLORS.navy, Enum.Material.Metal)
+	sign(lobby, "EffectsShopTitle", Vector3.new(118.7, 24, 49), Vector3.new(73, 9, 0.6), "FLIGHT EFFECTS", "FLY. EARN CREDITS. MAKE IT YOURS.", COLORS.cyan, math.pi / 2)
+	local counter = part(lobby, "EffectsShopCounter", Vector3.new(6, 4.2, 66), CFrame.new(59, 6.1, 50), HANGAR.steel, Enum.Material.Metal, true)
+	part(lobby, "EffectsCountertop", Vector3.new(7.4, 0.55, 67), CFrame.new(59, 8.5, 50), HANGAR.white, Enum.Material.SmoothPlastic, true)
+	part(lobby, "EffectsCounterLight", Vector3.new(0.2, 0.4, 62), CFrame.new(55.9, 7.1, 50), COLORS.cyan, Enum.Material.Neon)
+	sign(lobby, "EffectsCounterLabel", Vector3.new(55.8, 6.1, 50), Vector3.new(29, 3.1, 0.2), "BROWSE EFFECTS", "", COLORS.cyan, math.pi / 2)
+	lobbyPrompt(counter, "EffectsShopPrompt", "Browse effects", "FLIGHT EFFECTS", 16)
+	local terminal = part(lobby, "EffectsShopTerminal", Vector3.new(0.5, 2.8, 3.8), CFrame.new(57.4, 10, 48) * CFrame.Angles(0, 0, -0.13), COLORS.navy, Enum.Material.Metal)
+	terminal:SetAttribute("ShopTerminal", true)
+	for index, trailId in { "skyblue", "ember", "violet" } do
+		local entry = CosmeticCatalog.get(trailId)
+		local color, second = cosmeticColor(entry.color), cosmeticColor(entry.secondaryColor)
+		local z = 20 + (index - 1) * 29
+		part(lobby, "EffectsDisplayMark", Vector3.new(46, 0.1, 25), CFrame.new(93, 4.22, z), COLORS.navy)
+		part(lobby, "EffectsDisplayAccent", Vector3.new(0.35, 0.15, 25), CFrame.new(70, 4.3, z), color, Enum.Material.Neon)
+		parkedPlane(lobby, "EffectsDisplayPlane" .. index, index, PlaneCatalog.ORDER[index], Vector3.new(86, 7.55, z), math.pi, 1.2, trailId)
+		-- Static translucent ribbons remain visible without moving the parked
+		-- aircraft; real trails on match planes use the same catalog colors.
+		for ribbon = 1, 3 do
+			local segment = part(lobby, "TrailSampleRibbon", Vector3.new(7.6, 0.45, 1.6 + ribbon * 0.35),
+				CFrame.new(93 + ribbon * 6.8, 7.85 + math.sin(ribbon) * 0.3, z), color:Lerp(second, (ribbon - 1) / 2), Enum.Material.Neon)
+			segment.Transparency = 0.16 + (ribbon - 1) * 0.2
+		end
+		sign(lobby, "EffectsDisplayLabel" .. index, Vector3.new(119, 12.7, z), Vector3.new(25, 5, 0.4), string.upper(entry.name), tostring(entry.price) .. " CREDITS", color, math.pi / 2)
 	end
-	-- Central green, social seating and an original plane sculpture.
-	planter(lobby, Vector3.new(0, 6, 37), Vector3.new(29, 4, 26))
-	local statue = makePlane(lobby, "ClubMascot", 2)
-	statue:ScaleTo(2.05)
-	statue:PivotTo(CFrame.new(0, 16, 37) * CFrame.Angles(0, -0.5, 0.16))
-	for _, x in { -28, 28 } do bench(lobby, Vector3.new(x, 6.5, 38), x < 0 and math.pi / 2 or -math.pi / 2) end
-	for _, position in { Vector3.new(-30, 5.5, 74), Vector3.new(30, 5.5, 74), Vector3.new(-114, 5.5, -20), Vector3.new(114, 5.5, -20) } do
-		planter(lobby, position, Vector3.new(10, 3, 12))
-	end
-	-- Winner podiums, gift-shaped cosmetic exhibits and a club information wall.
-	part(lobby, "WinnersPlaza", Vector3.new(66, 0.3, 70), CFrame.new(81, 4.2, 45), Color3.fromRGB(227, 218, 204))
-	for index, data in { { -17, 3, "2" }, { 0, 5.5, "1" }, { 17, 2, "3" } } do
-		local height = data[2]
-		local base = part(lobby, "Podium" .. data[3], Vector3.new(14, height, 14), CFrame.new(81 + data[1], 4 + height / 2, 34), index == 2 and COLORS.yellow or COLORS.navy, nil, true)
-		billboard(base, data[3], COLORS.cream, height / 2 + 2, 45, 45)
-	end
-	sign(lobby, "WinnersTitle", Vector3.new(81, 24, 78), Vector3.new(65, 12, 1), "WINNER'S CIRCLE", "MAKE YOUR NEXT FLIGHT YOUR BEST", COLORS.coral)
-	for index, x in { 61, 81, 101 } do
-		part(lobby, "ColorCrate", Vector3.new(11, 8, 11), CFrame.new(x, 8.5, 64), PLANE_COLORS[index], nil, true)
-		part(lobby, "CrateBand", Vector3.new(11.2, 1.8, 11.2), CFrame.new(x, 10, 64), COLORS.navy)
-		part(lobby, "CrateTop", Vector3.new(11.5, 0.7, 11.5), CFrame.new(x, 12.9, 64), COLORS.cream)
-	end
-	sign(lobby, "HowToPlay", Vector3.new(0, 17, 91), Vector3.new(72, 12, 1), "BIG POWERS. BIGGER FLIGHTS.", "CLAIM A PAD  /  PICK A POWER  /  AIM + LAUNCH", COLORS.cyan)
+	maintenanceCart(lobby, Vector3.new(109, 6.75, 94), HANGAR.amber)
+
+	-- A compact dispatch corner gives solo players the same return-to-lobby
+	-- loop, with no obstruction between the arrivals mark and the duel pads.
+	local practiceDesk = part(lobby, "PracticeDispatchDesk", Vector3.new(16, 4, 6), CFrame.new(31, 6, 88), HANGAR.steel, Enum.Material.Metal, true)
+	part(lobby, "PracticeDeskTop", Vector3.new(17, 0.5, 7), CFrame.new(31, 8.25, 88), HANGAR.white, nil, true)
+	part(lobby, "PracticeDisplay", Vector3.new(9, 4, 0.6), CFrame.new(31, 10.5, 90), COLORS.navy)
+	sign(lobby, "PracticeSign", Vector3.new(31, 19, 101), Vector3.new(32, 9, 0.7), "SOLO FLIGHT", "PRACTICE + EARN CREDITS", COLORS.lime)
+	lobbyPrompt(practiceDesk, "PracticePrompt", "Practice flight", "SOLO DISPATCH", 14)
+	sign(lobby, "ArrivalsSign", Vector3.new(-12, 23, 101), Vector3.new(43, 9, 0.7), "WELCOME, PILOT", "FLEET LEFT  /  EFFECTS RIGHT  /  DUELS AHEAD", HANGAR.white)
 	World.updateLobbyQueues({})
 	return lobby
 end
@@ -1040,6 +1258,8 @@ function World.updatePlane(model, state, z, dt)
 	local frameTime = math.clamp(dt or 1 / 60, 0, 1)
 	local scale = model:GetScale()
 	if data then
+		local trailId = state.trailId or (state.settings and state.settings.trailId)
+		if trailId or not data.normalTrail then World.applyCosmeticTrail(model, trailId) end
 		ensurePowerVisual(model, data, state.powerId or (state.settings and state.settings.powerId))
 		-- Effects age on render time after acceptance, so touchdown or a newer
 		-- near miss cannot leave a fire frozen or prematurely erase a hit.
@@ -1106,8 +1326,14 @@ function World.updatePlane(model, state, z, dt)
 		local trailMode = meteor > 0 and "meteor" or (boost > 0 and "boost" or (data.hitAge < 0.9 and "hit" or "normal"))
 		if trailMode ~= data.trailMode then
 			data.trailMode = trailMode
-			data.trail.Color = data.trailColors[trailMode]
-			data.trail.Lifetime = trailMode == "meteor" and 0.65 or 0.35
+			if trailMode == "normal" then
+				restoreNormalTrail(data)
+			else
+				data.trail.Color = data.trailColors[trailMode]
+				data.trail.Lifetime = trailMode == "meteor" and 0.65 or 0.35
+				data.trail.LightEmission = 0.6
+				data.trail.WidthScale = NumberSequence.new(1)
+			end
 		end
 		updatePowerVisual(model, data, state, pose, scale)
 	end

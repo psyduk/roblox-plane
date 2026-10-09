@@ -244,5 +244,146 @@ return function(PlayerStats)
 		assert(public.lease == nil and public.receipts == nil and public.token == nil)
 	end)
 
+	test("v1 migration preserves statistics and receipts without retroactive currency", function()
+		local store = fakeStore()
+		store.values.player_42 = { schemaVersion = 1, stats = { wins = 7, bestDistance = 810, totalFlights = 7 }, receipts = { "legacy" } }
+		local stats = service(store); local handle = stats:open(42); assert(stats:load(handle))
+		local wallet = stats:getEconomy(handle)
+		assert(stats:get(handle).wins == 7 and stats:get(handle).bestDistance == 810)
+		assert(wallet.credits == 0 and wallet.owned.classic and wallet.equippedTrail == "classic" and wallet.canShop)
+		assert(store.values.player_42.schemaVersion == 2 and store.values.player_42.economy.credits == 0)
+		local applied, reward = flight(stats, handle, "legacy", "win")
+		assert(not applied and reward == 0 and stats:getEconomy(handle).credits == 0)
+	end)
+
+	test("only completed nonaborted flights award catalog rewards once", function()
+		local stats = service(fakeStore()); local handle = stats:open(42); stats:load(handle)
+		local ok, reward = flight(stats, handle, "practice", "win", { practice = true })
+		assert(ok and reward == 25)
+		local _, winReward = flight(stats, handle, "win", "win")
+		local _, lossReward = flight(stats, handle, "loss", "loss")
+		local _, drawReward = flight(stats, handle, "draw", "draw")
+		assert(winReward == 60 and lossReward == 40 and drawReward == 50)
+		for index, options in ipairs({ { forfeit = true }, { completed = false }, { aborted = true }, { practice = true, aborted = true } }) do
+			local _, amount = flight(stats, handle, "aborted-" .. index, "win", options)
+			assert(amount == 0)
+		end
+		local duplicate, amount = flight(stats, handle, "practice", "win", { practice = true })
+		assert(not duplicate and amount == 0 and stats:getEconomy(handle).credits == 175)
+	end)
+
+	test("purchase debits once and equip requires ownership; both survive reconnect", function()
+		local store = fakeStore(); local stats = service(store); local handle = stats:open(42); stats:load(handle)
+		assert(stats:buyCosmetic(handle, "skyblue").code == "insufficient_credits")
+		assert(stats:equipCosmetic(handle, "skyblue").code == "not_owned")
+		flight(stats, handle, "one", "win", { practice = true }); flight(stats, handle, "two", "win", { practice = true })
+		assert(stats:buyCosmetic(handle, "skyblue").code == "purchased")
+		local wallet = stats:getEconomy(handle)
+		assert(wallet.credits == 10 and wallet.owned.skyblue and wallet.equippedTrail == "classic")
+		assert(stats:buyCosmetic(handle, "skyblue").code == "already_owned")
+		assert(stats:getEconomy(handle).credits == 10)
+		assert(stats:equipCosmetic(handle, "skyblue").code == "equipped")
+		assert(stats:equipCosmetic(handle, "skyblue").code == "already_equipped")
+		store.duplicateCallbacks = true; store.commitErrors = 1
+		assert(stats:close(handle))
+		local resumed = service(store, "server-B"); local nextHandle = resumed:open(42); assert(resumed:load(nextHandle))
+		wallet = resumed:getEconomy(nextHandle)
+		assert(wallet.credits == 10 and wallet.owned.skyblue and wallet.equippedTrail == "skyblue")
+		assert(not flight(resumed, nextHandle, "two", "win", { practice = true }))
+		assert(resumed:getEconomy(nextHandle).credits == 10)
+	end)
+
+	test("invalid identities and detached snapshots cannot alter wallet or ownership", function()
+		local stats = service(fakeStore()); local handle = stats:open(42); stats:load(handle)
+		flight(stats, handle, "one", "win")
+		for _, id in ipairs({ "", "unknown", "Skyblue", {}, 42, false }) do
+			assert(stats:buyCosmetic(handle, id).code == "invalid_item")
+			assert(stats:equipCosmetic(handle, id).code == "invalid_item")
+		end
+		assert(stats:buyCosmetic(handle, nil).code == "invalid_item")
+		local wallet = stats:getEconomy(handle); wallet.credits = 9999; wallet.owned.sunset = true; wallet.equippedTrail = "sunset"
+		wallet = stats:getEconomy(handle)
+		assert(wallet.credits == 60 and not wallet.owned.sunset and wallet.equippedTrail == "classic")
+	end)
+
+	test("loading failed saves and closed records block economic changes", function()
+		local store = fakeStore(); local stats = service(store); local handle = stats:open(42)
+		assert(not stats:getEconomy(handle).canShop and stats:buyCosmetic(handle, "skyblue").code == "loading")
+		stats:load(handle); flight(stats, handle, "one", "win")
+		store.failures = 3; assert(not stats:save(handle))
+		assert(not stats:getEconomy(handle).canShop and stats:buyCosmetic(handle, "skyblue").code == "unavailable")
+		assert(stats:equipCosmetic(handle, "classic").code == "unavailable")
+		assert(stats:getEconomy(handle).credits == 60 and not stats:getEconomy(handle).owned.skyblue)
+		assert(stats:save(handle) and stats:getEconomy(handle).canShop)
+		assert(stats:buyCosmetic(handle, "skyblue").ok and stats:close(handle))
+		assert(not stats:equipCosmetic(handle, "skyblue").ok and not stats:buyCosmetic(handle, "ember").ok)
+		assert(store.values.player_42.economy.credits == 20 and store.values.player_42.economy.owned.skyblue)
+	end)
+
+	test("failed load never grants purchases or overwrites an existing collection", function()
+		local store = fakeStore(); local first = service(store); local a = first:open(42); first:load(a)
+		flight(first, a, "one", "win"); first:buyCosmetic(a, "skyblue"); first:equipCosmetic(a, "skyblue"); first:close(a)
+		store.failures = 3
+		local nextStats = service(store, "server-B"); local b = nextStats:open(42); assert(not nextStats:load(b))
+		flight(nextStats, b, "failed-session", "win")
+		assert(not nextStats:buyCosmetic(b, "skyblue").ok and not nextStats:equipCosmetic(b, "skyblue").ok)
+		nextStats:close(b)
+		assert(store.values.player_42.economy.credits == 20 and store.values.player_42.economy.equippedTrail == "skyblue")
+	end)
+
+	test("malformed durable economies fail closed instead of resetting ownership", function()
+		for _, corrupt in ipairs({
+			{ credits = -1, owned = { classic = true }, equippedTrail = "classic" },
+			{ credits = 1.5, owned = { classic = true }, equippedTrail = "classic" },
+			{ credits = 0/0, owned = { classic = true }, equippedTrail = "classic" },
+			{ credits = 1e15, owned = { classic = true }, equippedTrail = "classic" },
+			{ credits = 100, owned = { classic = true }, equippedTrail = "sunset" },
+			{ credits = 100, owned = { classic = true, unknown = true }, equippedTrail = "classic" },
+			{ credits = 100, owned = { classic = true, skyblue = false }, equippedTrail = "classic" },
+		}) do
+			local store = fakeStore(); store.values.player_42 = { schemaVersion = 2, stats = {}, receipts = {}, economy = corrupt }
+			local stats = service(store); local handle = stats:open(42)
+			assert(not stats:load(handle) and store.calls == 1)
+			assert(not stats:save(handle) and not stats:buyCosmetic(handle, "skyblue").ok)
+		end
+	end)
+
+	test("currency and purchases arriving during a save stay pending together", function()
+		local store = fakeStore(); local stats = service(store); local handle = stats:open(42); stats:load(handle)
+		flight(stats, handle, "one", "win")
+		store.beforeCommit = function()
+			assert(stats:buyCosmetic(handle, "skyblue").ok)
+			assert(stats:equipCosmetic(handle, "skyblue").ok)
+			flight(stats, handle, "two", "win", { practice = true })
+		end
+		assert(stats:save(handle))
+		assert(store.values.player_42.economy.credits == 60 and not store.values.player_42.economy.owned.skyblue)
+		assert(stats:getEconomy(handle).credits == 45 and select(2, stats:get(handle)) == "pending")
+		assert(stats:save(handle))
+		assert(store.values.player_42.economy.credits == 45 and store.values.player_42.economy.equippedTrail == "skyblue")
+	end)
+
+	test("pending load rewards are merged with saved wallet and receipt deduplication", function()
+		local store = fakeStore(); local first = service(store); local a = first:open(42); first:load(a)
+		flight(first, a, "one", "win"); first:buyCosmetic(a, "skyblue"); first:close(a)
+		local stats = service(store, "server-B"); local b = stats:open(42)
+		store.beforeReturn = function()
+			flight(stats, b, "one", "win"); flight(stats, b, "two", "win", { practice = true })
+			assert(not stats:buyCosmetic(b, "skyblue").ok)
+		end
+		assert(stats:load(b))
+		assert(stats:getEconomy(b).credits == 45 and stats:getEconomy(b).owned.skyblue)
+	end)
+
+	test("lease takeover fences old collection changes as one atomic record", function()
+		local store, env = fakeStore(), environment()
+		local first = service(store, "server-A", env); local a = first:open(42); first:load(a)
+		flight(first, a, "one", "win"); first:save(a); env.time = env.time + 181
+		local second = service(store, "server-B", env); local b = second:open(42); assert(second:load(b))
+		second:buyCosmetic(b, "skyblue"); second:equipCosmetic(b, "skyblue"); second:close(b)
+		first:buyCosmetic(a, "skyblue"); assert(not first:save(a) and not first:getEconomy(a).canShop)
+		assert(store.values.player_42.economy.credits == 20 and store.values.player_42.economy.equippedTrail == "skyblue")
+	end)
+
 	return tostring(passed) .. " player-stats tests passed"
 end

@@ -23,7 +23,7 @@ def build(output: Path):
     ET.SubElement(props,"float",{"name":"FallenPartsDestroyHeight"}).text="-80"
     replicated,_=item(doc,"ReplicatedStorage","ReplicatedStorage")
     shared,_=item(replicated,"Folder","FlightGame")
-    for filename in ("PlaneCatalog","PowerCatalog","Simulation","World"):
+    for filename in ("PlaneCatalog","PowerCatalog","CosmeticCatalog","Simulation","World"):
         source(shared,"ModuleScript",filename,f"src/shared/{filename}.luau")
     item(shared,"RemoteEvent","Command")
     item(shared,"RemoteEvent","Snapshot")
@@ -32,14 +32,14 @@ def build(output: Path):
     for filename in ("PlayerStats", "Telemetry"):
         source(server,"ModuleScript",filename,f"src/server/{filename}.luau")
     storage,_=item(doc,"ServerStorage","ServerStorage")
-    for filename in ("Simulation", "PlaneCatalog", "PowerCatalog", "PlayerStats", "Telemetry", "FlightAudio"):
+    for filename in ("Simulation", "PlaneCatalog", "PowerCatalog", "CosmeticCatalog", "PlayerStats", "Telemetry", "FlightAudio"):
         test_path=ROOT/f"tests/{filename}.spec.luau"
         if test_path.exists():
             source(storage,"ModuleScript",f"{filename}Tests",f"tests/{filename}.spec.luau")
     starter,_=item(doc,"StarterPlayer","StarterPlayer")
     player_scripts,_=item(starter,"StarterPlayerScripts","StarterPlayerScripts")
     source(player_scripts,"LocalScript","FlightClient","src/client/Main.client.luau")
-    for filename in ("Hud", "FlightAudio", "PilotAvatar"):
+    for filename in ("Hud", "EffectsShop", "FlightAudio", "PilotAvatar"):
         source(player_scripts,"ModuleScript",filename,f"src/client/{filename}.luau")
     lighting,props=item(doc,"Lighting","Lighting")
     ET.SubElement(props,"float",{"name":"ClockTime"}).text="14"
