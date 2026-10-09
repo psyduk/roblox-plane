@@ -6,7 +6,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def load_simulation(runtime, path=None):
     catalog = runtime.execute((ROOT / 'src/shared/PlaneCatalog.luau').read_text())
-    shared = runtime.table_from({'PlaneCatalog': runtime.table_from({'module': catalog})})
+    powers = runtime.execute((ROOT / 'src/shared/PowerCatalog.luau').read_text())
+    shared = runtime.table_from({'PlaneCatalog': runtime.table_from({'module': catalog}),
+                                 'PowerCatalog': runtime.table_from({'module': powers})})
     saved_script, saved_require = runtime.globals().script, runtime.globals().require
     runtime.globals().script = runtime.table_from({'Parent': shared})
     runtime.globals().require = runtime.eval('function(module) return module.module end')

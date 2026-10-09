@@ -3,6 +3,7 @@
 -- reconstruct the course and interpolate snapshots. Randomness is seeded.
 local Simulation = {}
 local PlaneCatalog = require(script.Parent.PlaneCatalog)
+local PowerCatalog = require(script.Parent.PowerCatalog)
 
 Simulation.DEFAULT_SETTINGS = { planeId = PlaneCatalog.DEFAULT_ID, angle = 35, gadget = "Shield" }
 Simulation.MAX_FLIGHT_TIME = 45
@@ -115,6 +116,8 @@ function Simulation.newFlight(settings, course)
 	end
 	local radians = math.rad(angle)
 	local speed = profile.speed
+	local power = PowerCatalog.get(settings.powerId)
+	local powerId = power and power.id or nil
 	return {
 		x = 0,
 		y = 18,
@@ -125,7 +128,12 @@ function Simulation.newFlight(settings, course)
 		elapsed = 0,
 		pickups = 0,
 		hits = 0,
-		shield = gadget == "Shield" and 1 or 0,
+		shield = not powerId and gadget == "Shield" and 1 or 0,
+		powerId = powerId,
+		powerCharges = powerId and (powerId == "Meteor" and 1 or 3) or 0,
+		powerPhase = powerId and "armed" or "spent",
+		powerPeak = 18,
+		powerUses = 0,
 		used = {},
 		gadget = gadget,
 		boostUsed = false,
@@ -134,7 +142,7 @@ function Simulation.newFlight(settings, course)
 		nearPassed = {},
 		eventSerial = 1,
 		recentEvents = { { kind = "launch", text = "Liftoff!", at = 0, serial = 1, x = 0, y = 18, value = 0 } },
-		settings = { planeId = profile.id, angle = angle, speed = speed, gadget = gadget },
+		settings = { planeId = profile.id, angle = angle, speed = speed, gadget = gadget, powerId = powerId },
 		lastEvent = { kind = "launch", text = "Liftoff!", at = 0, serial = 1, x = 0, y = 18, value = 0 },
 	}
 end
@@ -163,15 +171,28 @@ local function intersection(ax, ay, bx, by, radius)
 	return nil
 end
 
-local function event(state, kind, text, item)
+local function event(state, kind, text, item, value)
 	state.eventSerial = state.eventSerial + 1
 	local x, y = state.x, state.y
 	if item then x, y = Simulation.itemPosition(item, state.elapsed) end
 	local record = { kind = kind, text = text, at = state.elapsed, serial = state.eventSerial,
-		x = x, y = y, itemId = item and item.id or nil, value = item and item.value or 0 }
+		x = x, y = y, itemId = item and item.id or nil, value = value or (item and item.value) or 0 }
 	state.lastEvent = record
 	table.insert(state.recentEvents, record)
 	if #state.recentEvents > Simulation.EVENT_HISTORY_LIMIT then table.remove(state.recentEvents, 1) end
+end
+
+local function forwardLimit(state)
+	if state.powerId == "Meteor" then return 165 end
+	if state.powerId == "Muncher" then return 125 end
+	if state.powerId == "Pinball" then return 135 end
+	return 105
+end
+
+local function consumePower(state)
+	state.powerCharges = state.powerCharges - 1
+	state.powerUses = state.powerUses + 1
+	if state.powerCharges == 0 then state.powerPhase = "spent" end
 end
 
 local function sweptGap(ax, ay, bx, by, radius)
@@ -191,15 +212,36 @@ function Simulation.step(state, course, dt)
 	dt = math.min(dt, 1 / 15, Simulation.MAX_FLIGHT_TIME - state.elapsed)
 	local oldX, oldY, oldTime = state.x, state.y, state.elapsed
 	state.elapsed = state.elapsed + dt
+	local beforeDeadline = state.elapsed < Simulation.MAX_FLIGHT_TIME
+	state.powerPeak = math.max(state.powerPeak or oldY, oldY)
 	state.vx = math.max(18, state.vx * (1 - 0.015 * dt))
-	state.vy = math.max(-22, state.vy - Simulation.GRAVITY * dt)
+	local meteorDiving = state.powerId == "Meteor" and state.powerPhase == "diving"
+	state.vy = math.max(meteorDiving and -64 or -22, state.vy - Simulation.GRAVITY * (meteorDiving and 3.2 or 1) * dt)
 	-- Upward thrust fades in thin air, keeping high launches near the stronger
 	-- pickups. This only damps ascent; it never slams a plane down from a ceiling.
 	if state.y > Simulation.THIN_AIR_HEIGHT and state.vy > 0 then
 		state.vy = state.vy * math.max(0, 1 - (state.y - Simulation.THIN_AIR_HEIGHT) * 0.06 * dt)
 	end
+	-- The first apex (including one forced by a missile) commits Meteor to its
+	-- dive. No steering or timing input is required after the launch decision.
+	if beforeDeadline and state.powerId == "Meteor" and state.powerPhase == "armed" and state.vy <= 0 and oldY > 0 then
+		state.powerPhase = "diving"
+		state.vy = -(40 + 20 * clamp((state.powerPeak - 18) / 140, 0, 1))
+		event(state, "meteorDive", "METEOR DIVE!", nil, state.powerPeak)
+	end
+	-- Predict the low-altitude crossing before movement, so even a coarse step
+	-- cannot tunnel into the ground. Each step still has one straight collision
+	-- sweep; the turn begins at most one step above the pull-up height.
+	if beforeDeadline and state.powerId == "Meteor" and state.powerPhase == "diving" and oldY > 0 and oldY + state.vy * dt <= 18 then
+		local charge = clamp((state.powerPeak - 18) / 140, 0, 1)
+		state.vx = math.min(forwardLimit(state), state.vx + 35 + 45 * charge)
+		state.vy = 25 + 10 * charge
+		consumePower(state)
+		event(state, "meteorBoost", "METEOR BLAST!", nil, state.powerPeak)
+	end
 	state.x = state.x + state.vx * dt
 	state.y = state.y + state.vy * dt
+	state.powerPeak = math.max(state.powerPeak, state.y)
 
 	local contacts, clearedMissiles = {}, {}
 	for _, item in ipairs(course.items) do
@@ -207,7 +249,7 @@ function Simulation.step(state, course, dt)
 			local ix0, iy0 = Simulation.itemPosition(item, oldTime)
 			local ix1, iy1 = Simulation.itemPosition(item, state.elapsed)
 			local radius = item.radius + Simulation.PLANE_RADIUS
-			if item.kind == "fuel" and state.gadget == "Magnet" then
+			if item.kind == "fuel" and not state.powerId and state.gadget == "Magnet" then
 				radius = radius + 10
 			end
 			local hitAt = intersection(oldX - ix0, oldY - iy0, state.x - ix1, state.y - iy1, radius)
@@ -234,11 +276,20 @@ function Simulation.step(state, course, dt)
 			state.used[item.id] = true
 			if item.kind == "fuel" then
 				state.pickups = state.pickups + 1
-				state.vx = math.min(105, state.vx + 1 + item.value * 0.3)
+				state.vx = math.min(forwardLimit(state), state.vx + 1 + item.value * 0.3)
 				-- Fuel first steadies a dive, so even a late pickup visibly saves
 				-- altitude. Stronger numbered cans then supply a larger lift.
-				state.vy = math.min(62, math.max(state.vy, -8) + item.value * 0.65)
+				-- Meteor remains committed to its dive; fuel still adds speed but
+				-- cannot cancel the promised automatic pull-up and blast.
+				if state.powerPhase ~= "diving" then
+					state.vy = math.min(62, math.max(state.vy, -8) + item.value * 0.65)
+				end
 				event(state, "fuel", "+" .. tostring(item.value) .. " FUEL!", item)
+			elseif beforeDeadline and state.powerId == "Muncher" and state.powerCharges > 0 then
+				consumePower(state)
+				state.vx = math.min(forwardLimit(state), state.vx + 8 + 4 * state.powerUses)
+				state.vy = math.min(56, math.max(state.vy, -8) + 1 + 3 * state.powerUses)
+				event(state, "munch", "CHOMP! " .. tostring(state.powerUses) .. "/3", item, state.powerUses)
 			else
 				state.hits = state.hits + 1
 				if state.shield > 0 then
@@ -246,7 +297,7 @@ function Simulation.step(state, course, dt)
 					event(state, "shield", "SHIELD SAVE!", item)
 				else
 					state.vx = math.max(18, state.vx * 0.92)
-					state.vy = math.max(-22, state.vy - 10)
+					state.vy = math.max(state.powerPhase == "diving" and -64 or -22, state.vy - 10)
 					event(state, "missile", "MISSILE HIT! Find fuel!", item)
 				end
 			end
@@ -264,7 +315,7 @@ function Simulation.step(state, course, dt)
 
 	-- A rescue gadget fires before impact, once. It cannot resurrect a plane
 	-- already on the ground and never asks the player for a mid-flight input.
-	if state.gadget == "Boost" and not state.boostUsed and state.elapsed > 1 and state.y > 0 and state.y < 19 and state.vy < 0 then
+	if not state.powerId and state.gadget == "Boost" and not state.boostUsed and state.elapsed > 1 and state.y > 0 and state.y < 19 and state.vy < 0 then
 		state.boostUsed = true
 		state.vy = 29
 		state.vx = math.min(105, state.vx + 14)
@@ -276,9 +327,16 @@ function Simulation.step(state, course, dt)
 		state.x = oldX + (state.x - oldX) * clamp(fraction, 0, 1)
 		state.y = 0
 		state.distance = math.max(state.distance, state.x)
-		state.alive = false
-		state.finishReason = "landed"
-		event(state, "finish", "TOUCHDOWN! Distance locked!")
+		if beforeDeadline and oldY > 0 and state.powerId == "Pinball" and state.powerCharges > 0 then
+			consumePower(state)
+			state.vx = math.min(forwardLimit(state), state.vx + 18)
+			state.vy = 17 - state.powerUses
+			event(state, "pinball", "BOING! " .. tostring(state.powerUses) .. "/3", nil, state.powerUses)
+		else
+			state.alive = false
+			state.finishReason = "landed"
+			event(state, "finish", "TOUCHDOWN! Distance locked!")
+		end
 	elseif state.elapsed >= Simulation.MAX_FLIGHT_TIME then
 		state.alive = false
 		state.finishReason = "timeout"

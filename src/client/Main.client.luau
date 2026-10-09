@@ -8,6 +8,7 @@ local localPlayer = Players.LocalPlayer
 local shared = ReplicatedStorage:WaitForChild("FlightGame")
 local Simulation = require(shared:WaitForChild("Simulation"))
 local PlaneCatalog = require(shared:WaitForChild("PlaneCatalog"))
+local PowerCatalog = require(shared:WaitForChild("PowerCatalog"))
 local World = require(shared:WaitForChild("World"))
 local Hud = require(script.Parent:WaitForChild("Hud"))
 local FlightAudio = require(script.Parent:WaitForChild("FlightAudio"))
@@ -15,7 +16,7 @@ local PilotAvatar = require(script.Parent:WaitForChild("PilotAvatar"))
 local audio = FlightAudio.new()
 local command = shared:WaitForChild("Command")
 local snapshots = shared:WaitForChild("Snapshot")
-local localSettings = {planeId=PlaneCatalog.DEFAULT_ID,angle=35,gadget="Shield",color=1}
+local localSettings = {planeId=PlaneCatalog.DEFAULT_ID,powerId=PowerCatalog.DEFAULT_ID,angle=35,gadget="Shield",color=1}
 local latest = nil
 local receivedAt = 0
 local watchedUserId = localPlayer.UserId
@@ -75,6 +76,7 @@ hud=Hud.new({
     rematch=function() send("rematch") end,
     lobby=function() send("returnLobby") end,
     mute=function(muted) audio:setMuted(muted) end,
+    powerSelect=function(powerId,confirmed) audio:playSelection(powerId,confirmed) end,
 })
 pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack,false) end)
 pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList,false) end)
@@ -215,7 +217,7 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
                 local alpha=1-math.exp(-dt*18)
                 s.x+=(wantX-s.x)*alpha; s.y+=(wantY-s.y)*alpha
                 smooth[p.userId]=s
-                local visual=table.clone(f); visual.x=s.x; visual.y=s.y; visual.elapsed=renderTime
+                local visual=table.clone(f); visual.x=s.x; visual.y=s.y; visual.elapsed=renderTime; visual.settings=p.settings
                 -- Cosmetic lanes only. All planes use the exact same 2D simulation course.
                 World.updatePlane(planes[p.userId],visual,(index-1)*20-10,dt)
             end
@@ -229,18 +231,22 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
     elseif phase=="Configure" or phase=="Aim" or phase=="Countdown" or phase=="Voting" then
         localSettings=hud:getLocalSettings()
         if not previewPlane or previewPlane:GetAttribute("PreviewColor")~=localSettings.color
-            or previewPlane:GetAttribute("PreviewPlaneId")~=localSettings.planeId then
+            or previewPlane:GetAttribute("PreviewPlaneId")~=localSettings.planeId
+            or previewPlane:GetAttribute("PreviewPowerId")~=localSettings.powerId then
             if previewPlane then previewPlane:Destroy() end
             previewPlane=World.createPlane(worldFolder,localPlayer.DisplayName,localSettings.color,localSettings.planeId)
             previewPlane:SetAttribute("PreviewColor",localSettings.color)
             previewPlane:SetAttribute("PreviewPlaneId",localSettings.planeId)
+            previewPlane:SetAttribute("PreviewPowerId",localSettings.powerId)
             PilotAvatar.attach(previewPlane,localPlayer.UserId,false)
         end
         local profile=PlaneCatalog.get(localSettings.planeId) or PlaneCatalog.get(PlaneCatalog.DEFAULT_ID)
         local angle=math.rad(localSettings.angle or profile.angle)
-        World.updatePlane(previewPlane,{x=0,y=18,vx=math.cos(angle)*profile.speed,vy=math.sin(angle)*profile.speed,elapsed=renderTime,alive=true},0,dt)
+        World.updatePlane(previewPlane,{x=0,y=18,vx=math.cos(angle)*profile.speed,vy=math.sin(angle)*profile.speed,
+            elapsed=renderTime,alive=true,settings=localSettings,powerId=localSettings.powerId,powerPhase="armed",
+            powerCharges=localSettings.powerId=="Meteor" and 1 or 3,powerUses=0},0,dt)
         if phase=="Aim" or phase=="Countdown" then
-            local key=localSettings.planeId..":"..tostring(localSettings.angle)..":"..localSettings.gadget
+            local key=localSettings.planeId..":"..tostring(localSettings.angle)..":"..tostring(localSettings.powerId)
             if key~=aimTrajectoryKey then
                 aimTrajectory=Simulation.previewTrajectory(localSettings,3)
                 aimTrajectoryKey=key

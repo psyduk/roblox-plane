@@ -122,6 +122,7 @@ def make_runtime(studio=True, published=False):
     simulation, catalog = load_simulation(L)
     L.globals().Harness.shared.Simulation.module=simulation
     L.globals().Harness.shared.PlaneCatalog=L.table_from({'module':catalog})
+    L.globals().Harness.shared.PowerCatalog=L.table_from({'module':L.execute((ROOT/'src/shared/PowerCatalog.luau').read_text())})
     L.globals().Harness.services.ServerStorage.children.SimulationTests=L.table_from({'module':L.execute((ROOT/'tests/Simulation.spec.luau').read_text())})
     for name in ('PlayerStats', 'Telemetry'):
         module=L.execute((ROOT/f'src/server/{name}.luau').read_text())
@@ -134,6 +135,49 @@ def make_runtime(studio=True, published=False):
     return L
 
 SCENARIOS = {
+    "power identity is validated and locks before launch": r'''
+        local a,b=Harness.add(101),Harness.add(102)
+        Harness.debug('forcePair',{ids={a.UserId,b.UserId}});Harness.debug('configure',{userId=a.UserId})
+        for _,bad in ipairs({'Unknown','',42,false,{}})do
+            local result=Harness.debug('validateSettings',{planeId='cruiser',angle=35,gadget='Shield',color=1,powerId=bad})
+            assert(result==nil,'invalid power identity accepted')
+        end
+        Harness.send(a,'configure',{settings={planeId='cruiser',angle=25,gadget='Magnet',color=1,powerId='Muncher',powerCharges=999,powerPhase='spent'}})
+        Harness.send(b,'configure',{settings={planeId='cruiser',angle=55,gadget='Shield',color=2,powerId='Meteor'}})
+        Harness.advance(0.2)
+        assert(Harness.latest(a).players[1].settings.powerId=='Muncher')
+        assert(Harness.latest(a).players[1].settings.powerCharges==nil)
+        Harness.debug('aim',{userId=a.UserId})
+        for _,kind in ipairs({'configure','ready'})do
+            Harness.send(a,kind,{ready=true,settings={angle=45,powerId='Pinball'}});Harness.advance(0.1)
+            local own=Harness.latest(a).players[1]
+            assert(own.settings.powerId=='Muncher' and own.settings.angle==25 and not own.ready)
+        end
+        Harness.send(a,'ready',{ready=true,settings={angle=25,powerId='Muncher'}})
+        Harness.send(b,'ready',{ready=true});Harness.advance(4.2)
+        local s=Harness.latest(a)
+        assert(s.phase=='Flight')
+        assert(s.players[1].flight.powerId=='Muncher' and s.players[2].flight.powerId=='Meteor')
+        assert(s.players[1].flight.powerCharges==3 and s.players[2].flight.powerCharges==1)
+        for _,p in ipairs(s.players)do assert(p.flight.shield==0 and p.flight.powerPhase=='armed' and p.flight.powerUses==0)end
+        Harness.send(a,'configure',{settings={planeId='cruiser',angle=25,gadget='Shield',color=1,powerId='Pinball'}})
+        Harness.advance(0.2);assert(Harness.latest(a).players[1].flight.powerId=='Muncher')
+    ''',
+    "each round starts with fresh power charges for both pilots": r'''
+        local a=Harness.add(101)
+        Harness.send(a,'configure',{settings={planeId='dart',angle=15,gadget='Boost',color=1,powerId='Pinball'}})
+        Harness.send(a,'practice');Harness.debug('launch',{userId=a.UserId})
+        Harness.advance(46)
+        local first=Harness.latest(a)
+        assert(first.phase=='Results' and first.players[1].flight.powerUses>0)
+        Harness.send(a,'rematch');Harness.debug('configure',{userId=a.UserId})
+        Harness.send(a,'configure',{settings={planeId='dart',angle=15,gadget='Boost',color=1,powerId='Muncher'}})
+        Harness.debug('launch',{userId=a.UserId})
+        local second=Harness.debug('snapshot',{userId=a.UserId})
+        assert(second.players[1].flight.powerId=='Muncher' and second.players[1].flight.powerCharges==3)
+        assert(second.players[1].flight.powerUses==0 and second.players[1].flight.shield==0)
+        for _,p in ipairs(second.players)do assert(p.flight.powerUses==0 and p.flight.powerPhase=='armed')end
+    ''',
     "aim locks the loadout while accepting only bounded angle changes": r'''
         local a,b=Harness.add(101),Harness.add(102)
         Harness.send(a,'configure',{settings={planeId='dart',angle=24,gadget='Magnet',color=3}})

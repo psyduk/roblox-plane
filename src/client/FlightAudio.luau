@@ -15,16 +15,18 @@ local EXPLOSION = "rbxasset://sounds/impact_explosion_03.mp3"
 local CHIME = "rbxasset://sounds/volume_slider.ogg"
 local LAND = "rbxasset://sounds/action_jump_land.mp3"
 local SOURCES = { boing=BOING, jump=JUMP, boom=EXPLOSION, chime=CHIME, land=LAND }
+Audio.VOICES_PER_SOURCE = 4
+Audio.VOICE_POOL_LIMIT = 20
 
 function Audio.new()
     local self=setmetatable({voices={},nextVoice={},tracks={},key=nil,muted=false,
-        tweens={},played=0,ghostPlayed=0,humanPlayed=0,ready=false},Audio)
+        tweens={},played=0,ghostPlayed=0,humanPlayed=0,ready=false,selectionAt={}},Audio)
     self.folder=Instance.new("Folder"); self.folder.Name="SkyboundAudio"; self.folder.Parent=SoundService
     self.group=Instance.new("SoundGroup"); self.group.Name="FlightMix"; self.group.Volume=0.75; self.group.Parent=self.folder
     local preload={}
     for name,id in pairs(SOURCES) do
         self.voices[name]={}; self.nextVoice[name]=0
-        for index=1,4 do
+        for index=1,Audio.VOICES_PER_SOURCE do
             local sound=Instance.new("Sound")
             sound.Name=name..index; sound.SoundId=id; sound.Volume=0; sound.SoundGroup=self.group
             sound.Parent=self.folder; table.insert(self.voices[name],sound); table.insert(preload,sound)
@@ -44,11 +46,18 @@ function Audio:setMuted(muted)
     self.muted=muted==true
     self.group.Volume=self.muted and 0 or 0.75
     self.folder:SetAttribute("Muted",self.muted)
+    if self.muted then
+        -- Keep event cursors while silencing active voices, so unmuting never
+        -- replays contacts that happened while the player chose quiet mode.
+        for _,tween in pairs(self.tweens) do tween:Cancel() end
+        for _,pool in pairs(self.voices) do for _,sound in ipairs(pool) do sound:Stop() end end
+    end
 end
 
 function Audio:voice(name,volume,pitch,duration,finishPitch)
-    if not self.folder.Parent then return end
+    if self.muted or not self.folder.Parent then return end
     local pool=self.voices[name]
+    if not pool then return end
     local index=self.nextVoice[name]%#pool+1; self.nextVoice[name]=index
     local sound=pool[index]
     if self.tweens[sound] then self.tweens[sound]:Cancel() end
@@ -60,6 +69,7 @@ function Audio:voice(name,volume,pitch,duration,finishPitch)
 end
 
 function Audio:playEvent(event, gain, pitchFactor, track, pilot)
+    if self.muted then return end
     local kind=event.kind
     local now=os.clock()
     gain, pitchFactor = gain or 1, pitchFactor or 1
@@ -90,6 +100,22 @@ function Audio:playEvent(event, gain, pitchFactor, track, pilot)
     elseif kind=="finish" then
         voice("land",0.42,0.85,0.45)
         voice("chime",0.20,0.95,0.7)
+    elseif kind=="pinball" then
+        local pitch=0.85+math.clamp(event.value or 1,1,3)*0.16
+        voice("boing",0.66,pitch,0.8,pitch+0.4)
+        voice("land",0.29,0.7,0.2,1.25)
+        voice("chime",0.21,pitch*1.45,0.5)
+    elseif kind=="munch" then
+        voice("land",0.64,0.65,0.27,1.5)
+        voice("boom",0.3,1.9,0.28,1.25)
+        voice("jump",0.3,0.95,0.55,1.8)
+    elseif kind=="meteorDive" then
+        voice("jump",0.48,1.8,0.75,0.6)
+        voice("boom",0.27,0.65,0.85,0.45)
+    elseif kind=="meteorBoost" then
+        voice("boom",0.52,0.95,0.72,1.35)
+        voice("jump",0.44,0.65,0.64,1.9)
+        voice("chime",0.26,1.2,0.6,1.8)
     else return end
     self.played+=1
     self.folder:SetAttribute("PlayedEvents",self.played)
@@ -100,6 +126,30 @@ function Audio:playEvent(event, gain, pitchFactor, track, pilot)
         self.folder:SetAttribute("GhostEvents",self.ghostPlayed)
         self.folder:SetAttribute("HumanEvents",self.humanPlayed)
     end
+end
+
+-- Selection sounds only follow deliberate UI input. This shares the same
+-- bounded voice pool and mute switch as both pilots' flight events.
+function Audio:playSelection(powerId, confirmed)
+    if self.muted or (powerId~="Pinball" and powerId~="Muncher" and powerId~="Meteor") then return end
+    self.selectionAt=self.selectionAt or {}
+    local key=powerId..(confirmed and ":lock" or ":preview")
+    local now=os.clock()
+    if now-(self.selectionAt[key] or -math.huge)<0.12 then return end
+    self.selectionAt[key]=now
+    local gain=confirmed and 1 or 0.55
+    if powerId=="Pinball" then
+        self:voice("boing",0.5*gain,1.1,0.55,1.55)
+    elseif powerId=="Muncher" then
+        self:voice("land",0.48*gain,0.7,0.22,1.4)
+        self:voice("boom",0.2*gain,1.8,0.3)
+    else
+        self:voice("jump",0.4*gain,1.4,0.6,0.75)
+        self:voice("boom",0.23*gain,0.8,0.48)
+    end
+    if confirmed then self:voice("chime",0.32,1.4,0.65,1.75) end
+    self.folder:SetAttribute("LastSelection",powerId)
+    self.folder:SetAttribute("SelectionConfirmed",confirmed==true)
 end
 
 function Audio:stop()

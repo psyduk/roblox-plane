@@ -1,6 +1,6 @@
 # Skybound — 1v1 flight prototype
 
-A bright arcade flight club with a walkable social hub and independent two-pilot duels. Choose a launch plan, then watch fuel boosts and missiles determine how far the plane travels before touchdown. Flight is automatic after takeoff.
+A bright arcade flight club with a walkable social hub and independent two-pilot duels. Choose one superpower and a launch angle, then watch your transformed plane bounce, eat missiles or dive into a forward blast. Flight is automatic after takeoff.
 
 ## Play locally
 
@@ -12,10 +12,10 @@ To test alone, press **Practice vs Ghost**. This explicitly starts a duel agains
 
 1. **Pair up:** two occupied pads create an independent 1v1 match and move both players into its match view.
 2. **Vote:** choose Coast, Skyline, or Storm. The vote lasts eight seconds; both pilots receive the same generated course conditions.
-3. **Choose your setup:** select a free plane, gadget and cosmetic color, then press **Next: Aim Jet**. Once both pilots confirm, or the 25-second selection timer expires, these choices lock and the selection panel closes.
+3. **Choose your power:** select Pinball, Missile Muncher or Meteor Dive from three large animated cards, optionally change the free plane and paint, then press **Lock In Power**. Once both pilots confirm, or the 25-second selection timer expires, these choices lock and the selection panel closes.
 4. **Aim your jet:** on the wider runway view, click or touch ahead of the jet to point it toward your chosen direction, or hold and drag to adjust within **15–60°**. A forward reticle, angle ticks and trajectory dots help line up the shot. The dotted guide previews the first three seconds without predicting future course contacts. Release sets the angle; **Ready to Launch** confirms it. Both pilots confirming, or the separate 20-second aiming timer expiring, starts the shared three-second countdown.
-5. **Watch:** the planes fly automatically through staggered clusters of numbers and missiles. Fuel marked **+5 / +10 / +20** adds forward and upward momentum. Missiles reduce speed and push the plane down. Occasional low-altitude **+20** pockets or the rescue gadget can turn a dive upward. Floating feedback shows actual pickups, hits, shield saves and fully cleared near misses; near misses award no extra distance or boost.
-6. **Touch down:** contacting the ground locks that plane's horizontal distance. The other plane continues until its own touchdown or the 45-second flight limit.
+5. **Watch:** the planes fly automatically through staggered clusters of numbers and missiles. Fuel marked **+5 / +10 / +20** adds momentum. Missiles reduce speed and push the plane down unless Missile Muncher eats them. Meteor stays committed to its dive through fuel contacts; its own pull-up creates the recovery. Floating feedback shows actual pickups, hits, shield saves and fully cleared near misses; near misses award no extra distance or boost.
+6. **Touch down:** final ground contact locks that plane's horizontal distance; Pinball spends its three bounces first. The other plane continues until its own touchdown or the 45-second flight limit.
 7. **Choose what is next:** results offer **Rematch** or **Return to Lobby**. A human rematch requires both pilots; practice requires only the human's request. Results expire back to the lobby after 90 seconds, without automatically starting another match.
 
 ## Controls and scoring
@@ -23,7 +23,7 @@ To test alone, press **Practice vs Ghost**. This explicitly starts a duel agains
 | Context | Controls |
 | --- | --- |
 | Hub and queue | Normal Roblox movement and camera; walk onto or off a paired pad |
-| Selection | Choose plane, gadget and color; **Next: Aim Jet** or **R** confirms the choices |
+| Selection | Choose a power, plane and color; **Lock In Power** or **R** confirms the choices |
 | Aiming | Click/tap ahead or hold and drag to aim; release sets the angle; **A / D** adjust by 1°; **Ready to Launch** or **R** marks ready |
 | Flight | Watch automatically; **Q / E** or the camera arrows switch the watched pilot |
 | Gamepad | Selectable on-screen buttons; **Y** marks ready; shoulder buttons switch the watched pilot |
@@ -33,7 +33,7 @@ Avatar movement controls are disabled during a match and restored in the hub. Th
 
 The greatest horizontal distance wins. One displayed game meter equals one simulated stud. Final scores and personal best use **0.1 m** precision; equal scores share a rank. Leaving or disconnecting during flight forfeits the duel, even if that pilot had travelled farther. Leaving before flight cancels the pairing; an opponent who has left cannot accept a rematch.
 
-All three planes are freely selectable. Each has a fixed catalog launch speed; dragging changes direction, not power. Changing planes resets the aim to that plane's starting angle, which can then be adjusted on the jet screen. Plane, gadget and color lock when aiming begins; angle locks at countdown. The profiles are distinct options, not established balance tiers.
+All three planes are freely selectable. Each has a fixed catalog launch speed; dragging changes direction, not power. Changing planes resets the aim to that plane's starting angle, which can then be adjusted on the jet screen. Power, plane and color lock when aiming begins; angle locks at countdown. The profiles are distinct options, not established balance tiers.
 
 | Plane | Launch speed | Starting angle |
 | --- | --- | --- |
@@ -41,11 +41,15 @@ All three planes are freely selectable. Each has a fixed catalog launch speed; d
 | Skyhopper | 64.5 m/s | 48° |
 | Dart | 81 m/s | 24° |
 
-All gadgets are free:
+All three powers are free and activate automatically after takeoff. Choose exactly one per round; charges reset on rematch:
 
-- **Shield:** absorbs one missile hit.
-- **Magnet:** collects fuel from farther away without increasing missile collision range.
-- **Boost:** provides one automatic rescue burst at low altitude.
+| Power | Flight rule | Launch strategy |
+| --- | --- | --- |
+| **Pinball** | The first three ground contacts bounce the plane upward and add forward momentum; the fourth lands. | Aim low to use the ground as a launchpad. |
+| **Missile Muncher** | The first three missile contacts feed increasingly strong boosts instead of causing damage; later missiles hit normally. | Aim through missile lanes. |
+| **Meteor Dive** | The first apex starts a fast dive, followed by one automatic pull-up near the ground. Peak altitude determines the forward burst. | Aim high to charge the blast. |
+
+Powers replace the former gadget picker. A selected power has no hidden Shield, Magnet or rescue-Boost effect. These are initial balance settings, not established competitive tiers.
 
 The four plane colors have identical performance. Flight settings last for the current session. **My Stats** tracks furthest completed flight, best/current human duel streak, wins/losses/draws and flight/practice counts. Practice can improve distance records but never win streaks; ties preserve the current streak and forfeits reset it. Aborted flights cannot improve best distance.
 
@@ -59,7 +63,7 @@ The starter analytics module uses native Roblox custom events for session durati
 
 Coast has warm grass, coral bluffs, palms and lighthouses. Skyline has an elevated runway among sunset towers and skybridges. Storm has purple basalt, neon crystals, pylons and distant lightning. All three retain ground contact at y=0 and the existing simulation rules. Arena lighting is local to the duel and resets on returning to the hub.
 
-Your character is represented by a cosmetic seated avatar in the plane; the walking character is hidden during the duel and restored to the hub afterward. Practice uses an original neutral ghost pilot. Fuel creates an expanding ripple and rising number, while impacts add sparks, a shockwave and smoke. Effects are pooled and cleaned up with the plane.
+Your character is represented by a cosmetic seated avatar in the plane; the walking character is hidden during the duel and restored to the hub afterward. Practice uses an original neutral ghost pilot. Power choice uses oversized illustrated cards, a lock-in burst and a large countdown. Pinball gains a rubber cage, Muncher gains animated jaws and teeth, and Meteor gains a fiery core and fins. Their activations create distinct BOING, CHOMP, DIVE and BLAST callouts, pooled bursts and layered sound cues. Fuel creates an expanding ripple and rising number, while impacts add sparks, a shockwave and smoke. Effects are pooled and cleaned up with the plane.
 
 Flight sounds mix events from both pilots, including the practice ghost, with relative gain **1.0** for the watched pilot and **0.65** for the rival. Each pilot keeps an independent event cursor and cooldowns, so switching cameras changes the mix without replaying old contacts or suppressing the other pilot's events. Sounds use bounded voice pools and a **Sound On/Off** button. Fuel pitches rise with pickup value; shields, impacts, near misses and touchdown have their own mix. The boing is the free [Cartoon Jump Sound by Dizzota](https://create.roblox.com/store/asset/2772396665), with a bundled Roblox jump fallback. Other layers use Roblox's bundled jump, landing, volume-slider and explosion sounds. No external audio was uploaded.
 
@@ -88,7 +92,8 @@ This regenerates `Skybound.rbxlx` from the source files. Stop any running playte
 | File | Purpose |
 | --- | --- |
 | `src/shared/PlaneCatalog.luau` | Free selectable plane IDs, fixed launch speeds, starting angles and display metadata |
-| `src/shared/Simulation.luau` | Deterministic flight physics, aim preview, fuel, missiles, gadgets and course generation |
+| `src/shared/PowerCatalog.luau` | Free round powers, descriptions, launch hints and display colors |
+| `src/shared/Simulation.luau` | Deterministic flight physics, automatic powers, aim preview, fuel, missiles and course generation |
 | `src/shared/World.luau` | Procedural hub, paired pads, course scenery and plane rendering |
 | `src/server/Main.server.luau` | Queues, independent duels, command validation, rematches, forfeits and rankings |
 | `src/client/Main.client.luau` | Hub/match camera, interpolation, avatar controls, input and snapshots |
@@ -110,6 +115,7 @@ Run the simulation suite inside Studio's Edit command bar after opening the gene
 ```lua
 print(require(game.ServerStorage.SimulationTests)(require(game.ReplicatedStorage.FlightGame.Simulation)))
 print(require(game.ServerStorage.PlaneCatalogTests)(require(game.ReplicatedStorage.FlightGame.PlaneCatalog)))
+print(require(game.ServerStorage.PowerCatalogTests)(require(game.ReplicatedStorage.FlightGame.PowerCatalog)))
 print(require(game.ServerStorage.PlayerStatsTests)(require(game.ServerScriptService.PlayerStats)))
 print(require(game.ServerStorage.TelemetryTests)(require(game.ServerScriptService.Telemetry)))
 print(require(game.ServerStorage.FlightAudioTests)(require(game.StarterPlayer.StarterPlayerScripts.FlightAudio)))

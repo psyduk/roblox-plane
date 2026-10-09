@@ -8,7 +8,7 @@ return function(Audio)
     local function fixture(realEvents)
         local calls,attributes={},{}
         local mix=setmetatable({voices={},tweens={},tracks={},played=0,ghostPlayed=0,humanPlayed=0,
-            folder={SetAttribute=function(_,key,value) attributes[key]=value end}},Audio)
+            group={Volume=.75},folder={SetAttribute=function(_,key,value) attributes[key]=value end}},Audio)
         if realEvents then
             mix.voice=function(_,name,volume,pitch) table.insert(calls,{name=name,volume=volume,pitch=pitch}) end
         else
@@ -85,6 +85,51 @@ return function(Audio)
         assert(#calls==2 and mix.tracks["3"]==nil)
         mix:update({pilot(1,false,.1,1)},"round1",1,true)
         assert(mix.tracks["-1"]==nil)
+    end)
+    test("power cues mix both pilots and do not replay on camera switches",function()
+        local mix,calls,attrs=fixture(true)
+        local players={pilot(1,false,0,1,"pinball"),pilot(-1,true,0,1,"munch")}
+        mix:update(players,"round1",1,true)
+        assert(#calls==6 and attrs.PlayedEvents==2)
+        assert(calls[1].name=="boing" and calls[4].name=="land","powers lost their distinct cues")
+        mix:update(players,"round1",-1,true)
+        assert(#calls==6,"power history replayed after switching cameras")
+        players[1]=pilot(1,false,.2,2,"meteorDive")
+        players[2]=pilot(-1,true,.2,2,"meteorBoost")
+        mix:update(players,"round1",-1,true)
+        assert(#calls==11 and attrs.GhostEvents==2 and attrs.HumanEvents==2)
+        assert(calls[7].name=="jump" and calls[9].name=="boom")
+    end)
+    test("mute silences active voices and consumes power event history",function()
+        local mix,calls=fixture(true)
+        local stopped,cancelled=0,0
+        mix.voices={test={{Stop=function() stopped+=1 end}}}
+        mix.tweens={test={Cancel=function() cancelled+=1 end}}
+        mix:update({pilot(1,false,0,1,"pinball")},"round1",1,true)
+        local before=#calls
+        mix:setMuted(true)
+        assert(stopped>=1 and cancelled>=1 and mix.group.Volume==0)
+        local players={pilot(1,false,.2,2,"munch")}
+        mix:update(players,"round1",1,true)
+        mix:playSelection("Meteor",true)
+        assert(#calls==before,"muted action emitted a voice")
+        mix:setMuted(false)
+        mix:update(players,"round1",1,true)
+        assert(#calls==before,"unmute replayed a muted event")
+        players[1]=pilot(1,false,.3,3,"meteorBoost")
+        mix:update(players,"round1",1,true)
+        assert(#calls==before+3 and mix.group.Volume==.75)
+    end)
+    test("selection is explicit and rapid duplicate callbacks are suppressed",function()
+        local mix,calls,attrs=fixture(true)
+        mix:playSelection("unknown",true);assert(#calls==0)
+        mix:playSelection("Pinball",false);assert(#calls==1)
+        mix:playSelection("Pinball",false);assert(#calls==1)
+        mix:playSelection("Pinball",true);assert(#calls==3)
+        mix:playSelection("Pinball",true);assert(#calls==3)
+        mix:playSelection("Muncher",false);assert(#calls==5)
+        assert(attrs.LastSelection=="Muncher" and attrs.SelectionConfirmed==false)
+        assert(mix.key==nil and next(mix.tracks)==nil,"selection changed flight cursors")
     end)
     return tostring(passed).." flight-audio tests passed"
 end

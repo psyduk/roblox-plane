@@ -3,7 +3,9 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 local PlaneCatalog = require(ReplicatedStorage:WaitForChild("FlightGame"):WaitForChild("PlaneCatalog"))
+local PowerCatalog = require(ReplicatedStorage:WaitForChild("FlightGame"):WaitForChild("PowerCatalog"))
 
 local Hud = {}
 Hud.__index = Hud
@@ -32,23 +34,18 @@ local PAINTS = {
 	Color3.fromRGB(184, 138, 255),
 }
 local PAINT_NAMES = { "Coral", "Cyan", "Gold", "Lilac" }
-local GADGETS = { "Shield", "Magnet", "Boost" }
-local GADGET_COPY = {
-	Shield = "SHIELD  /  Absorbs one missile hit. A little room for error.",
-	Magnet = "MAGNET  /  Collect fuel from farther away. Chase the pickups.",
-	Boost = "BOOST  /  One automatic rescue burst when you drop low.",
-}
-local GADGET_SHORT_COPY = {
-	Shield = "SHIELD · Blocks one missile hit.",
-	Magnet = "MAGNET · Collects fuel from farther away.",
-	Boost = "BOOST · One automatic low-altitude rescue.",
+local POWER_IDS = { "Pinball", "Muncher", "Meteor" }
+local POWER_COPY = {
+	Pinball = { promise = "Turn crashes into takeoffs.", plan = "AIM LOW · BOUNCE FAR", sound = "BOING!" },
+	Muncher = { promise = "Danger is your rocket fuel.", plan = "AIM AT THE MISSILES", sound = "CHOMP!" },
+	Meteor = { promise = "Drop hard. Blast forward.", plan = "AIM HIGH · BUILD SPEED", sound = "BOOOM!" },
 }
 local PHASE_NAMES = {
 	Lobby = "FLIGHT CLUB",
 	Queued = "FINDING YOUR RIVAL",
 	Waiting = "GETTING READY",
 	Voting = "CHOOSE A COURSE",
-	Configure = "CHOOSE YOUR JET",
+	Configure = "CHOOSE YOUR POWER",
 	Aim = "AIM YOUR JET",
 	Countdown = "CLEARED FOR TAKEOFF",
 	Flight = "GO THE DISTANCE",
@@ -177,7 +174,7 @@ end
 
 local function sameSettings(a, b)
 	return a and b and a.planeId == b.planeId and a.angle == b.angle
-		and a.gadget == b.gadget and a.color == b.color
+		and a.powerId == b.powerId and a.color == b.color
 end
 
 local function selection(settings)
@@ -189,7 +186,8 @@ local function selection(settings)
 	return {
 		planeId = planeId,
 		angle = math.clamp(math.round(angle), 15, 60),
-		gadget = GADGET_COPY[settings.gadget] and settings.gadget or "Shield",
+		powerId = table.find(POWER_IDS, settings.powerId) and settings.powerId or PowerCatalog.DEFAULT_ID,
+		gadget = "Shield", -- Kept in the payload for older clients; powers replace gadgets.
 		color = type(settings.color) == "number" and math.clamp(math.floor(settings.color), 1, #PAINTS) or 1,
 	}
 end
@@ -214,6 +212,107 @@ function Hud:_call(name, ...)
 	if handler then
 		handler(...)
 	end
+end
+
+-- Each target owns at most one finite tween. Resize, selection, and destruction
+-- can replace it without leaving animation tasks or signal connections behind.
+function Hud:_tween(target, duration, properties, delay, reverses)
+	if self.tweens[target] then self.tweens[target]:Cancel() end
+	if self.reducedMotion then
+		if not reverses then
+			for key, value in pairs(properties) do target[key] = value end
+		end
+		return
+	end
+	local tween = TweenService:Create(target, TweenInfo.new(duration, Enum.EasingStyle.Back,
+		Enum.EasingDirection.Out, 0, reverses == true, delay or 0), properties)
+	self.tweens[target] = tween
+	tween:Play()
+end
+
+local function powerColor(id)
+	local color = PowerCatalog.get(id).color
+	return Color3.fromRGB(color.r, color.g, color.b)
+end
+
+local function powerArtwork(parent, id)
+	local art = frame(parent, "Artwork", 0, 0, 160, 108, COLORS.white)
+	art.BackgroundTransparency = 1
+	art.AnchorPoint = Vector2.new(0.5, 0.5)
+	local scale = create("UIScale", { Scale = 1 }, art)
+	local function shape(name, x, y, w, h, color, rotation, round)
+		local part = frame(art, name, x, y, w, h, color)
+		part.Rotation = rotation or 0
+		if round then corner(part, round) end
+		return part
+	end
+	if id == "Pinball" then
+		local ring = shape("BounceRing", 35, 5, 90, 90, COLORS.white, 0, 90)
+		ring.BackgroundTransparency = 0.65
+		stroke(ring, COLORS.white, 5)
+		shape("Ground", 20, 98, 120, 5, COLORS.ink, 0, 3)
+		for index = 1, 3 do shape("BounceMark" .. index, 33 + index * 21, 89, 6, 6, COLORS.white, -25, 6) end
+	elseif id == "Meteor" then
+		shape("OuterFlame", 15, 21, 108, 39, Color3.fromRGB(255, 88, 43), 27, 25)
+		shape("MiddleFlame", 28, 26, 96, 32, COLORS.gold, 27, 25)
+		shape("InnerFlame", 49, 38, 77, 19, COLORS.white, 27, 25)
+	else
+		shape("ChompHalo", 27, 4, 103, 90, Color3.fromRGB(55, 125, 49), -12, 65)
+		for index = 1, 3 do shape("SpeedLine" .. index, 9, 29 + index * 15, 35, 5, COLORS.white, 0, 3) end
+	end
+	local jet = frame(art, "Plane", 80, 50, 100, 66, COLORS.white)
+	jet.AnchorPoint = Vector2.new(0.5, 0.5)
+	jet.BackgroundTransparency = 1
+	jet.Rotation = id == "Meteor" and 25 or -15
+	local function part(name, x, y, w, h, color, rotation)
+		local item = frame(jet, name, x, y, w, h, color)
+		item.Rotation = rotation or 0
+		corner(item, 6)
+		stroke(item, COLORS.ink, 2)
+		return item
+	end
+	part("Tail", 9, 13, 18, 42, COLORS.white, -20)
+	part("Wing", 42, 5, 21, 58, COLORS.white, -20)
+	part("Body", 10, 25, 84, 20, COLORS.white)
+	part("Cockpit", 68, 28, 15, 9, COLORS.cyan)
+	if id == "Muncher" then
+		local mouth = part("Mouth", 77, 18, 33, 33, COLORS.ink)
+		corner(mouth, 16)
+		for index = 1, 3 do
+			local tooth = frame(mouth, "TopTooth" .. index, 5 + (index - 1) * 9, 2, 6, 10, COLORS.white)
+			corner(tooth, 2)
+			local bottom = frame(mouth, "BottomTooth" .. index, 5 + (index - 1) * 9, 23, 6, 8, COLORS.white)
+			corner(bottom, 2)
+		end
+	end
+	local sound = label(art, "Sound", POWER_COPY[id].sound, 59, 80, 106, 25, 19, COLORS.white, true)
+	sound.Font, sound.Rotation = Enum.Font.FredokaOne, -9
+	sound.TextStrokeColor3, sound.TextStrokeTransparency = COLORS.ink, 0
+	return { frame = art, scale = scale, plane = jet }
+end
+
+function Hud:_animatePowerChoice(entrance)
+	for index, id in ipairs(POWER_IDS) do
+		local card = self.powerCards[id]
+		local selected = id == self.settings.powerId
+		if entrance and not self.reducedMotion then card.scale.Scale = 0.84 end
+		self:_tween(card.scale, 0.3, { Scale = selected and 1.02 or 0.97 }, entrance and (index - 1) * 0.09 or 0)
+		self:_tween(card.button, 0.25, { Rotation = selected and -1.5 or 0 })
+		if selected and not entrance then
+			local angle = id == "Meteor" and 47 or (id == "Pinball" and -34 or -5)
+			self:_tween(card.art.plane, 0.24, { Rotation = angle }, 0, true)
+		end
+	end
+end
+
+function Hud:_showPowerBurst(title, detail, color, duration)
+	self.powerBurstTitle.Text = title
+	self.powerBurstDetail.Text = detail
+	self.powerBurst.BackgroundColor3 = color
+	self.powerBurstUntil = workspace:GetServerTimeNow() + duration
+	self.powerBurst.Visible = true
+	self.powerBurstScale.Scale = self.reducedMotion and 1 or 0.72
+	self:_tween(self.powerBurstScale, 0.34, { Scale = 1 })
 end
 
 function Hud:_panel(name, height)
@@ -378,7 +477,8 @@ end
 function Hud:_refreshSettings()
 	local setting = self.settings
 	local plane = PlaneCatalog.get(setting.planeId)
-	self.fixedStats.Text = "ANGLE " .. statNumber(setting.angle) .. "°   /   SPEED " .. statNumber(plane.speed) .. " m/s"
+	local power = PowerCatalog.get(setting.powerId)
+	self.fixedStats.Text = string.upper(power.name) .. "  ·  " .. statNumber(setting.angle) .. "°"
 	self.planeSpeed.Text = plane.name .. "  ·  " .. statNumber(plane.speed) .. " m/s"
 	self.planeStrategy.Text = plane.description
 	for id, control in pairs(self.planeButtons) do
@@ -387,12 +487,15 @@ function Hud:_refreshSettings()
 		control.BackgroundColor3 = chosen and COLORS.green or COLORS.blue
 		self.planeStrokes[id].Thickness = chosen and 3 or 2
 	end
-	self.gadgetCopy.Text = GADGET_COPY[setting.gadget]
-	self.gadgetSummary.Text = GADGET_SHORT_COPY[setting.gadget]
-	for name, control in pairs(self.gadgetButtons) do
-		local selected = setting.gadget == name
-		control.BackgroundColor3 = selected and COLORS.cyan or COLORS.soft
-		control.Text = (selected and "• " or "") .. name
+	self.powerSummary.Text = string.upper(power.name) .. " · " .. power.description
+	for id, card in pairs(self.powerCards) do
+		local selected = setting.powerId == id
+		card.edge.Color = selected and COLORS.white or COLORS.ink
+		card.edge.Thickness = selected and 4 or 2
+		card.chosen.Text = selected and "✓ YOUR POWER" or "CHOOSE"
+		card.chosen.BackgroundColor3 = selected and COLORS.white or COLORS.ink
+		card.chosen.TextColor3 = selected and COLORS.ink or COLORS.white
+		card.button.BackgroundColor3 = powerColor(id)
 	end
 	for index, control in ipairs(self.colorButtons) do
 		control.Text = setting.color == index and "✓" or ""
@@ -400,8 +503,11 @@ function Hud:_refreshSettings()
 	end
 	self.paintName.Text = PAINT_NAMES[setting.color] .. " / cosmetic only"
 	local locked = not self:_canConfigure()
-	self.readyButton.Text = self.ready and "WAITING FOR RIVAL…" or "NEXT: AIM JET"
-	self.readyButton.BackgroundColor3 = self.ready and COLORS.cyan or COLORS.green
+	self.customizeButton.Text = self.compactPowerActions and (self.customizeOpen and "BACK TO\nPOWERS" or "PLANE /\nPAINT")
+		or ((self.customizeOpen and "− " or "+ ") .. "PLANE & PAINT  ·  " .. string.upper(plane.name))
+	self.readyButton.Text = self.compactPowerActions and (self.ready and "LOCKED ✓" or "LOCK IN →")
+		or (self.ready and "POWER LOCKED ✓" or "LOCK IN POWER  →")
+	self.readyButton.BackgroundColor3 = self.ready and COLORS.green or COLORS.gold
 	self.readyButton.Active = not locked
 	self.readyButton.Selectable = not locked
 	for _, control in ipairs(self.configControls) do
@@ -409,6 +515,13 @@ function Hud:_refreshSettings()
 		control.Selectable = not locked
 		control.AutoButtonColor = not locked
 	end
+	for _, control in pairs(self.planeButtons) do control.Selectable = not locked and self.customizeOpen end
+	for _, control in ipairs(self.colorButtons) do control.Selectable = not locked and self.customizeOpen end
+	if self.displayedPower ~= setting.powerId then
+		self.displayedPower = setting.powerId
+		self:_animatePowerChoice(false)
+	end
+	self.readyButton.NextSelectionUp = self.powerCards[setting.powerId].button
 	local aimLocked = not self:_canAim()
 	self.aimReadyButton.Text = self.phase == "Countdown" and "LAUNCHING…" or (self.ready and "READY ✓ · WAITING" or "READY TO LAUNCH")
 	self.aimReadyButton.BackgroundColor3 = self.ready and COLORS.cyan or COLORS.green
@@ -435,7 +548,7 @@ function Hud:setLocalSettings(settings)
 			nextSettings.planeId = settings.planeId
 			nextSettings.angle = PlaneCatalog.get(settings.planeId).angle
 		end
-		if GADGET_COPY[settings.gadget] then nextSettings.gadget = settings.gadget end
+		if table.find(POWER_IDS, settings.powerId) then nextSettings.powerId = settings.powerId end
 		if type(settings.color) == "number" and settings.color == settings.color and math.abs(settings.color) < math.huge then
 			nextSettings.color = math.clamp(math.floor(settings.color), 1, #PAINTS)
 		end
@@ -463,6 +576,10 @@ function Hud:toggleReady()
 	end
 	if self.aimDrag then self:_finishAim(true) end
 	self.ready = not self.ready
+	if self.phase == "Configure" and self.ready then
+		self:_call("powerSelect", self.settings.powerId, true)
+		self:_showPowerBurst(string.upper(PowerCatalog.get(self.settings.powerId).name) .. "!", "LOCKED IN · NEXT: AIM YOUR PLANE", powerColor(self.settings.powerId), 0.85)
+	end
 	self.pendingReady = self.ready
 	self.readyPendingUntil = workspace:GetServerTimeNow() + 0.75
 	self:_refreshSettings()
@@ -473,9 +590,13 @@ function Hud.new(callbacks)
 	local self = setmetatable({}, Hud)
 	self.callbacks = callbacks or {}
 	self.connections = {}
+	self.tweens = {}
+	self.reducedMotion = false
+	pcall(function() self.reducedMotion = GuiService.ReducedMotionEnabled end)
 	self.scaledPanels = {}
 	self.configControls = {}
-	self.settings = selection({ planeId = PlaneCatalog.DEFAULT_ID, gadget = "Shield", color = 1 })
+	self.settings = selection({ planeId = PlaneCatalog.DEFAULT_ID, powerId = PowerCatalog.DEFAULT_ID, color = 1 })
+	self.customizeOpen = false
 	self.ready = false
 	self.phase = "Lobby"
 	self.roundId = nil
@@ -580,20 +701,75 @@ function Hud.new(callbacks)
 	end
 	label(self.votePanel, "VoteHint", "One pilot, one vote. Ties are decided fairly.", 24, 371, 422, 20, 12, COLORS.muted)
 
-	self.configPanel = self:_panel("Configure", 509)
-	label(self.configPanel, "Eyebrow", "THREE FREE PLANES. THREE WAYS TO FLY.", 24, 19, 422, 17, 10, COLORS.muted, true)
-	label(self.configPanel, "Title", "PICK A FREE PLANE", 24, 40, 422, 33, 27, COLORS.ink, true)
-	frame(self.configPanel, "Divider", 24, 87, 422, 1, COLORS.line)
+	self.configPanel = self:_panel("Configure", 490)
+	self.configPanel.BackgroundColor3 = Color3.fromRGB(38, 173, 246)
+	create("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(121, 237, 255), Color3.fromRGB(33, 145, 240)) }, self.configPanel)
+	self.powerHeadline = label(self.configPanel, "PowerHeadline", "CHOOSE YOUR SUPERPOWER", 18, 14, 880, 56, 38, COLORS.white, true)
+	self.powerHeadline.Font = Enum.Font.FredokaOne
+	self.powerHeadline.TextXAlignment = Enum.TextXAlignment.Center
+	self.powerHeadline.TextStrokeColor3, self.powerHeadline.TextStrokeTransparency = COLORS.ink, 0
+	self.powerSubhead = label(self.configPanel, "PowerSubhead", "ONE PICK. ONE ROUND. GO HUGE.", 18, 69, 880, 20, 13, COLORS.ink, true)
+	self.powerSubhead.TextXAlignment = Enum.TextXAlignment.Center
+	self.powerCards = {}
+	for index, id in ipairs(POWER_IDS) do
+		local power = PowerCatalog.get(id)
+		local control = button(self.configPanel, "Power_" .. id, "", 20, 110, 260, 268, powerColor(id))
+		control.AnchorPoint = Vector2.new(0.5, 0.5)
+		control.ClipsDescendants = false
+		control.SelectionOrder = index
+		local card = { button = control, edge = stroke(control, COLORS.ink, 3) }
+		card.scale = create("UIScale", { Scale = 1 }, control)
+		card.art = powerArtwork(control, id)
+		card.title = label(control, "PowerName", string.upper(power.name), 12, 116, 236, 54, 29, COLORS.ink, true)
+		card.title.Font = Enum.Font.FredokaOne
+		card.title.TextWrapped = true
+		card.title.TextXAlignment = Enum.TextXAlignment.Center
+		card.promise = label(control, "Promise", POWER_COPY[id].promise, 12, 176, 236, 34, 14, COLORS.ink, true)
+		card.promise.TextWrapped = true
+		card.promise.TextXAlignment = Enum.TextXAlignment.Center
+		card.plan = label(control, "AimPlan", POWER_COPY[id].plan, 10, 215, 240, 30, 12, COLORS.ink, true)
+		card.plan.TextWrapped = true
+		card.plan.TextXAlignment = Enum.TextXAlignment.Center
+		card.chosen = label(control, "Chosen", "CHOOSE", 14, 9, 116, 21, 10, COLORS.white, true)
+		card.chosen.BackgroundTransparency = 0
+		card.chosen.BackgroundColor3 = COLORS.ink
+		card.chosen.TextXAlignment = Enum.TextXAlignment.Center
+		corner(card.chosen, 6)
+		self.powerCards[id] = card
+		table.insert(self.configControls, control)
+		self:_connect(control.Activated, function()
+			if not self:_canConfigure() then return end
+			local unchanged = self.settings.powerId == id
+			self:setLocalSettings({ powerId = id })
+			if unchanged then self:_animatePowerChoice(false) end
+			self:_call("powerSelect", id, false)
+		end)
+	end
+	self.customizeButton = button(self.configPanel, "CustomizePlane", "+ PLANE & PAINT", 18, 398, 860, 44, COLORS.blue)
+	self.customizeButton.TextSize = 14
+	table.insert(self.configControls, self.customizeButton)
+	self:_connect(self.customizeButton.Activated, function()
+		if not self:_canConfigure() then return end
+		self.customizeOpen = not self.customizeOpen
+		self:_layoutPowerChoices(self.lastViewport, self.layoutHeight)
+		self:_refreshSettings()
+		if self.customizeOpen then
+			self.configPanel.CanvasPosition = Vector2.new(0, math.max(0, self.configPanel.CanvasSize.Y.Offset - self.configPanel.Size.Y.Offset))
+		else self.configPanel.CanvasPosition = Vector2.zero end
+	end)
+	self.customizePanel = frame(self.configPanel, "PlaneAndPaint", 18, 450, 860, 184, COLORS.soft)
+	corner(self.customizePanel, 12)
+	self.customizePanel.Visible = false
 	self.planeButtons, self.planeStrokes = {}, {}
 	for index, id in ipairs(PlaneCatalog.ORDER) do
-		local control = button(self.configPanel, "Plane_" .. id, PlaneCatalog.get(id).name, 24 + (index - 1) * 145, 102, 132, 52, COLORS.blue)
+		local control = button(self.customizePanel, "Plane_" .. id, PlaneCatalog.get(id).name, 12 + (index - 1) * 145, 12, 132, 44, COLORS.blue)
 		self.planeButtons[id] = control
 		self.planeStrokes[id] = stroke(control, COLORS.ink, 2)
 		table.insert(self.configControls, control)
 		self:_connect(control.Activated, function() self:setLocalSettings({ planeId = id }) end)
 	end
-	self.planeSpeed = label(self.configPanel, "PlaneSpeed", "", 24, 165, 422, 24, 14, COLORS.ink, true)
-	self.planeStrategy = label(self.configPanel, "PlaneStrategy", "", 24, 194, 422, 20, 12, COLORS.muted)
+	self.planeSpeed = label(self.customizePanel, "PlaneSpeed", "", 12, 66, 420, 20, 13, COLORS.ink, true)
+	self.planeStrategy = label(self.customizePanel, "PlaneStrategy", "", 12, 90, 420, 20, 12, COLORS.muted)
 	self.planeStrategy.TextTruncate = Enum.TextTruncate.AtEnd
 	self.aimPad = create("TextButton", {
 		Name = "AimPad", Text = "", Position = UDim2.fromOffset(0, 81), Size = UDim2.new(1, 0, 1, -183),
@@ -664,42 +840,36 @@ function Hud.new(callbacks)
 			self:_finishAim(true)
 		end
 	end)
-	label(self.configPanel, "GadgetTitle", "PICK ONE FREE GADGET", 24, 229, 422, 20, 13, COLORS.ink, true)
-	self.gadgetButtons = {}
-	for index, name in ipairs(GADGETS) do
-		local control = button(self.configPanel, name, name, 24 + (index - 1) * 145, 258, 132, 43)
-		self.gadgetButtons[name] = control
-		table.insert(self.configControls, control)
-		self:_connect(control.Activated, function() self:setLocalSettings({ gadget = name }) end)
-	end
-	self.gadgetCopy = label(self.configPanel, "GadgetDetail", "", 24, 310, 422, 36, 12, COLORS.muted)
-	self.gadgetCopy.TextWrapped = true
-	label(self.configPanel, "PaintTitle", "YOUR COLORS", 24, 355, 190, 23, 13, COLORS.ink, true)
-	self.paintName = label(self.configPanel, "PaintName", "", 24, 379, 224, 18, 11, COLORS.muted)
+	self.paintName = label(self.customizePanel, "PaintName", "", 12, 123, 210, 20, 11, COLORS.muted)
 	self.colorButtons, self.colorStrokes = {}, {}
 	for index, paint in ipairs(PAINTS) do
-		local control = button(self.configPanel, "Paint" .. index, "", 248 + (index - 1) * 51, 354, 44, 44, paint)
+		local control = button(self.customizePanel, "Paint" .. index, "", 236 + (index - 1) * 51, 123, 44, 44, paint)
 		control.TextSize = 23
 		self.colorButtons[index] = control
 		self.colorStrokes[index] = stroke(control, COLORS.ink, 2)
 		table.insert(self.configControls, control)
 		self:_connect(control.Activated, function() self:setLocalSettings({ color = index }) end)
 	end
-	self.readyButton = button(self.configPanel, "Ready", "READY TO FLY", 24, 418, 422, 55, COLORS.green)
-	self.readyButton.TextSize = 21
-	self:_connect(self.readyButton.Activated, function() self:toggleReady() end)
-	self.readyStatus = label(self.configPanel, "ReadyStatus", "", 24, 481, 422, 16, 11, COLORS.muted)
-	self.readyStatus.TextXAlignment = Enum.TextXAlignment.Center
-	-- Keep the primary action reachable while the choices scroll on short screens.
-	self.configActions = frame(self.gui, "ConfigureActions", 0, 0, 470, 90)
+	-- The power action stays visible while secondary plane and paint choices scroll.
+	self.configActions = frame(self.gui, "ConfigureActions", 0, 0, 900, 80, COLORS.ink)
 	self.configActions.AnchorPoint = Vector2.new(0.5, 0)
 	self.configActions.Visible = false
 	corner(self.configActions, 16)
 	stroke(self.configActions, COLORS.ink, 3)
-	self.readyButton.Parent = self.configActions
-	self.readyStatus.Parent = self.configActions
-	self.gadgetSummary = label(self.configActions, "GadgetSummary", "", 16, 7, 420, 21, 12, COLORS.ink, true)
-	self.gadgetSummary.Visible = false
+	self.powerSummary = label(self.configActions, "PowerSummary", "", 16, 10, 500, 42, 13, COLORS.white, true)
+	self.powerSummary.TextWrapped = true
+	self.readyButton = button(self.configActions, "Ready", "LOCK IN POWER →", 590, 10, 294, 52, COLORS.gold)
+	self.readyButton.TextSize = 22
+	self:_connect(self.readyButton.Activated, function() self:toggleReady() end)
+	self.readyStatus = label(self.configActions, "ReadyStatus", "", 16, 55, 500, 17, 11, COLORS.white)
+	for index, id in ipairs(POWER_IDS) do
+		local control = self.powerCards[id].button
+		control.NextSelectionLeft = self.powerCards[POWER_IDS[math.max(1, index - 1)]].button
+		control.NextSelectionRight = self.powerCards[POWER_IDS[math.min(#POWER_IDS, index + 1)]].button
+		control.NextSelectionDown = self.readyButton
+	end
+	self.readyButton.NextSelectionUp = self.powerCards[PowerCatalog.DEFAULT_ID].button
+	self.readyButton.NextSelectionDown = self.customizeButton
 	self.aimActions = frame(self.gui, "AimActions", 0, 0, 690, 64)
 	self.aimActions.AnchorPoint = Vector2.new(0.5, 1)
 	self.aimActions.Position = UDim2.new(0.5, 0, 1, -28)
@@ -740,6 +910,43 @@ function Hud.new(callbacks)
 	self.toastText = label(self.toast, "Text", "", 16, 9, 438, 28, 17, COLORS.ink, true)
 	self.toastText.TextXAlignment = Enum.TextXAlignment.Center
 	self.toastText.TextTruncate = Enum.TextTruncate.AtEnd
+	self.toastText.Font = Enum.Font.FredokaOne
+	self.toastText.TextStrokeColor3, self.toastText.TextStrokeTransparency = COLORS.ink, 0
+	self.toastText.TextColor3 = COLORS.white
+	self.toastScale = self.toast:FindFirstChildOfClass("UIScale")
+	self.powerFlightBadge = frame(self.gui, "FlightPower", 0, 0, 300, 31, COLORS.gold)
+	self.powerFlightBadge.AnchorPoint = Vector2.new(0.5, 0)
+	self.powerFlightBadge.Visible = false
+	corner(self.powerFlightBadge, 10)
+	stroke(self.powerFlightBadge, COLORS.ink, 2)
+	self.powerFlightText = label(self.powerFlightBadge, "PowerState", "PINBALL · 3 BOUNCES", 9, 3, 282, 25, 13, COLORS.ink, true)
+	self.powerFlightText.Font = Enum.Font.FredokaOne
+	self.powerFlightText.TextXAlignment = Enum.TextXAlignment.Center
+	self.powerBurst = frame(self.gui, "PowerLocked", 0, 0, 520, 112, COLORS.gold)
+	self.powerBurst.AnchorPoint = Vector2.new(0.5, 0.5)
+	self.powerBurst.Visible = false
+	self.powerBurst.ZIndex = 12
+	self.powerBurst.Rotation = -3
+	corner(self.powerBurst, 18)
+	stroke(self.powerBurst, COLORS.ink, 5)
+	self.powerBurstScale = create("UIScale", { Scale = 1 }, self.powerBurst)
+	self.powerBurstTitle = label(self.powerBurst, "PowerBurstTitle", "PINBALL!", 10, 5, 500, 76, 60, COLORS.white, true)
+	self.powerBurstTitle.Font = Enum.Font.FredokaOne
+	self.powerBurstTitle.TextScaled = true
+	create("UITextSizeConstraint", { MinTextSize = 18, MaxTextSize = 60 }, self.powerBurstTitle)
+	self.powerBurstTitle.TextXAlignment = Enum.TextXAlignment.Center
+	self.powerBurstTitle.TextStrokeColor3, self.powerBurstTitle.TextStrokeTransparency = COLORS.ink, 0
+	self.powerBurstDetail = label(self.powerBurst, "PowerBurstDetail", "LOCKED IN · NEXT: AIM YOUR PLANE", 10, 82, 500, 21, 13, COLORS.ink, true)
+	self.powerBurstDetail.TextXAlignment = Enum.TextXAlignment.Center
+	self.countdownText = label(self.gui, "BigCountdown", "3", 0, 0, 400, 190, 158, COLORS.gold, true)
+	self.countdownText.AnchorPoint = Vector2.new(0.5, 0.5)
+	self.countdownText.Position = UDim2.fromScale(0.5, 0.43)
+	self.countdownText.Font = Enum.Font.FredokaOne
+	self.countdownText.TextXAlignment = Enum.TextXAlignment.Center
+	self.countdownText.TextStrokeColor3, self.countdownText.TextStrokeTransparency = COLORS.ink, 0
+	self.countdownText.Visible = false
+	self.countdownText.ZIndex = 14
+	self.countdownScale = create("UIScale", { Scale = 1 }, self.countdownText)
 	self.flightFeedback = {}
 	for index = 1, 3 do
 		local feedback = label(self.gui, "FlightFeedback" .. index, "", 0, 0, 190, 25, 20, COLORS.green, true)
@@ -1013,27 +1220,155 @@ function Hud:_layoutDuel(viewport, height)
 	self.returnButton.TextSize = width < 430 and 11 or 14
 end
 
-function Hud:_layoutPlaneChoices(viewport, height)
-	local width = math.min(470, math.max(260, viewport.X - 24))
-	local left, top, contentWidth, buttonHeight = 24, 102, width - 48, 52
-	local statsY, strategyY = 165, 194
-	local landscape = viewport.X >= 680 and height < 470
-	self.configPanel.Title.Visible, self.planeStrategy.Visible = true, true
-	if landscape then
-		left, contentWidth = 16, math.min(760, viewport.X - 32) / 2 - 32
-		if height < 330 then top, buttonHeight, statsY, strategyY = 28, 44, 79, 106
-		else top, buttonHeight, statsY, strategyY = 43, 48, 101, 132 end
+function Hud:_layoutPowerChoices(viewport, height)
+	local function place(item, x, y, w, h)
+		item.Position, item.Size = UDim2.fromOffset(x, y), UDim2.fromOffset(w, h)
 	end
-	local buttonWidth = (contentWidth - 16) / 3
+	local portrait = viewport.X < 600
+	local short = not portrait and height < 430
+	self.compactPowerActions = portrait or short
+	local width = math.min(1000, math.max(260, viewport.X - 24))
+	local top = self.header.Position.Y.Offset + self.header.Size.Y.Offset + 9
+	local actionHeight = portrait and 111 or (short and 60 or 82)
+	local availableBody = math.max(130, height - top - actionHeight - 26)
+	local headingHeight = portrait and 66 or (short and 34 or 88)
+	local cardHeight = portrait and math.clamp((availableBody - headingHeight - 12) / 3 - 10, 104, 142)
+		or (short and math.clamp(availableBody - headingHeight - 10, 94, 126) or 274)
+	local gap = portrait and 12 or (short and 14 or 22)
+	local cardWidth = portrait and width - 32 or (width - 36 - gap * 2) / 3
+	local cardTop = headingHeight + (short and 2 or 7)
+	local cardsBottom = cardTop + (portrait and (cardHeight * 3 + gap * 2) or cardHeight)
+	local drawerTop = cardsBottom + (short and 12 or 18)
+	local drawerHeight = short and 124 or 182
+	local contentHeight = self.compactPowerActions and (self.customizeOpen and drawerTop + drawerHeight + 12 or cardsBottom + 12)
+		or (drawerTop + 48 + (self.customizeOpen and 194 or 0) + 12)
+	local bodyHeight = math.min(contentHeight, availableBody)
+	self.configPanel.AnchorPoint = Vector2.new(0.5, 0)
+	self.configPanel.Position = UDim2.new(0.5, 0, 0, top)
+	self.configPanel.Size = UDim2.fromOffset(width, bodyHeight)
+	self.configPanel.CanvasSize = UDim2.fromOffset(0, contentHeight)
+	place(self.powerHeadline, 12, short and 2 or 9, width - 24, short and 30 or (portrait and 35 or 48))
+	self.powerHeadline.TextSize = short and 24 or (portrait and (width < 350 and 22 or 25) or 38)
+	self.powerSubhead.Visible = not short
+	place(self.powerSubhead, 12, portrait and 43 or 57, width - 24, 19)
+	self.powerSubhead.TextSize = portrait and 10 or 13
+	for index, id in ipairs(POWER_IDS) do
+		local card = self.powerCards[id]
+		local x = portrait and width / 2 or 18 + cardWidth / 2 + (index - 1) * (cardWidth + gap)
+		local y = cardTop + cardHeight / 2 + (portrait and (index - 1) * (cardHeight + gap) or 0)
+		place(card.button, x, y, cardWidth, cardHeight)
+		local title = string.upper(PowerCatalog.get(id).name)
+		card.title.Text = title
+		if portrait then
+			local artWidth = cardWidth < 320 and 88 or 102
+			local textLeft = artWidth + 8
+			local textWidth = cardWidth - textLeft - 10
+			card.art.frame.Position = UDim2.fromOffset(artWidth / 2 + 5, cardHeight / 2 + 5)
+			card.art.scale.Scale = cardWidth < 320 and 0.59 or 0.68
+			place(card.chosen, textLeft, 9, textWidth, 18)
+			place(card.title, textLeft, 32, textWidth, 27)
+			card.title.TextSize = cardWidth < 320 and 19 or 22
+			card.title.TextXAlignment = Enum.TextXAlignment.Left
+			card.promise.Visible = cardHeight >= 124
+			place(card.promise, textLeft, 61, textWidth, 32)
+			card.promise.TextSize = 11
+			card.promise.TextXAlignment = Enum.TextXAlignment.Left
+			place(card.plan, textLeft, cardHeight - 37, textWidth, 28)
+			card.plan.TextSize = 10
+			card.plan.TextXAlignment = Enum.TextXAlignment.Left
+		elseif short then
+			card.art.frame.Position = UDim2.fromOffset(cardWidth / 2, cardHeight < 110 and 27 or 33)
+			card.art.scale.Scale = cardHeight < 110 and 0.34 or 0.44
+			place(card.chosen, 7, 5, 89, 16)
+			card.chosen.TextSize = 8
+			place(card.title, 5, cardHeight - 63, cardWidth - 10, 26)
+			card.title.TextSize = cardWidth < 205 and 16 or 19
+			card.title.TextXAlignment = Enum.TextXAlignment.Center
+			card.promise.Visible = false
+			place(card.plan, 9, cardHeight - 33, cardWidth - 18, 27)
+			card.plan.TextSize = 10
+			card.plan.TextXAlignment = Enum.TextXAlignment.Center
+		else
+			card.art.frame.Position = UDim2.fromOffset(cardWidth / 2, 83)
+			card.art.scale.Scale = math.min(1.08, cardWidth / 240)
+			place(card.chosen, 12, 10, cardWidth - 24, 21)
+			card.chosen.TextSize = 10
+			place(card.title, 10, 142, cardWidth - 20, 59)
+			card.title.TextSize = cardWidth < 240 and 25 or 30
+			card.title.TextXAlignment = Enum.TextXAlignment.Center
+			card.promise.Visible = true
+			place(card.promise, 12, 201, cardWidth - 24, 31)
+			card.promise.TextSize = 13
+			card.promise.TextXAlignment = Enum.TextXAlignment.Center
+			place(card.plan, 9, 238, cardWidth - 18, 26)
+			card.plan.TextSize = cardWidth < 250 and 10 or 12
+			card.plan.TextXAlignment = Enum.TextXAlignment.Center
+		end
+	end
+	self.customizeButton.Parent = self.compactPowerActions and self.configActions or self.configPanel
+	if not self.compactPowerActions then place(self.customizeButton, 16, drawerTop, width - 32, 44) end
+	self.customizeButton.TextSize = self.compactPowerActions and 11 or 14
+	self.customizePanel.Visible = self.customizeOpen
+	place(self.customizePanel, 16, drawerTop + (self.compactPowerActions and 0 or 52), width - 32, drawerHeight)
+	local drawerWidth = width - 56
+	local planeAreaWidth = short and (drawerWidth / 2 - 16) or drawerWidth
+	local planeWidth = (planeAreaWidth - 16) / 3
 	for index, id in ipairs(PlaneCatalog.ORDER) do
-		local control = self.planeButtons[id]
-		control.Position = UDim2.fromOffset(left + (index - 1) * (buttonWidth + 8), top)
-		control.Size, control.TextSize = UDim2.fromOffset(buttonWidth, buttonHeight), buttonWidth < 110 and 13 or 16
+		place(self.planeButtons[id], 12 + (index - 1) * (planeWidth + 8), 10, planeWidth, 44)
+		self.planeButtons[id].TextSize = self.compactPowerActions and 12 or 15
 	end
-	self.planeSpeed.Position, self.planeSpeed.Size = UDim2.fromOffset(left, statsY), UDim2.fromOffset(contentWidth, 23)
-	self.planeSpeed.TextSize = landscape and 13 or 14
-	self.planeStrategy.Position, self.planeStrategy.Size = UDim2.fromOffset(left, strategyY), UDim2.fromOffset(contentWidth, 20)
-	self.planeStrategy.TextSize = landscape and 11 or 12
+	place(self.planeSpeed, 12, 61, planeAreaWidth, 20)
+	place(self.planeStrategy, 12, 85, planeAreaWidth, 20)
+	self.planeStrategy.TextSize = self.compactPowerActions and 10 or 12
+	local paintLeft = short and (drawerWidth / 2 + 22) or 12
+	place(self.paintName, paintLeft, short and 12 or 111, short and drawerWidth / 2 - 20 or drawerWidth, 18)
+	for index, control in ipairs(self.colorButtons) do place(control, paintLeft + (index - 1) * 56, short and 43 or 132, 46, 44) end
+	self.configActions.Position = UDim2.new(0.5, 0, 0, top + bodyHeight + 8)
+	self.configActions.Size = UDim2.fromOffset(width, actionHeight)
+	if portrait then
+		place(self.powerSummary, 12, 6, width - 24, 35)
+		self.powerSummary.TextSize = 11
+		place(self.customizeButton, 10, 45, 100, 44)
+		place(self.readyButton, 118, 45, width - 128, 44)
+		self.readyButton.TextSize = 20
+		place(self.readyStatus, 10, 92, width - 20, 14)
+		self.readyStatus.TextSize = 9
+		self.readyStatus.TextXAlignment = Enum.TextXAlignment.Center
+	else
+		local buttonWidth = short and 226 or 286
+		local summaryLeft = short and 122 or 14
+		if short then place(self.customizeButton, 10, 8, 100, 44) end
+		place(self.powerSummary, summaryLeft, short and 6 or 8, width - buttonWidth - summaryLeft - 30, short and 31 or 43)
+		self.powerSummary.TextSize = short and 10 or 13
+		place(self.readyButton, width - buttonWidth - 10, short and 8 or 12, buttonWidth, short and 44 or 54)
+		self.readyButton.TextSize = short and 18 or 22
+		place(self.readyStatus, summaryLeft, short and 39 or 55, width - buttonWidth - summaryLeft - 30, 16)
+		self.readyStatus.TextSize = short and 9 or 11
+		self.readyStatus.TextXAlignment = Enum.TextXAlignment.Left
+	end
+	local eventWidth = math.min(520, viewport.X - 32)
+	self.powerBurst.Size = UDim2.fromOffset(eventWidth, short and 74 or 112)
+	self.powerBurst.Position = UDim2.fromScale(0.5, short and 0.43 or 0.4)
+	place(self.powerBurstTitle, 10, 5, eventWidth - 20, short and 44 or 76)
+	self.powerBurstTitle.TextSize = short and 35 or (portrait and 39 or 60)
+	place(self.powerBurstDetail, 10, short and 50 or 82, eventWidth - 20, 21)
+	self.powerBurstDetail.TextSize = short and 11 or 13
+	self.countdownText.Size = UDim2.fromOffset(math.min(400, viewport.X - 24), short and 120 or 190)
+	self.countdownText.TextSize = short and 100 or 158
+	local scoreBottom = self.flightPanel.Position.Y.Offset + self.flightPanel.Size.Y.Offset
+	local badgeWidth = math.min(330, viewport.X - 28)
+	self.powerFlightBadge.Size = UDim2.fromOffset(badgeWidth, short and 27 or 31)
+	self.powerFlightBadge.Position = UDim2.new(0.5, 0, 0, scoreBottom + 8)
+	place(self.powerFlightText, 9, 2, badgeWidth - 18, short and 23 or 27)
+	self.powerFlightText.TextSize = short and 12 or 13
+	self.toast.Size = UDim2.fromOffset(eventWidth, short and 40 or 54)
+	self.toast.CanvasSize = UDim2.fromOffset(0, short and 40 or 54)
+	self.toast.Position = UDim2.new(0.5, 0, 0, scoreBottom + (short and 44 or 51))
+	place(self.toastText, 8, 3, eventWidth - 16, short and 34 or 48)
+	self.toastText.TextSize = short and 25 or (portrait and 27 or 33)
+end
+
+function Hud:_layoutPlaneChoices(viewport, height)
 	local aimWidth = math.min(690, viewport.X - 24)
 	local portrait = viewport.X < 560
 	local actionHeight = portrait and 98 or 64
@@ -1062,6 +1397,8 @@ function Hud:_resize()
 	self.lastViewport = viewport
 	local topInset, bottomInset = GuiService:GetGuiInset()
 	local height = math.max(180, viewport.Y - topInset.Y - bottomInset.Y)
+	self.layoutHeight = height
+	local landscape = viewport.X >= 600 and height < 470
 	self:_layoutPersonal(viewport, height)
 	local width = math.min(470, math.max(260, viewport.X - 24))
 	local inner = width - 48
@@ -1144,74 +1481,6 @@ function Hud:_resize()
 		place(self.votePanel.VoteHint, 16, 181, wide - 32, 18)
 		self.votePanel.VoteHint.TextSize = 11
 	end
-	self.configPanel.Eyebrow.TextSize = narrowCard and 9 or 10
-	self.configPanel.Divider.Size = UDim2.fromOffset(inner, 1)
-	local gadgetWidth = (inner - 20) / 3
-	for index, name in ipairs(GADGETS) do
-		place(self.gadgetButtons[name], 24 + (index - 1) * (gadgetWidth + 10), 258, gadgetWidth, 48)
-		self.gadgetButtons[name].TextSize = narrowCard and 14 or 16
-	end
-	place(self.gadgetCopy, 24, 314, inner, 41)
-	place(self.configPanel.PaintTitle, 24, narrowCard and 363 or 365, narrowCard and 120 or 190, 23)
-	place(self.paintName, narrowCard and (24 + inner - 146) or 24, narrowCard and 365 or 389, narrowCard and 146 or 205, 18)
-	for index, control in ipairs(self.colorButtons) do
-		place(control, narrowCard and (24 + (index - 1) * 61) or (width - 222 + (index - 1) * 51), narrowCard and 394 or 362, 48, 48)
-	end
-	self.configActions.Position = UDim2.new(0.5, 0, 0, self.configPanel.Position.Y.Offset + self.configPanel.Size.Y.Offset + 8)
-	self.configActions.Size = UDim2.fromOffset(width, 90)
-	place(self.readyButton, 12, 10, width - 24, 49)
-	place(self.readyStatus, 12, 64, width - 24, 17)
-	self.readyStatus.TextSize = narrowCard and 10 or 11
-	self.readyStatus.TextWrapped = false
-	self.gadgetSummary.Visible = false
-	self.gadgetCopy.Visible = true
-	self.paintName.Visible = true
-	self.configPanel.Eyebrow.Visible = true
-	place(self.configPanel.Title, 24, 40, inner, 33)
-	self.configPanel.Title.TextSize = 27
-	place(self.configPanel.GadgetTitle, 24, 229, inner, 20)
-	local landscape = viewport.X >= 680 and height < 470
-	if landscape then
-		-- Two columns keep every choice usable at normal touch size in landscape.
-		-- Very short devices can scroll the description while READY stays pinned.
-		local wide = math.min(760, viewport.X - 32)
-		local halfWidth = wide / 2
-		local right = halfWidth + 16
-		local rightInner = halfWidth - 32
-		local bodyHeight = math.min(201, math.max(104, height - 153))
-		self.configPanel.Position = UDim2.new(0.5, 0, 0, 65)
-		self.configPanel.Size = UDim2.fromOffset(wide, bodyHeight)
-		self.configPanel.CanvasSize = UDim2.fromOffset(0, 201)
-		self.configPanel.Eyebrow.Visible = false
-		place(self.configPanel.Title, 16, 8, halfWidth - 32, 27)
-		self.configPanel.Title.TextSize = 21
-		place(self.configPanel.Divider, 16, 39, halfWidth - 32, 1)
-		place(self.configPanel.GadgetTitle, right, 13, rightInner, 20)
-		local gadgetSize = (rightInner - 16) / 3
-		for index, name in ipairs(GADGETS) do
-			place(self.gadgetButtons[name], right + (index - 1) * (gadgetSize + 8), 43, gadgetSize, 48)
-			self.gadgetButtons[name].TextSize = 14
-		end
-		place(self.configPanel.PaintTitle, right, 103, halfWidth - 232, 22)
-		place(self.paintName, right, 127, halfWidth - 232, 20)
-		self.paintName.TextSize = 10
-		for index, control in ipairs(self.colorButtons) do
-			place(control, wide - 216 + (index - 1) * 50, 102, 44, 44)
-		end
-		place(self.gadgetCopy, right, 155, rightInner, 36)
-		self.gadgetCopy.Visible = false
-		self.configActions.Position = UDim2.new(0.5, 0, 0, 65 + bodyHeight + 8)
-		self.configActions.Size = UDim2.fromOffset(wide, 64)
-		place(self.readyButton, wide - 258, 8, 246, 48)
-		self.readyButton.TextSize = 17
-		self.gadgetSummary.Visible = true
-		place(self.gadgetSummary, 16, 5, wide - 290, 23)
-		place(self.readyStatus, 16, 30, wide - 290, 25)
-		self.readyStatus.TextWrapped = true
-	else
-		self.paintName.TextSize = 11
-		self.readyButton.TextSize = 21
-	end
 	self.resultsPanel.Title.TextSize = narrowCard and 24 or 27
 	self.resultMessage.TextSize = narrowCard and 11 or 12
 	self.resultMessage.TextTruncate = Enum.TextTruncate.AtEnd
@@ -1275,56 +1544,26 @@ function Hud:_resize()
 	self.timer.Size = UDim2.fromOffset(narrow and 46 or 58, 44)
 	self.footer.TextSize = viewport.X < 390 and 8 or 10
 	if landscape then
-		self.header.Position = UDim2.fromOffset(16, 6)
-		self.header.Size = UDim2.new(1, -32, 0, 50)
-		self.header.Brand.Position = UDim2.fromOffset(18, 3)
-		self.brandSub.Position = UDim2.fromOffset(19, 27)
-		self.phaseLabel.Position = UDim2.new(1, -390, 0, 4)
-		self.courseLabel.Position = UDim2.new(1, -390, 0, 27)
+		self.header.Position = UDim2.fromOffset(12, 6)
+		self.header.Size = UDim2.new(1, -24, 0, height < 330 and 42 or 50)
+		self.header.Brand.Position = UDim2.fromOffset(18, 0)
+		self.brandSub.Position = UDim2.fromOffset(19, 23)
+		self.phaseLabel.Position = UDim2.new(1, -390, 0, 0)
+		self.courseLabel.Position = UDim2.new(1, -390, 0, 23)
 		self.timer.Position = UDim2.new(1, -68, 0, 3)
+		self.timer.Size = UDim2.fromOffset(58, 36)
+		self.timer.TextSize = 25
 		if height < 330 then
-			-- Small landscape phones have as little as 280 px below the safe inset.
-			-- Fit every choice at touch size, preserving the fixed action footer.
-			local wide = math.min(760, viewport.X - 32)
-			local halfWidth = wide / 2
-			local right = halfWidth + 16
-			local bodyHeight = math.min(140, math.max(130, height - 146))
-			self.header.Size = UDim2.new(1, -32, 0, 42)
-			self.header.Brand.Position = UDim2.fromOffset(18, 0)
-			self.brandSub.Position = UDim2.fromOffset(19, 23)
-			self.phaseLabel.Position = UDim2.new(1, -390, 0, 0)
-			self.courseLabel.Position = UDim2.new(1, -390, 0, 23)
-			self.timer.Size = UDim2.fromOffset(58, 36)
-			self.timer.TextSize = 25
-			self.configPanel.Position = UDim2.new(0.5, 0, 0, 54)
-			self.configPanel.Size = UDim2.fromOffset(wide, bodyHeight)
-			self.configPanel.CanvasSize = UDim2.fromOffset(0, bodyHeight)
-			place(self.configPanel.Title, 16, 1, halfWidth - 32, 24)
-			self.configPanel.Title.TextSize = 18
-			self.configPanel.Divider.Visible = false
-			place(self.configPanel.GadgetTitle, right, 4, halfWidth - 32, 20)
-			for _, control in pairs(self.gadgetButtons) do
-				control.Position = UDim2.fromOffset(control.Position.X.Offset, 30)
-			end
-			place(self.configPanel.PaintTitle, right, 98, halfWidth - 232, 22)
-			self.paintName.Visible = false
-			for _, control in ipairs(self.colorButtons) do
-				control.Position = UDim2.fromOffset(control.Position.X.Offset, 88)
-			end
-			self.configActions.Position = UDim2.new(0.5, 0, 0, 54 + bodyHeight + 6)
 			self.votePanel.Position = UDim2.new(0.5, 0, 0, 54)
 			self.votePanel.Size = UDim2.fromOffset(math.min(760, viewport.X - 32), 206)
-			self.flightPanel.Position = UDim2.new(0.5, 0, 0, 60)
-		else
-			self.configPanel.Divider.Visible = true
 		end
 	else
 		self.header.Brand.Position = UDim2.fromOffset(18, 10)
 		self.brandSub.Position = UDim2.fromOffset(19, 35)
-		self.configPanel.Divider.Visible = true
 	end
 	self:_layoutPlaneChoices(viewport, height)
 	self:_layoutDuel(viewport, height)
+	self:_layoutPowerChoices(viewport, height)
 end
 
 function Hud:update(snapshot, localUserId, watchedUserId)
@@ -1362,6 +1601,12 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		self.pendingReady = nil
 		self.pendingUntil = 0
 		self.readyPendingUntil = 0
+		self.lastPowerEvent = nil
+		self.lastCountdown = nil
+		if phase == "Configure" then
+			self.customizeOpen = false
+			self:_layoutPowerChoices(self.lastViewport, self.layoutHeight)
+		end
 		for _, panel in ipairs({ self.votePanel, self.configPanel, self.resultsPanel }) do
 			panel.CanvasPosition = Vector2.zero
 		end
@@ -1391,6 +1636,10 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 			self.ready = localPlayer.ready == true
 			self.pendingReady = nil
 		end
+	end
+	if changedPhase and phase == "Configure" then
+		self.displayedPower = self.settings.powerId
+		self:_animatePowerChoice(true)
 	end
 	self.phaseLabel.Text = PHASE_NAMES[phase] or string.upper(phase)
 	self.timer.Text = (snapshot.endsAt or 0) > 0 and tostring(remaining) or "--"
@@ -1426,6 +1675,25 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	self.resultsPanel.Visible = phase == "Results"
 	self.resultActions.Visible = phase == "Results"
 	self.toast.Visible = false
+	self.powerFlightBadge.Visible = phase == "Flight"
+	self.powerBurst.Visible = (phase == "Configure" or phase == "Aim") and now < (self.powerBurstUntil or 0)
+	if phase == "Countdown" then
+		self.countdownText.Visible = true
+		self.countdownText.Text = tostring(math.max(1, remaining))
+		if self.lastCountdown ~= remaining then
+			self.lastCountdown = remaining
+			self.countdownScale.Scale = self.reducedMotion and 1 or 0.68
+			self:_tween(self.countdownScale, 0.3, { Scale = 1 })
+		end
+	elseif phase == "Flight" and changedPhase then
+		self.launchBannerUntil = now + 0.65
+		self.countdownText.Text = "FLY!"
+		self.countdownText.Visible = true
+		self.countdownScale.Scale = self.reducedMotion and 1 or 0.68
+		self:_tween(self.countdownScale, 0.25, { Scale = 1 })
+	else
+		self.countdownText.Visible = phase == "Flight" and now < (self.launchBannerUntil or 0)
+	end
 	self.waitingMessage.Text = snapshot.message or "Getting the runway ready…"
 	if phase == "Lobby" then
 		self.hubTitle.Text = "SKYBOUND / FLIGHT CLUB"
@@ -1444,14 +1712,15 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		end
 	elseif phase == "Configure" then
 		self:_refreshSettings()
-		self.readyStatus.Text = self.ready and "Waiting for your rival. Tap to change choices." or "Choose your loadout. Aim your jet next."
+		if changedPhase and UserInputService.GamepadEnabled then GuiService.SelectedObject = self.powerCards[self.settings.powerId].button end
+		self.readyStatus.Text = self.ready and "Waiting for rival · tap a card to change" or "Power lasts this round. Aim your plane next."
 	elseif phase == "Aim" or phase == "Countdown" then
 		self:_refreshSettings()
 		if phase == "Countdown" then
 			self.aimStatus.Text = "Takeoff in " .. remaining .. "…"
 		else
 			local readyText = tostring(readyCount) .. "/" .. tostring(humanCount) .. " ready"
-			self.aimStatus.Text = self.ready and (readyText .. " · Waiting for rival") or (readyText .. (UserInputService.KeyboardEnabled and " · A/D aim · R ready" or " · Release to set angle"))
+			self.aimStatus.Text = self.ready and (readyText .. " · Waiting for rival") or PowerCatalog.get(self.settings.powerId).aimHint
 		end
 	elseif phase == "Flight" then
 		local flight = watchedPlayer and watchedPlayer.flight
@@ -1476,6 +1745,16 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		self.flightStats.Text = "Waiting for takeoff"
 		self.flightStats.TextColor3 = COLORS.muted
 		if flight then
+			local powerId = PowerCatalog.get(flight.powerId) and flight.powerId
+				or (watchedPlayer.settings and watchedPlayer.settings.powerId) or PowerCatalog.DEFAULT_ID
+			local power = PowerCatalog.get(powerId) or PowerCatalog.get(PowerCatalog.DEFAULT_ID)
+			powerId = power.id
+			local charges = math.max(0, flight.powerCharges or 0)
+			local powerStatus = powerId == "Meteor" and (flight.powerPhase == "diving" and "DIVING!"
+				or (charges > 0 and "CLIMB TO CHARGE" or "BLAST RELEASED"))
+				or (tostring(charges) .. (powerId == "Pinball" and " BOUNCES LEFT" or " BITES LEFT"))
+			self.powerFlightText.Text = string.upper(power.name) .. " · " .. powerStatus
+			self.powerFlightBadge.BackgroundColor3 = powerColor(powerId)
 			self.flightStats.Text = "FUEL " .. tostring(flight.pickups or 0)
 				.. "  /  HITS " .. tostring(flight.hits or 0)
 				.. ((flight.shield == true or (type(flight.shield) == "number" and flight.shield > 0)) and "  /  SHIELD" or "")
@@ -1487,6 +1766,23 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 			end
 			if not flight.alive and eventAge >= 2.3 then
 				self.flightStats.Text = "Final distance: " .. distance(flight.distance, true)
+			end
+			local powerEvent
+			for _, entry in ipairs(flight.recentEvents or { flight.lastEvent }) do
+				local age = (snapshot.elapsed or flight.elapsed or 0) - (entry.at or 0)
+				if (entry.kind == "pinball" or entry.kind == "munch" or entry.kind == "meteorDive" or entry.kind == "meteorBoost")
+					and age >= 0 and age < 1.35 then powerEvent = entry end
+			end
+			if powerEvent then
+				self.toast.Visible = true
+				self.toast.BackgroundColor3 = powerColor(powerId)
+				self.toastText.Text = powerEvent.text or "POWER!"
+				local key = tostring(watchedUserId) .. ":" .. powerEvent.kind .. ":" .. tostring(powerEvent.at)
+				if self.lastPowerEvent ~= key then
+					self.lastPowerEvent = key
+					self.toastScale.Scale = self.reducedMotion and 1 or 0.76
+					self:_tween(self.toastScale, 0.24, { Scale = 1 })
+				end
 			end
 		end
 	elseif phase == "Results" then
@@ -1563,7 +1859,10 @@ function Hud:updateFlightFeedback(flight, point, visible, elapsed)
 			elseif entry.kind == "missile" then color, text = COLORS.coral, "MISSILE HIT!"
 			elseif entry.kind == "shield" then color, text = COLORS.gold, "SHIELD SAVE!"
 			elseif entry.kind == "nearMiss" then color, text = COLORS.cyan, "CLOSE CALL!"
-			elseif entry.kind == "boost" then text = "RESCUE BOOST!" end
+			elseif entry.kind == "boost" then text = "RESCUE BOOST!"
+			elseif entry.kind == "pinball" then color = powerColor("Pinball")
+			elseif entry.kind == "munch" then color = powerColor("Muncher")
+			elseif entry.kind == "meteorDive" or entry.kind == "meteorBoost" then color = powerColor("Meteor") end
 			control.Text, control.TextColor3 = text, color
 			control.TextSize = short and 15 or 20
 			control.Size = UDim2.fromOffset(190, lineHeight)
@@ -1586,6 +1885,8 @@ end
 
 function Hud:destroy()
 	self.aimDrag = nil
+	for _, tween in pairs(self.tweens) do tween:Cancel() end
+	table.clear(self.tweens)
 	for _, connection in ipairs(self.connections) do
 		connection:Disconnect()
 	end

@@ -146,3 +146,19 @@ Enlarged the trajectory guide from 7px to 16px circles on desktop/portrait, and 
 Visually checked desktop, Galaxy A06 landscape (705×338) and portrait (359×718). Landscape displayed five circles and portrait nine at 35 degrees; the portrait 60-degree check also displayed nine. Runtime checks confirmed circle outlines stayed within the aim field and neighboring visible circles did not overlap. No Skybound script errors were observed. Phone emulation was reset, Studio returned to Edit, native Save confirmed the place path, and the saved HUD source exactly matches disk. This is presentation-only; launch controls and simulation are unchanged.
 
 Previews: [desktop circles](previews/v9-aim-desktop.jpg), [phone circles](previews/v9-aim-phone.jpg), [portrait circles](previews/v9-aim-portrait.jpg).
+
+## Superpower selection and flight transformations — October 9, 2026
+
+The first three powers are playable: Pinball bounces off the ground three times, Missile Muncher converts three missiles into escalating boosts, and Meteor Dive dives from its first apex then pulls up near the ground with a height-based forward boost. A power lasts one round. Large illustrated choice cards, animated selection/lock-in, giant countdown numbers, power-specific plane parts, event bursts and selection/flight audio make the choice visible throughout the round. Plane and paint remain available in a secondary drawer, with a pinned 44px button on phones.
+
+- All 32 simulation, 6 power-catalog, 5 plane-catalog and 11 audio checks passed in actual Studio Luau. The 24 mocked server scenarios passed, including power allowlisting, spoofed charge/strength rejection, loadout locking after Configure and fresh charges on the next round. These service doubles do not establish networking performance.
+- Desktop mouse input completed selection, lock-in, aiming, countdown and a full Muncher practice flight. Its jaws appeared on the plane and all three bites registered. The ghost's Meteor power and event audio remained independent. All 20 pooled sounds loaded; subjective mix quality still needs listening/playtesting.
+- Live Pinball practice used all three bounces, then landed normally at 2244.1 m with zero charges. Live Meteor at 55 degrees entered its dive at 4.33 seconds, pulled up at 6.82 seconds near 18.9 studs altitude, and consumed its one charge. These runs confirm activation and state flow, not competitive balance.
+- Galaxy A06 emulation covered 705×338 landscape and 359×718 portrait. All three choices and Lock In fit both layouts. Actual touch input opened/closed Plane & Paint and portrait Lock In entered Aim with Pinball. The tool's portrait instance-target click offset required explicit viewport coordinates; no game input workaround was added.
+- Plane transformations contain 24 Pinball, 19 Muncher and 8 Meteor parts. All were noncolliding in the Studio construction check. The existing bounded effect/voice pools are retained.
+- A same-seed, three-angle simulation comparison exposed an initially oversized Muncher boost. Reducing its forward boosts to 12/16/20 narrowed its distance advantage in the sampled courses. This is an initial tuning pass, not player-tested fairness.
+- The final source build and whitespace checks passed. Native Studio Save confirmed the local place path, and all 17 saved source/test scripts exactly match disk. The editor lobby was refreshed, device simulation reset to default, and Studio returned to Edit. Fresh final Play produced no Skybound script errors.
+
+Previews: [desktop powers](previews/v10-power-desktop.jpg), [phone powers](previews/v10-power-phone.jpg), [portrait powers](previews/v10-power-portrait.jpg), [Meteor Dive](previews/v10-meteor-phone.jpg).
+
+The other seven proposed powers remain concepts. Full two-human networking, physical-phone/controller usability, published audio and competitive balance remain unverified.

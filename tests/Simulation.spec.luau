@@ -326,5 +326,175 @@ return function(Simulation)
 		check(state.alive and state.y > rescuedHeight, "Recovered flight did not visibly climb")
 	end)
 
+	test("a valid round power suppresses every legacy gadget effect", function()
+		for _, powerId in ipairs({ "Pinball", "Muncher", "Meteor" }) do
+			local course = emptyCourse()
+			local shield = Simulation.newFlight({ powerId = powerId, gadget = "Shield" }, course)
+			check(shield.shield == 0 and shield.powerId == powerId and shield.settings.powerId == powerId, "Round power kept a shield or lost identity")
+			local magnet = Simulation.newFlight({ powerId = powerId, gadget = "Magnet" }, course)
+			course.items = { item("fuel", 0, 35, 1) }
+			Simulation.step(magnet, course, Simulation.FIXED_DT)
+			check(magnet.pickups == 0, "Round power kept magnet reach")
+			local boost = Simulation.newFlight({ powerId = powerId, gadget = "Boost" }, course)
+			boost.elapsed, boost.y, boost.vy = 2, 10, -10
+			Simulation.step(boost, emptyCourse(), Simulation.FIXED_DT)
+			check(not boost.boostUsed, "Round power kept the rescue gadget")
+			for _, entry in ipairs(boost.recentEvents) do check(entry.kind ~= "boost", "Legacy rescue feedback leaked into round powers") end
+		end
+	end)
+
+	test("missing or invalid powers retain the legacy simulation path", function()
+		for _, invalid in ipairs({ "Unknown", "pinball", 123, {} }) do
+			local state = Simulation.newFlight({ powerId = invalid, gadget = "Shield", powerCharges = 999 }, emptyCourse())
+			check(state.powerId == nil and state.powerCharges == 0 and state.powerUses == 0 and state.shield == 1, "Invalid power affected the simulation")
+		end
+		local state = Simulation.newFlight({ powerId = "Meteor", powerCharges = 999, powerPeak = 99999 }, emptyCourse())
+		check(state.powerCharges == 1 and state.powerPeak == 18 and state.powerPhase == "armed", "Client fields supplied power strength")
+	end)
+
+	test("Pinball bounces at three descending contacts and lands on the fourth", function()
+		local course = emptyCourse()
+		local state = Simulation.newFlight({ powerId = "Pinball" }, course)
+		for bounce = 1, 3 do
+			local oldX = state.x
+			state.y, state.vy, state.vx = 0.01, -20, 60
+			Simulation.step(state, course, Simulation.FIXED_DT)
+			check(state.alive and state.y == 0 and state.vy > 0 and state.vx > 75, "Pinball did not turn impact into forward/upward motion")
+			check(state.x > oldX and state.x < oldX + 0.1, "Bounce advanced past the first ground contact")
+			check(state.powerCharges == 3 - bounce and state.powerUses == bounce, "Bounce charge count differs")
+			check(state.lastEvent.kind == "pinball" and state.lastEvent.value == bounce and state.lastEvent.y == 0, "Bounce feedback lacks impact position/count")
+			Simulation.step(state, course, Simulation.FIXED_DT)
+			check(state.y > 0 and state.powerUses == bounce, "Takeoff from a bounce consumed another charge")
+		end
+		check(state.powerPhase == "spent", "Exhausted Pinball stayed armed")
+		state.y, state.vy = 0.01, -20
+		Simulation.step(state, course, Simulation.FIXED_DT)
+		check(not state.alive and state.finishReason == "landed" and state.powerUses == 3, "Fourth ground contact did not end the flight")
+		local distance, serial = state.distance, state.eventSerial
+		Simulation.step(state, course, Simulation.FIXED_DT)
+		check(state.distance == distance and state.eventSerial == serial, "Finished Pinball resumed")
+	end)
+
+	test("Pinball cannot resurrect a plane already below ground or survive its deadline", function()
+		local course = emptyCourse()
+		local below = Simulation.newFlight({ powerId = "Pinball" }, course)
+		below.y, below.vy = -1, -10
+		Simulation.step(below, course, Simulation.FIXED_DT)
+		check(not below.alive and below.powerUses == 0, "Pinball resurrected a plane below ground")
+		local late = Simulation.newFlight({ powerId = "Pinball" }, course)
+		late.elapsed, late.y, late.vy = Simulation.MAX_FLIGHT_TIME - 0.001, 0.001, -20
+		Simulation.step(late, course, Simulation.FIXED_DT)
+		check(not late.alive and late.powerUses == 0 and close(late.elapsed, Simulation.MAX_FLIGHT_TIME), "Pinball bounced after the flight deadline")
+	end)
+
+	test("Muncher eats exactly three missiles with escalating kicks then takes a hit", function()
+		local course = emptyCourse()
+		local state = Simulation.newFlight({ powerId = "Muncher", gadget = "Shield" }, course)
+		local previousKick, previousLift = 0, -12
+		for bite = 1, 3 do
+			state.y, state.vy, state.vx = 70, -12, 40
+			course.items = { item("missile", state.x, state.y, bite) }
+			Simulation.step(state, course, Simulation.FIXED_DT)
+			local kick = state.vx - 40
+			check(kick > previousKick and state.vy > previousLift and state.hits == 0, "Bite did not give a growing harmless boost")
+			check(state.used[bite] and state.powerUses == bite and state.powerCharges == 3 - bite, "Missile bite count changed")
+			check(state.lastEvent.kind == "munch" and state.lastEvent.itemId == bite and state.lastEvent.value == bite, "Bite feedback lost its missile/count")
+			Simulation.step(state, course, Simulation.FIXED_DT)
+			check(state.powerUses == bite, "A consumed missile was eaten again")
+			previousKick, previousLift = kick, state.vy
+		end
+		check(state.powerPhase == "spent", "Exhausted Muncher stayed armed")
+		state.y, state.vy, state.vx = 70, 0, 80
+		course.items = { item("missile", state.x, state.y, 4) }
+		Simulation.step(state, course, Simulation.FIXED_DT)
+		check(state.hits == 1 and state.vx < 75 and state.vy < -9 and state.powerUses == 3 and state.lastEvent.kind == "missile", "Fourth missile was absorbed or still granted a boost")
+	end)
+
+	test("Muncher resolves multiple swept contacts in order without sharing charges", function()
+		local course = emptyCourse()
+		for id = 1, 4 do table.insert(course.items, item("missile", 0, 18, id)) end
+		local first = Simulation.newFlight({ powerId = "Muncher" }, course)
+		local other = Simulation.newFlight({ powerId = "Muncher" }, course)
+		Simulation.step(first, course, Simulation.FIXED_DT)
+		check(first.powerUses == 3 and first.hits == 1 and first.powerCharges == 0, "Simultaneous missiles bypassed exhaustion")
+		for index = 2, 4 do
+			check(first.recentEvents[index].kind == "munch" and first.recentEvents[index].itemId == index - 1, "Eating order was nondeterministic")
+		end
+		check(other.powerCharges == 3 and other.powerUses == 0 and next(other.used) == nil, "One pilot consumed another pilot's charges or missiles")
+		Simulation.step(other, course, Simulation.FIXED_DT)
+		check(first.x == other.x and first.vx == other.vx and first.vy == other.vy and first.eventSerial == other.eventSerial, "Identical pilots diverged on the same course")
+	end)
+
+	test("Meteor automatically dives at its first apex and safely pulls up once", function()
+		local course = emptyCourse()
+		local state = Simulation.newFlight({ powerId = "Meteor" }, course)
+		state.y, state.vy = 100, 0.01
+		Simulation.step(state, course, Simulation.FIXED_DT)
+		check(state.powerPhase == "diving" and state.vy < -40 and state.powerPeak >= 100 and state.lastEvent.kind == "meteorDive", "Meteor did not turn its apex into a dive")
+		check(state.powerCharges == 1 and state.powerUses == 0, "Meteor consumed its burst before the pull-up")
+		local diveSerial, previousSpeed = state.eventSerial, state.vx
+		for _ = 1, 180 do
+			previousSpeed = state.vx
+			Simulation.step(state, course, Simulation.FIXED_DT)
+			check(state.alive and state.y > 0, "Meteor hit the ground before pulling up")
+			if state.powerPhase == "spent" then break end
+		end
+		check(state.powerPhase == "spent" and state.powerUses == 1 and state.powerCharges == 0, "Meteor did not spend exactly one burst")
+		check(state.vx > previousSpeed + 50 and state.vy > 25 and state.lastEvent.kind == "meteorBoost" and state.eventSerial == diveSerial + 1, "Meteor pull-up lacks its forward blast")
+		state.y, state.vy = 10, -15
+		Simulation.step(state, course, Simulation.FIXED_DT)
+		check(state.powerUses == 1 and state.vy < 0 and state.eventSerial == diveSerial + 1, "Spent Meteor reactivated")
+	end)
+
+	test("Meteor height determines a bounded blast and low-altitude crossing cannot tunnel", function()
+		local function blast(peak)
+			local state = Simulation.newFlight({ powerId = "Meteor" }, emptyCourse())
+			state.powerPhase, state.powerPeak = "diving", peak
+			state.y, state.vy, state.vx = 18.01, -64, 60
+			Simulation.step(state, emptyCourse(), 1 / 15)
+			check(state.alive and state.y > 18 and state.vy > 0 and state.powerPhase == "spent", "Coarse-step Meteor tunneled below the pull-up")
+			return state
+		end
+		local low, high, extreme = blast(40), blast(160), blast(10000)
+		check(high.vx > low.vx + 25 and high.vy > low.vy, "Achieved height did not strengthen Meteor")
+		check(extreme.vx <= 165 and extreme.vy <= 35, "Meteor strength is unbounded")
+	end)
+
+	test("fuel cannot cancel Meteor's committed dive or erase its high-speed burst", function()
+		local course = emptyCourse()
+		local state = Simulation.newFlight({ powerId = "Meteor" }, course)
+		state.powerPhase, state.powerPeak = "diving", 160
+		state.y, state.vy, state.vx = 80, -50, 100
+		course.items = { item("fuel", state.x, state.y, 1, 20) }
+		Simulation.step(state, course, Simulation.FIXED_DT)
+		check(state.pickups == 1 and state.vy < -40 and state.powerPhase == "diving", "Fuel reversed the committed Meteor dive")
+		state.y, state.vy = 18.01, -64
+		Simulation.step(state, emptyCourse(), Simulation.FIXED_DT)
+		local burstSpeed = state.vx
+		check(burstSpeed > 130, "Meteor burst was not larger than the legacy fuel cap")
+		course.items = { item("fuel", state.x, state.y, 2, 5) }
+		Simulation.step(state, course, Simulation.FIXED_DT)
+		check(state.pickups == 2 and state.vx >= burstSpeed and state.vx <= 165, "Ordinary fuel erased Meteor's forward kick")
+	end)
+
+	test("all powers preserve hard timeouts and finish within bounded generated flights", function()
+		for _, powerId in ipairs({ "Pinball", "Muncher", "Meteor" }) do
+			local late = Simulation.newFlight({ powerId = powerId }, emptyCourse())
+			late.elapsed, late.y, late.vy = Simulation.MAX_FLIGHT_TIME - 0.001, 120, 0
+			Simulation.step(late, emptyCourse(), Simulation.FIXED_DT)
+			check(not late.alive and late.finishReason == "timeout" and late.powerUses == 0, "Power bypassed the hard timeout")
+			for _, variant in ipairs({ "Coast", "Skyline", "Storm" }) do
+				for _, angle in ipairs({ 15, 35, 60 }) do
+					local settings = { powerId = powerId, planeId = "cruiser", angle = angle }
+					local a = run(settings, Simulation.makeCourse(74123, variant))
+					local b = run(settings, Simulation.makeCourse(74123, variant))
+					check(not a.alive and a.elapsed <= Simulation.MAX_FLIGHT_TIME and a.distance > 0 and a.distance < 7500, "Powered flight escaped round bounds")
+					check(a.distance == b.distance and a.powerUses == b.powerUses and a.eventSerial == b.eventSerial, "Powered seeded flight was nondeterministic")
+					check(a.vx <= 165 and a.vy == a.vy and a.powerCharges >= 0, "Power velocity or charges were unbounded")
+				end
+			end
+		end
+	end)
+
 	return tostring(passed) .. " simulation tests passed"
 end

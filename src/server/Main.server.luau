@@ -8,6 +8,7 @@ local PlayerStats = require(script.Parent:WaitForChild("PlayerStats"))
 local Telemetry = require(script.Parent:WaitForChild("Telemetry"))
 local shared = ReplicatedStorage:WaitForChild("FlightGame")
 local PlaneCatalog = require(shared.PlaneCatalog)
+local PowerCatalog = require(shared.PowerCatalog)
 local Simulation = require(shared.Simulation)
 local World = require(shared.World)
 local command, snapshots = shared.Command, shared.Snapshot
@@ -43,7 +44,9 @@ for _,station in ipairs(World.DUEL_STATIONS) do queues[station.id]={seats={false
 local function now() return workspace:GetServerTimeNow() end
 local function copySettings(s)
     local plane=PlaneCatalog.get(s.planeId) or PlaneCatalog.get(PlaneCatalog.DEFAULT_ID)
-    return {planeId=plane.id,angle=s.angle or plane.defaultAngle,speed=plane.speed,gadget=s.gadget,color=s.color or 1}
+    local power=PowerCatalog.get(s.powerId) or PowerCatalog.get(PowerCatalog.DEFAULT_ID)
+    return {planeId=plane.id,angle=s.angle or plane.defaultAngle,speed=plane.speed,
+        powerId=power.id,gadget=s.gadget or "Shield",color=s.color or 1}
 end
 local function finite(v) return type(v)=="number" and v==v and v>-math.huge and v<math.huge end
 local function safeSettings(input)
@@ -54,8 +57,13 @@ local function safeSettings(input)
     if input.power~=nil or (input.speed~=nil and input.speed~=plane.speed)
         or (input.launchSpeed~=nil and input.launchSpeed~=plane.speed) then return nil end
     if type(input.gadget)~="string" or not GADGETS[input.gadget] or not finite(input.color) then return nil end
+    -- Power identity is the only power field clients may choose. Charges,
+    -- trigger state and strength always come from the server simulation.
+    if input.powerId~=nil and not PowerCatalog.get(input.powerId) then return nil end
+    local power=PowerCatalog.get(input.powerId or PowerCatalog.DEFAULT_ID)
+    if not power then return nil end
     return {planeId=plane.id,angle=math.clamp(math.round(input.angle),PlaneCatalog.MIN_ANGLE,PlaneCatalog.MAX_ANGLE),
-        speed=plane.speed,gadget=input.gadget,
+        speed=plane.speed,gadget=input.gadget,powerId=power.id,
         color=math.clamp(math.round(input.color),1,4)}
 end
 local function safeAimSettings(input, locked)
@@ -63,6 +71,7 @@ local function safeAimSettings(input, locked)
     -- The aiming view can send just an angle or echo the whole settings object.
     -- Reject attempted loadout changes atomically, including a Ready payload.
     if (input.planeId~=nil and input.planeId~=locked.planeId)
+        or (input.powerId~=nil and input.powerId~=locked.powerId)
         or (input.gadget~=nil and input.gadget~=locked.gadget)
         or (input.color~=nil and input.color~=locked.color)
         or input.power~=nil or (input.speed~=nil and input.speed~=locked.speed)
@@ -105,6 +114,8 @@ local function publicFlight(s)
     table.sort(used)
     return {x=s.x,y=s.y,vx=s.vx,vy=s.vy,alive=s.alive,distance=s.distance,
         elapsed=s.elapsed,pickups=s.pickups,hits=s.hits,shield=s.shield,nearMisses=s.nearMisses or 0,
+        powerId=s.powerId,powerCharges=s.powerCharges,powerPhase=s.powerPhase,
+        powerPeak=s.powerPeak,powerUses=s.powerUses,
         usedIds=used,lastEvent=s.lastEvent,recentEvents=s.recentEvents,finishReason=s.finishReason}
 end
 local function queueSnapshot()
@@ -180,11 +191,13 @@ local function configure(m)
     for _,e in ipairs(m.entrants) do
         if e.bot then
             local plane=PlaneCatalog.get(PlaneCatalog.ORDER[m.course.seed % #PlaneCatalog.ORDER + 1])
-            e.settings=copySettings({planeId=plane.id,angle=plane.defaultAngle,gadget="Magnet",color=2})
+            local powers=PowerCatalog.all()
+            local power=powers[m.course.seed % #powers + 1]
+            e.settings=copySettings({planeId=plane.id,angle=plane.defaultAngle,powerId=power.id,color=2})
         end
     end
     m.readyAt=now()+1
-    setPhase(m,"Configure","Choose your plane, gadget and color. Aim your jet next.")
+    setPhase(m,"Configure","Choose your superpower. One power for this round. Aim your jet next.")
 end
 local function beginAim(m)
     for _,e in ipairs(m.entrants) do
@@ -213,7 +226,7 @@ local function launch(m)
         if p then e.settings=copySettings(p.settings); telemetry:matchStart(p.player,m.practice) end
         e.flight=Simulation.newFlight(e.settings,m.course)
     end
-    setPhase(m,"Flight",m.practice and "Practice · one ghost opponent · distance to touchdown" or "Hands off. Fuel lifts you; missiles bring you down.")
+    setPhase(m,"Flight",m.practice and "Practice · one ghost opponent · powers activate automatically" or "Powers activate automatically. Fly farther to win!")
 end
 local function finish(m)
     if m.finished then return end

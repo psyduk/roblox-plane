@@ -275,11 +275,13 @@ local function makePlane(parent, name, colorIndex, planeId)
 	trail.Parent = pivot
 	planeData[model] = {
 		propeller = propeller, phase = 0, body = body, color = color,
+		bodySize = bodySize, powerAge = 100,
 		flare = flare, trail = trail, smoke = smoke,
 		hitAge = 100, boostAge = 100, nearMissAge = 100, lastEventSerial = -1,
 		trailMode = "normal", trailColors = {
 			normal = trail.Color,
 			boost = ColorSequence.new(COLORS.lime, COLORS.cream),
+			meteor = ColorSequence.new(COLORS.coral, COLORS.yellow),
 			hit = ColorSequence.new(Color3.fromRGB(104, 101, 110), COLORS.cream),
 		},
 	}
@@ -297,6 +299,134 @@ World.COCKPIT_OFFSET = CFrame.new(0.5, 2.1, 0) * CFrame.Angles(0, -math.pi / 2, 
 function World.getCockpitCFrame(model)
 	local scale = model:GetScale()
 	return model:GetPivot() * CFrame.new(0.5 * scale, 2.1 * scale, 0) * CFrame.Angles(0, -math.pi / 2, 0)
+end
+
+local POWER_COLORS = { Pinball = COLORS.yellow, Muncher = COLORS.lime, Meteor = COLORS.coral }
+local POWER_EVENTS = { pinball = "Pinball", munch = "Muncher", meteorDive = "Meteor", meteorBoost = "Meteor" }
+
+local function ensurePowerVisual(model, data, powerId)
+	if not POWER_COLORS[powerId] then powerId = nil end
+	if data.powerId == powerId then return end
+	if data.powerFolder then data.powerFolder:Destroy() end
+	data.powerId, data.powerFolder, data.powerPieces = powerId, nil, {}
+	data.powerAge = 100
+	data.powerPhase = nil
+	data.body.Size = data.bodySize * model:GetScale()
+	model:SetAttribute("PowerId", powerId)
+	model:SetAttribute("PowerPhase", nil)
+	model:SetAttribute("PowerPartCount", 0)
+	for _, piece in data.propeller:GetChildren() do
+		if piece:IsA("BasePart") then piece.Transparency = powerId == "Muncher" and 1 or 0 end
+	end
+	if not powerId then return end
+	local folder = Instance.new("Folder")
+	folder.Name = "PowerTransformation"
+	folder.Parent = model
+	data.powerFolder = folder
+	local function add(name, size, position, color, group, angle, transparency, neon)
+		local piece = part(folder, name, size, CFrame.identity, color,
+			neon and Enum.Material.Neon or Enum.Material.SmoothPlastic, false, Enum.PartType.Ball)
+		table.insert(data.powerPieces, { part = piece, size = size, position = position,
+			group = group, angle = angle or 0, transparency = transparency or 0 })
+	end
+	if powerId == "Pinball" then
+		-- Two inflatable hoops frame the cockpit; there is deliberately no
+		-- opaque sphere around the pilot or the flight path.
+		for _, side in { -1, 1 } do
+			for index = 1, 12 do
+				local a = (index - 1) * math.pi / 6
+				local b = index * math.pi / 6
+				local first = Vector3.new(math.cos(a) * 5.5, math.sin(a) * 3.6, side * 2.05)
+				local last = Vector3.new(math.cos(b) * 5.5, math.sin(b) * 3.6, side * 2.05)
+				local segment = last - first
+				add("RubberHoop", Vector3.new(segment.Magnitude + 0.5, 0.72, 0.72),
+					(first + last) / 2, index % 3 == 0 and COLORS.cream or COLORS.yellow,
+					"ring", math.atan2(segment.Y, segment.X))
+			end
+		end
+	elseif powerId == "Muncher" then
+		for _, jaw in { -1, 1 } do
+			local group = jaw == 1 and "upperJaw" or "lowerJaw"
+			add("MuncherJaw", Vector3.new(5.7, 0.9, 4.3), Vector3.new(5.55, jaw * 1.1, 0), COLORS.lime, group)
+			for _, side in { -1, 1 } do
+				for index = 1, 3 do
+					add("ChomperTooth", Vector3.new(0.72, 0.95, 0.75),
+						Vector3.new(4.2 + index * 1.05, jaw * 0.5, side * 1.65), COLORS.cream, group, jaw * 0.2)
+				end
+			end
+		end
+		for _, side in { -1, 1 } do
+			add("MuncherEye", Vector3.new(1.3, 1.4, 0.65), Vector3.new(4.15, 1.95, side * 1.8), COLORS.cream, "upperJaw")
+			add("MuncherPupil", Vector3.new(0.58, 0.8, 0.25), Vector3.new(4.43, 1.92, side * 2.1), COLORS.deep, "upperJaw")
+		end
+		add("MuncherTongue", Vector3.new(3.9, 0.28, 2.1), Vector3.new(5.65, -0.42, 0), COLORS.coral, "lowerJaw")
+	elseif powerId == "Meteor" then
+		add("MeteorCore", Vector3.new(7, 3.8, 3.8), Vector3.new(-2, -0.3, 0), COLORS.coral, "core", 0, 0.7, true)
+		for _, side in { -1, 1 } do
+			add("MeteorFin", Vector3.new(4.7, 1.2, 1.7), Vector3.new(-2.6, 0.6, side * 3), COLORS.coral, "fin", -0.4)
+			add("HotFinEdge", Vector3.new(3.5, 0.4, 1.9), Vector3.new(-2.5, 1, side * 3), COLORS.yellow, "fin", -0.4, 0.1, true)
+		end
+		for index = 1, 3 do
+			add("MeteorFlame", Vector3.new(7 - index, 0.9, 0.9),
+				Vector3.new(-7.3, (index - 2) * 1.2, (index - 2) * 0.4),
+				index == 2 and COLORS.yellow or COLORS.coral, "flame", (index - 2) * 0.15, 1, true)
+		end
+	end
+	model:SetAttribute("PowerPartCount", #data.powerPieces)
+end
+
+local function updatePowerVisual(model, data, state, pose, scale)
+	if not data.powerId then return end
+	local powerId = data.powerId
+	local kick = math.max(0, 1 - data.powerAge / 0.7)
+	local diving = powerId == "Meteor" and state.powerPhase == "diving"
+	local heat = diving and 1 or (data.powerKind == "meteorBoost" and kick or 0)
+	local phase = state.powerPhase or "armed"
+	if data.powerPhase ~= phase then
+		data.powerPhase = phase
+		model:SetAttribute("PowerPhase", phase)
+	end
+	local squashX, squashY = 1, 1
+	if powerId == "Pinball" and kick > 0 then
+		local bounce = math.cos(data.powerAge * 19) * kick
+		squashX, squashY = 1 + bounce * 0.2, 1 - bounce * 0.27
+	end
+	local idle = math.sin((state.elapsed or 0) * 2.8) * 0.025
+	for _, entry in data.powerPieces do
+		local position, size = entry.position, entry.size
+		local transparency = entry.transparency
+		local rotation = CFrame.Angles(0, 0, entry.angle)
+		if entry.group == "ring" then
+			position = Vector3.new(position.X * squashX, position.Y * squashY, position.Z)
+			size = Vector3.new(size.X * (1 + kick * 0.06), size.Y * (1 + kick * 0.35), size.Z)
+		elseif entry.group == "upperJaw" or entry.group == "lowerJaw" then
+			local side = entry.group == "upperJaw" and 1 or -1
+			local open = 0.13 + idle
+			if data.powerKind == "munch" and kick > 0 then
+				open = 0.04 + math.abs(math.sin(math.min(1, data.powerAge / 0.5) * math.pi * 2)) * kick * 0.4
+			end
+			local jawPose = CFrame.new(3, 0, 0) * CFrame.Angles(0, 0, side * open)
+			position = jawPose:PointToWorldSpace(position - Vector3.new(3, 0, 0))
+			rotation = CFrame.Angles(0, 0, side * open + entry.angle)
+		elseif entry.group == "flame" then
+			local flicker = 1 + math.sin(data.phase * 1.7 + position.Y * 3) * 0.12
+			size = Vector3.new(size.X * (0.75 + heat * 1.1) * flicker, size.Y * (1 + heat), size.Z * (1 + heat))
+			position = Vector3.new(position.X - heat * 2.5, position.Y, position.Z)
+			transparency = heat > 0 and (0.1 + (1 - heat) * 0.65) or 1
+		elseif entry.group == "core" then
+			transparency = 0.78 - heat * 0.2
+			size = size * (1 + heat * 0.16)
+		end
+		entry.part.Size = size * scale
+		entry.part.CFrame = pose * CFrame.new(position * scale) * rotation
+		entry.part.Transparency = transparency
+	end
+	-- Only the soft fuselage squashes. Wings, cockpit and seated-avatar mount
+	-- retain their stable contract and every decorative part stays nonphysical.
+	data.body.Size = Vector3.new(data.bodySize.X * squashX, data.bodySize.Y * squashY, data.bodySize.Z) * scale
+	if data.hitAge >= 0.13 then
+		data.body.Color = data.body.Color:Lerp(POWER_COLORS[powerId], 0.28 + kick * 0.35)
+	end
 end
 
 local function planter(parent, position, size)
@@ -426,7 +556,7 @@ function World.buildLobby()
 		part(lobby, "CrateBand", Vector3.new(11.2, 1.8, 11.2), CFrame.new(x, 10, 64), COLORS.navy)
 		part(lobby, "CrateTop", Vector3.new(11.5, 0.7, 11.5), CFrame.new(x, 12.9, 64), COLORS.cream)
 	end
-	sign(lobby, "HowToPlay", Vector3.new(0, 17, 91), Vector3.new(72, 12, 1), "GOOD COMPANY. GREAT FLIGHTS.", "CLAIM A PAD  /  SET YOUR PLANE  /  WATCH IT FLY", COLORS.cyan)
+	sign(lobby, "HowToPlay", Vector3.new(0, 17, 91), Vector3.new(72, 12, 1), "BIG POWERS. BIGGER FLIGHTS.", "CLAIM A PAD  /  PICK A POWER  /  AIM + LAUNCH", COLORS.cyan)
 	World.updateLobbyQueues({})
 	return lobby
 end
@@ -774,7 +904,8 @@ end
 local function startBurst(model, data, state, event, z, age)
 	local isHit = event.kind == "missile" or event.kind == "hit"
 	local isPickup = event.kind == "fuel"
-	local isPower = event.kind == "boost" or event.kind == "shield"
+	local powerId = POWER_EVENTS[event.kind]
+	local isPower = powerId ~= nil or event.kind == "boost" or event.kind == "shield"
 	if not (isHit or isPickup or isPower) or age > 0.65 then return end
 	local slot
 	for _, candidate in data.bursts or {} do
@@ -792,10 +923,11 @@ local function startBurst(model, data, state, event, z, age)
 	hideBurst(slot)
 	slot.active = true
 	slot.age = age
-	slot.kind = isHit and "hit" or "pickup"
-	slot.duration = isHit and 0.78 or 0.68
+	slot.kind = isHit and "hit" or (powerId and "power" or "pickup")
+	slot.eventKind = event.kind
+	slot.duration = powerId and 0.94 or (isHit and 0.78 or 0.68)
 	slot.origin = World.COURSE_ORIGIN + Vector3.new(event.x or state.x or 0, event.y or state.y or 0, z or 0)
-	slot.color = isHit and COLORS.yellow or (event.kind == "shield" and COLORS.cyan or COLORS.lime)
+	slot.color = powerId and POWER_COLORS[powerId] or (isHit and COLORS.yellow or (event.kind == "shield" and COLORS.cyan or COLORS.lime))
 	slot.folder:SetAttribute("Active", true)
 	slot.folder:SetAttribute("EventKind", event.kind)
 	slot.folder:SetAttribute("EventSerial", event.serial or 0)
@@ -810,8 +942,10 @@ local function startBurst(model, data, state, event, z, age)
 	end
 	if not isHit then
 		slot.captionGui.Enabled = true
-		slot.caption.Text = isPickup and ("+" .. tostring(event.value or "")) or string.upper(event.kind)
+		local powerWords = { pinball = "BOING!", munch = "CHOMP!", meteorDive = "DIVE!", meteorBoost = "BLAST OFF!" }
+		slot.caption.Text = powerWords[event.kind] or (isPickup and ("+" .. tostring(event.value or "")) or string.upper(event.kind))
 		slot.caption.TextColor3 = slot.color
+		slot.caption.Rotation = powerId and -7 or 0
 	end
 end
 
@@ -826,24 +960,28 @@ local function updateBursts(data, dt)
 				activeCount = activeCount + 1
 				local progress = slot.age / slot.duration
 				local isHit = slot.kind == "hit"
-				local ringDiameter = (isHit and 8 or 5) + (isHit and 30 or 22) * math.sqrt(progress)
+				local isPower = slot.kind == "power"
+				local ringDiameter = (isPower and 12 or (isHit and 8 or 5)) + (isPower and 43 or (isHit and 30 or 22)) * math.sqrt(progress)
 				slot.ringGui.Size = UDim2.new(ringDiameter, 0, ringDiameter, 0)
-				slot.stroke.Thickness = 2.4 - progress * 1.2
+				slot.stroke.Thickness = (isPower and 4 or 2.4) - progress * 1.2
 				slot.stroke.Transparency = 0.08 + progress * 0.92
 				local flash = math.max(0, 1 - slot.age / (isHit and 0.16 or 0.2))
 				local coreSize = (isHit and 6 or 3) + (1 - flash) * (isHit and 8 or 4)
 				slot.core.Size = Vector3.new(coreSize, coreSize, coreSize)
 				slot.core.CFrame = CFrame.new(slot.origin)
 				slot.core.Transparency = flash > 0 and (0.34 + (1 - flash) * 0.66) or 1
-				if isHit then
+				if isHit or isPower then
 					for index, spark in slot.sparks do
 						local angle = (index - 1) * math.pi / 3 + 0.24
-						local radius = 4 + progress * 22
+						if slot.eventKind == "meteorBoost" then angle = angle * 0.45 end
+						local radius = 4 + progress * (isPower and 32 or 22)
 						local point = slot.origin + Vector3.new(math.cos(angle) * radius, math.sin(angle) * radius - slot.age * slot.age * 10, 1)
 						spark.CFrame = CFrame.new(point) * CFrame.Angles(0, 0, angle)
-						spark.Size = Vector3.new(1.2 + (1 - progress) * 3.8, 0.65, 0.65)
+						spark.Size = Vector3.new(1.2 + (1 - progress) * (isPower and 6 or 3.8), isPower and 1 or 0.65, 0.65)
 						spark.Transparency = 0.1 + progress * 0.9
 					end
+				end
+				if isHit then
 					for index, puff in slot.smoke do
 						local smokeAge = math.max(0, slot.age - 0.08)
 						local diameter = 3 + smokeAge * 11
@@ -853,8 +991,9 @@ local function updateBursts(data, dt)
 					end
 				else
 					local jump = math.sin(math.min(1, progress * 1.6) * math.pi / 2)
-					slot.captionGui.StudsOffset = Vector3.new(0, 13 * jump, 0)
-					slot.captionGui.Size = UDim2.new(25 + 4 * jump, 0, 13 + 2 * jump, 0)
+					slot.captionGui.StudsOffset = Vector3.new(0, (isPower and 24 or 13) * jump, 0)
+					slot.captionGui.Size = isPower and UDim2.new(52 + 8 * jump, 0, 15 + 3 * jump, 0)
+						or UDim2.new(25 + 4 * jump, 0, 13 + 2 * jump, 0)
 					slot.caption.TextTransparency = progress * progress
 					slot.caption.TextStrokeTransparency = progress * progress
 				end
@@ -882,6 +1021,10 @@ local function acceptPlaneEvent(data, state, event, model, z)
 	end
 	if age > 1.1 then return end
 	startBurst(model, data, state, event, z, age)
+	if POWER_EVENTS[event.kind] then
+		data.powerAge, data.powerKind = age, event.kind
+		if event.kind ~= "meteorDive" then data.boostAge = age end
+	end
 	if event.kind == "missile" or event.kind == "hit" then
 		data.hitAge = age
 	elseif event.kind == "fuel" or event.kind == "boost" or event.kind == "shield" then
@@ -897,21 +1040,25 @@ function World.updatePlane(model, state, z, dt)
 	local frameTime = math.clamp(dt or 1 / 60, 0, 1)
 	local scale = model:GetScale()
 	if data then
+		ensurePowerVisual(model, data, state.powerId or (state.settings and state.settings.powerId))
 		-- Effects age on render time after acceptance, so touchdown or a newer
 		-- near miss cannot leave a fire frozen or prematurely erase a hit.
 		data.hitAge = data.hitAge + frameTime
 		data.boostAge = data.boostAge + frameTime
 		data.nearMissAge = data.nearMissAge + frameTime
+		data.powerAge = data.powerAge + frameTime
 		for _, event in state.recentEvents or {} do acceptPlaneEvent(data, state, event, model, z) end
 		acceptPlaneEvent(data, state, state.lastEvent, model, z)
 		updateBursts(data, frameTime)
 	end
 	local maxPitch = math.rad(60)
-	local pitch = math.clamp(math.atan2(state.vy or 0, math.max(1, state.vx or 1)), -0.8, maxPitch)
+	local dive = data and data.powerId == "Meteor" and state.powerPhase == "diving"
+	local minPitch = dive and -1.35 or -0.8
+	local pitch = math.clamp(math.atan2(state.vy or 0, math.max(1, state.vx or 1)), minPitch, maxPitch)
 	local y = state.y or 10
 	local hitKick = data and math.max(0, 1 - data.hitAge / 0.48) or 0
 	local boostKick = data and math.max(0, 1 - data.boostAge / 0.58) or 0
-	pitch = math.clamp(pitch - hitKick * 0.24 + boostKick * 0.14, -1, maxPitch)
+	pitch = math.clamp(pitch - hitKick * 0.24 + boostKick * 0.14, dive and minPitch or -1, maxPitch)
 	if state.alive == false and state.finishReason == "landed" then
 		pitch = 0
 		y = math.max(y, 1.6 * scale)
@@ -925,9 +1072,10 @@ function World.updatePlane(model, state, z, dt)
 		local boost = math.max(0, 1 - data.boostAge / 0.8)
 		local fire = math.max(0, 1 - data.hitAge / 0.52)
 		local nearMiss = math.max(0, 1 - data.nearMissAge / 0.38)
-		local envelope = math.max(boost, fire)
+		local meteor = data.powerId == "Meteor" and (dive and 1 or (data.powerKind == "meteorBoost" and math.max(0, 1 - data.powerAge / 0.8) or 0)) or 0
+		local envelope = math.max(boost, fire, meteor)
 		if envelope > 0 then
-			data.flare.Color = fire > 0 and Color3.fromRGB(255, 143, 62) or COLORS.lime
+			data.flare.Color = meteor > 0 and COLORS.coral or (fire > 0 and Color3.fromRGB(255, 143, 62) or (data.powerId == "Pinball" and COLORS.yellow or COLORS.lime))
 			data.flare.Size = Vector3.new(4.5 + envelope * 3.5, 0.9 + envelope, 0.9 + envelope) * scale
 			data.flare.CFrame = pose * CFrame.new(-6.3 * scale, 0, 0)
 			data.flare.Transparency = 0.12 + (1 - envelope) * 0.8
@@ -955,11 +1103,13 @@ function World.updatePlane(model, state, z, dt)
 		else
 			data.body.Color = data.color
 		end
-		local trailMode = boost > 0 and "boost" or (data.hitAge < 0.9 and "hit" or "normal")
+		local trailMode = meteor > 0 and "meteor" or (boost > 0 and "boost" or (data.hitAge < 0.9 and "hit" or "normal"))
 		if trailMode ~= data.trailMode then
 			data.trailMode = trailMode
 			data.trail.Color = data.trailColors[trailMode]
+			data.trail.Lifetime = trailMode == "meteor" and 0.65 or 0.35
 		end
+		updatePowerVisual(model, data, state, pose, scale)
 	end
 end
 
