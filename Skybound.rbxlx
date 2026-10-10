@@ -557,6 +557,530 @@ return Simulation
       </Item>
       <Item class="ModuleScript" referent="RBX8">
         <Properties>
+          <string name="Name">BattleSimulation</string>
+          <ProtectedString name="Source">-- Pure, deterministic Battle Lab simulation. No Roblox services or physics.
+-- step accepts elapsed time and consumes fixed ticks; a stalled caller advances
+-- at most MAX_STEP_DT per call. Rendering reads state but never decides hits.
+local BattleSimulation = {}
+
+BattleSimulation.FIXED_DT = 1 / 60
+BattleSimulation.MAX_STEP_DT = 0.25
+BattleSimulation.MAX_TIME = 35
+BattleSimulation.PRESSURE_START = 18
+BattleSimulation.ARENA = { left = -72, right = 72, bottom = 8, top = 96 }
+BattleSimulation.PLANE_RADIUS = 5
+BattleSimulation.IMPACT_PROTECTION = 0.85
+BattleSimulation.APPROACH_TIME = 4
+BattleSimulation.RECOVERY_TIME = 2.6
+BattleSimulation.METEOR_WINDUP = 1
+BattleSimulation.METEOR_AIM_TIME = 0.4
+BattleSimulation.BOOST_DURATION = 0.9
+BattleSimulation.WAKE_LIFE = 3.2
+BattleSimulation.WAKE_ARM_TIME = 0.12
+BattleSimulation.WAKE_RADIUS = 5
+BattleSimulation.MAX_WAKES = 12
+
+local PI, TAU = math.pi, math.pi * 2
+local EPSILON = 0.000000001
+local function finite(value)
+	return type(value) == "number" and value == value and value &gt; -math.huge and value &lt; math.huge
+end
+local function clamp(value, low, high)
+	return math.max(low, math.min(high, value))
+end
+local function atan2(y, x)
+	if x &gt; 0 then return math.atan(y / x) end
+	if x &lt; 0 then return math.atan(y / x) + (y &gt;= 0 and PI or -PI) end
+	if y &gt; 0 then return PI / 2 end
+	if y &lt; 0 then return -PI / 2 end
+	return 0
+end
+local function turn(heading, target, amount)
+	local difference = (target - heading + PI) % TAU - PI
+	return (heading + clamp(difference, -amount, amount) + PI) % TAU - PI
+end
+local function direction(x, y, fallback)
+	local length = math.sqrt(x * x + y * y)
+	if length &lt; EPSILON then return fallback or 1, 0 end
+	return x / length, y / length
+end
+
+function BattleSimulation.validPower(id)
+	return id == "Meteor" or id == "Firework"
+end
+
+-- Keep this module require-free for replay tooling. Catalog parity is tested.
+function BattleSimulation.validModifier(id)
+	return id == "None" or id == "Afterburner" or id == "SpringBumper" or id == "FizzyFuel"
+end
+
+local function settings(input, fallback)
+	input = type(input) == "table" and input or {}
+	return {
+		powerId = BattleSimulation.validPower(input.powerId) and input.powerId or fallback,
+		angle = finite(input.angle) and clamp(input.angle, 10, 55) or 32,
+		modifierId = BattleSimulation.validModifier(input.modifierId) and input.modifierId or "None",
+	}
+end
+
+local function event(state, kind, x, y, actor, target, source, modifierId)
+	state.eventSerial = state.eventSerial + 1
+	local entry = {
+		serial = state.eventSerial, kind = kind, x = x, y = y,
+		actor = actor or 0, target = target or 0,
+		at = state.elapsed, source = source, modifierId = modifierId,
+	}
+	state.events[#state.events + 1] = entry
+	if #state.events &gt; 24 then table.remove(state.events, 1) end
+	return entry
+end
+
+local function finish(state, reason)
+	local a, b = state.fighters[1], state.fighters[2]
+	state.finished = true
+	state.reason = reason
+	state.winner = a.armor == b.armor and 0 or (a.armor &gt; b.armor and 1 or 2)
+	for _, fighter in ipairs(state.fighters) do fighter.armed = false end
+	event(state, "finish", (a.x + b.x) / 2, (a.y + b.y) / 2, state.winner, 0)
+end
+
+local function updateBounds(state)
+	local pressure = clamp((state.elapsed - BattleSimulation.PRESSURE_START) /
+		(BattleSimulation.MAX_TIME - BattleSimulation.PRESSURE_START), 0, 1)
+	state.pressure = pressure
+	state.bounds = { left = -72 + 24 * pressure, right = 72 - 24 * pressure,
+		bottom = 8 + 10 * pressure, top = 96 - 14 * pressure }
+end
+
+function BattleSimulation.newRound(seed, settingsA, settingsB)
+	seed = finite(seed) and math.floor(math.abs(seed)) % 2147483647 or 1
+	if seed == 0 then seed = 1 end
+	local randomState = seed
+	local function random()
+		randomState = (randomState * 16807) % 2147483647
+		return (randomState - 1) / 2147483646
+	end
+	local state = {
+		seed = seed, elapsed = 0, finished = false, winner = nil, reason = nil,
+		fighters = {}, projectiles = {}, wakes = {}, events = {}, eventSerial = 0,
+		pressure = 0, _accumulator = 0, _projectileSerial = 0, _bumpCooldown = 0,
+		_wakeSerial = 0,
+	}
+	updateBounds(state)
+	local configs = { settings(settingsA, "Meteor"), settings(settingsB, "Firework") }
+	for id, config in ipairs(configs) do
+		local side = id == 1 and 1 or -1
+		local heading = math.rad(config.angle)
+		if side &lt; 0 then heading = PI - heading end
+		-- Seed variation is visible in opening height, never in damage/accuracy.
+		local fighter = {
+			id = id, powerId = config.powerId, settings = config,
+			modifierId = config.modifierId, boostLeft = 0,
+			bumperReady = config.modifierId == "SpringBumper",
+			x = -52 * side, y = 31 + random() * 13,
+			heading = heading, vx = math.cos(heading) * 29, vy = math.sin(heading) * 29,
+			armor = 3, phase = "Approach", phaseLeft = BattleSimulation.APPROACH_TIME,
+			windupDuration = config.powerId == "Meteor" and BattleSimulation.METEOR_WINDUP or 1.05,
+			armed = false, invulnerable = 0, attacks = 0, hits = 0,
+			radius = BattleSimulation.PLANE_RADIUS, lockX = 0, lockY = 50,
+			_knockX = 0, _knockY = 0, _attackHit = false,
+			_boostPending = false, _wakeLeft = 0, _wakeNext = 0,
+		}
+		state.fighters[id] = fighter
+		event(state, "launch", fighter.x, fighter.y, id, 0)
+	end
+	return state
+end
+
+-- Earliest intersection between moving circles. Relative sweeps account for
+-- movement of BOTH objects and catch contacts that cross between fixed ticks.
+local function sweep(ax, ay, nextAx, nextAy, bx, by, nextBx, nextBy, radius)
+	local x, y = ax - bx, ay - by
+	local dx, dy = (nextAx - ax) - (nextBx - bx), (nextAy - ay) - (nextBy - by)
+	local c = x * x + y * y - radius * radius
+	if c &lt;= 0 then return 0 end
+	local a = dx * dx + dy * dy
+	if a &lt; EPSILON then return nil end
+	local b = 2 * (x * dx + y * dy)
+	local discriminant = b * b - 4 * a * c
+	if discriminant &lt; 0 then return nil end
+	local t = (-b - math.sqrt(discriminant)) / (2 * a)
+	if t &gt;= 0 and t &lt;= 1 then return t end
+	return nil
+end
+
+local function recover(state, fighter, opponent, duration)
+	if fighter.modifierId == "Afterburner" and fighter._boostPending then
+		fighter.boostLeft = BattleSimulation.BOOST_DURATION
+		fighter._boostPending = false
+		event(state, "modifier", fighter.x, fighter.y, fighter.id, 0, "afterburner", "Afterburner")
+	end
+	fighter.phase, fighter.phaseLeft = "Recover", duration or BattleSimulation.RECOVERY_TIME
+	fighter.armed = false
+	local awayX, awayY = direction(fighter.x - opponent.x, fighter.y - opponent.y, fighter.id == 1 and -1 or 1)
+	fighter._recoverX = clamp(fighter.x + awayX * 32, -48, 48)
+	fighter._recoverY = clamp(fighter.y + awayY * 15 + (fighter.y &lt; 49 and 18 or -18), 25, 77)
+end
+
+local function lockTarget(fighter, opponent)
+	local distance = math.sqrt((opponent.x - fighter.x) ^ 2 + (opponent.y - fighter.y) ^ 2)
+	local speed = fighter.powerId == "Meteor" and 65 or 40
+	local lead = clamp(distance / speed, 0, 0.95) * (fighter.powerId == "Meteor" and 0.85 or 0.35)
+	fighter.lockX = clamp(opponent.x + opponent.vx * lead, -64, 64)
+	fighter.lockY = clamp(opponent.y + opponent.vy * lead, 15, 88)
+end
+
+local function beginAttack(state, fighter, opponent)
+	lockTarget(fighter, opponent)
+	fighter.phase = "Attack"
+	fighter.phaseLeft = fighter.powerId == "Meteor" and 1.05 or 0.5
+	fighter.armed = fighter.powerId == "Meteor"
+	fighter.attacks = fighter.attacks + 1
+	fighter._attackHit = false
+	if fighter.modifierId == "Afterburner" then fighter._boostPending = true end
+	if fighter.modifierId == "FizzyFuel" then
+		fighter._wakeLeft, fighter._wakeNext = 0.8, 0
+		event(state, "modifier", fighter.x, fighter.y, fighter.id, 0, "wake", "FizzyFuel")
+	end
+	-- The direction is locked for the whole attack; no homing after launch.
+	fighter._attackHeading = fighter.heading
+	if fighter.powerId == "Meteor" then
+		-- A dive can connect and recover before the next network snapshot.
+		-- Preserve the committed moment for presentation without delaying it.
+		local commitment = event(state, "dive", fighter.x, fighter.y, fighter.id, opponent.id, "meteor")
+		commitment.heading = fighter._attackHeading
+	end
+	if fighter.powerId == "Firework" then
+		state._projectileSerial = state._projectileSerial + 1
+		local dx, dy = math.cos(fighter.heading), math.sin(fighter.heading)
+		state.projectiles[#state.projectiles + 1] = {
+			id = state._projectileSerial, owner = fighter.id,
+			x = fighter.x + dx * 7, y = fighter.y + dy * 7,
+			vx = dx * 40, vy = dy * 40, life = 3.5, radius = 3.5,
+		}
+		event(state, "rocket", fighter.x + dx * 7, fighter.y + dy * 7, fighter.id, opponent.id)
+	end
+end
+
+local function prepare(state, fighter, opponent, dt)
+	fighter.invulnerable = math.max(0, fighter.invulnerable - dt)
+	fighter.boostLeft = math.max(0, fighter.boostLeft - dt)
+	fighter.phaseLeft = fighter.phaseLeft - dt
+	local dx, dy = opponent.x - fighter.x, opponent.y - fighter.y
+	if fighter.phase == "Approach" then
+		local inPosition = fighter.powerId == "Meteor" and fighter.y &gt;= opponent.y + 8 and math.abs(dx) &lt; 68
+		if fighter.powerId == "Firework" then inPosition = dx * dx + dy * dy &lt; 76 * 76 end
+		local earliest = fighter.powerId == "Meteor" and 1.45 or 1.05
+		if fighter.phaseLeft &lt;= 0 or (fighter.phaseLeft &lt; earliest and inPosition) then
+			fighter.phase, fighter.phaseLeft = "Windup", fighter.windupDuration
+			if fighter.powerId == "Meteor" then
+				-- Pull away before aiming so a pursuing rival cannot simply sit
+				-- inside the armed nose at release. The waypoint stays fixed for
+				-- this charge and is reached through a bounded turn. Choose open
+				-- space locally: blindly climbing at the ceiling or reversing at
+				-- a side wall would erase the very separation this arc creates.
+				local best = -math.huge
+				for index = 0, 7 do
+					local angle = index * PI / 4
+					local x = clamp(fighter.x + math.cos(angle) * 46, state.bounds.left + 9, state.bounds.right - 9)
+					local y = clamp(fighter.y + math.sin(angle) * 46, state.bounds.bottom + 9, state.bounds.top - 9)
+					local score = (x - opponent.x) ^ 2 + (y - opponent.y) ^ 2 +
+						0.35 * ((x - fighter.x) ^ 2 + (y - fighter.y) ^ 2)
+					if score &gt; best then
+						best, fighter._chargeX, fighter._chargeY = score, x, y
+					end
+				end
+			end
+			lockTarget(fighter, opponent)
+			event(state, "windup", fighter.x, fighter.y, fighter.id, opponent.id)
+		end
+	elseif fighter.phase == "Windup" and fighter.phaseLeft &lt;= 0 then
+		beginAttack(state, fighter, opponent)
+	elseif fighter.phase == "Attack" and fighter.phaseLeft &lt;= 0 then
+		if fighter.powerId == "Meteor" and not fighter._attackHit then
+			event(state, "miss", fighter.x, fighter.y, fighter.id, opponent.id)
+		end
+		recover(state, fighter, opponent)
+	elseif fighter.phase == "Recover" and fighter.phaseLeft &lt;= 0 then
+		fighter.phase, fighter.phaseLeft = "Approach", BattleSimulation.APPROACH_TIME
+	end
+
+	local targetX, targetY = opponent.x, opponent.y
+	local speed, turnRate = 28, 2.8
+	if fighter.phase == "Approach" then
+		if fighter.powerId == "Meteor" then
+			targetY = math.min(state.bounds.top - 8, opponent.y + 28)
+			targetX = clamp(opponent.x - (dx &gt;= 0 and 18 or -18), state.bounds.left + 10, state.bounds.right - 10)
+			speed = 31
+		end
+	elseif fighter.phase == "Windup" then
+		lockTarget(fighter, opponent)
+		targetX, targetY = fighter.lockX, fighter.lockY
+		speed, turnRate = 9, 5.5
+		if fighter.powerId == "Meteor" then
+			if fighter.phaseLeft &gt; BattleSimulation.METEOR_AIM_TIME then
+				targetX, targetY = fighter._chargeX, fighter._chargeY
+				speed, turnRate = 60, 5.5
+			else
+				speed, turnRate = 5, 8
+			end
+		end
+	elseif fighter.phase == "Attack" then
+		speed = fighter.powerId == "Meteor" and 65 or 27
+		fighter.heading = fighter._attackHeading
+	elseif fighter.phase == "Recover" then
+		targetX, targetY = fighter._recoverX, fighter._recoverY
+		speed, turnRate = 30, 3.5
+		if fighter.boostLeft &gt; 0 then speed, turnRate = 44, 5.2 end
+	end
+	if fighter.phase ~= "Attack" then
+		-- Looking ahead turns the plane away from the visible edge before impact.
+		local lookX = fighter.x + math.cos(fighter.heading) * speed * 0.45
+		local lookY = fighter.y + math.sin(fighter.heading) * speed * 0.45
+		if fighter.phase ~= "Windup" and (lookX &lt; state.bounds.left + 3 or lookX &gt; state.bounds.right - 3 or
+			lookY &lt; state.bounds.bottom + 3 or lookY &gt; state.bounds.top - 3) then
+			targetX, targetY = 0, (state.bounds.bottom + state.bounds.top) / 2
+			turnRate = fighter.boostLeft &gt; 0 and 5.2 or 4.5
+		end
+		fighter.heading = turn(fighter.heading, atan2(targetY - fighter.y, targetX - fighter.x), turnRate * dt)
+	end
+	fighter._knockX = fighter._knockX * math.exp(-5 * dt)
+	fighter._knockY = fighter._knockY * math.exp(-5 * dt)
+	fighter.vx = math.cos(fighter.heading) * speed + fighter._knockX
+	fighter.vy = math.sin(fighter.heading) * speed + fighter._knockY
+end
+
+local function damage(state, actorId, targetId, x, y, dirX, dirY, source)
+	local actor, target = state.fighters[actorId], state.fighters[targetId]
+	if target.invulnerable &gt; 0 or target.armor &lt;= 0 then return false end
+	if target.bumperReady then
+		target.bumperReady = false
+		target.invulnerable = BattleSimulation.IMPACT_PROTECTION
+		target._knockX, target._knockY = dirX * 32, dirY * 32
+		actor._knockX, actor._knockY = -dirX * 24, -dirY * 24
+		actor._attackHit = true
+		event(state, "blocked", x, y, targetId, actorId, source, "SpringBumper")
+		return false, true
+	end
+	target.armor = math.max(0, target.armor - 1)
+	target.invulnerable = BattleSimulation.IMPACT_PROTECTION
+	target._knockX, target._knockY = dirX * 22, dirY * 22
+	actor.hits = actor.hits + 1
+	actor._attackHit = true
+	event(state, source == "wake" and "wake_hit" or "hit", x, y, actorId, targetId, source,
+		source == "wake" and "FizzyFuel" or nil)
+	return true
+end
+
+local function emitWake(state, fighter, dt)
+	-- Committing spills fuel for 0.8s, including the beginning of the bank if
+	-- the strike connects immediately. Otherwise successful attacks leave no
+	-- useful trail for a rival to cross on the next approach.
+	if fighter.modifierId ~= "FizzyFuel" or fighter._wakeLeft &lt;= 0 then return end
+	fighter._wakeLeft = math.max(0, fighter._wakeLeft - dt)
+	fighter._wakeNext = fighter._wakeNext - dt
+	if fighter._wakeNext &gt; 0 then return end
+	fighter._wakeNext = fighter._wakeNext + 0.16
+	local owned, oldest = 0, nil
+	for index, wake in ipairs(state.wakes) do
+		if wake.owner == fighter.id then
+			owned = owned + 1
+			oldest = oldest or index
+		end
+	end
+	if owned &gt;= 6 then table.remove(state.wakes, oldest) end
+	if #state.wakes &gt;= BattleSimulation.MAX_WAKES then return end
+	state._wakeSerial = state._wakeSerial + 1
+	state.wakes[#state.wakes + 1] = {
+		id = state._wakeSerial, owner = fighter.id,
+		x = fighter.x - math.cos(fighter.heading) * 8, y = fighter.y - math.sin(fighter.heading) * 8,
+		radius = BattleSimulation.WAKE_RADIUS, life = BattleSimulation.WAKE_LIFE,
+		maxLife = BattleSimulation.WAKE_LIFE, armLeft = BattleSimulation.WAKE_ARM_TIME,
+	}
+end
+
+local function tick(state)
+	local dt = math.min(BattleSimulation.FIXED_DT, BattleSimulation.MAX_TIME - state.elapsed)
+	state.elapsed = math.min(BattleSimulation.MAX_TIME, state.elapsed + dt)
+	updateBounds(state)
+	state._bumpCooldown = math.max(0, state._bumpCooldown - dt)
+	local previous = {}
+	for id, fighter in ipairs(state.fighters) do
+		previous[id] = { id = id, x = fighter.x, y = fighter.y, vx = fighter.vx, vy = fighter.vy }
+	end
+	-- Both plans read the same pre-tick snapshot, avoiding first-player bias.
+	for id, fighter in ipairs(state.fighters) do prepare(state, fighter, previous[3 - id], dt) end
+	local edgeHit = {}
+	for id, fighter in ipairs(state.fighters) do
+		local x, y = fighter.x + fighter.vx * dt, fighter.y + fighter.vy * dt
+		fighter.x = clamp(x, state.bounds.left, state.bounds.right)
+		fighter.y = clamp(y, state.bounds.bottom, state.bounds.top)
+		edgeHit[id] = x ~= fighter.x or y ~= fighter.y
+		emitWake(state, fighter, dt)
+	end
+
+	local a, b = state.fighters[1], state.fighters[2]
+	local contact = sweep(previous[1].x, previous[1].y, a.x, a.y,
+		previous[2].x, previous[2].y, b.x, b.y, a.radius + b.radius)
+	local landed, blocked, resolved = {}, {}, {}
+	if contact then
+		-- Evaluate BOTH armed noses before applying recovery: simultaneous strikes
+		-- are allowed, including a double knockout, rather than favoring index 1.
+		for id, fighter in ipairs(state.fighters) do
+			local opponent, old, otherOld = state.fighters[3 - id], previous[id], previous[3 - id]
+			local x = old.x + (fighter.x - old.x) * contact
+			local y = old.y + (fighter.y - old.y) * contact
+			local ox = otherOld.x + (opponent.x - otherOld.x) * contact
+			local oy = otherOld.y + (opponent.y - otherOld.y) * contact
+			local forward = (ox - x) * math.cos(fighter.heading) + (oy - y) * math.sin(fighter.heading)
+			if fighter.armed and not fighter._attackHit and forward &gt;= -EPSILON then
+				landed[id], blocked[id] = damage(state, id, 3 - id, (x + ox) / 2, (y + oy) / 2,
+					math.cos(fighter.heading), math.sin(fighter.heading), "meteor")
+				resolved[id] = landed[id] or blocked[id]
+			end
+		end
+		if state._bumpCooldown &lt;= 0 then
+			local nx, ny = direction(a.x - b.x, a.y - b.y, -1)
+			if not blocked[1] and not blocked[2] then
+				a._knockX, a._knockY = nx * 26, ny * 26
+				b._knockX, b._knockY = -nx * 26, -ny * 26
+			end
+			state._bumpCooldown = 0.45
+			if not landed[1] and not landed[2] and not blocked[1] and not blocked[2] then
+				event(state, "bump", (a.x + b.x) / 2, (a.y + b.y) / 2, 1, 2)
+			end
+		end
+	end
+
+	local surviving = {}
+	for _, projectile in ipairs(state.projectiles) do
+		local oldX, oldY = projectile.x, projectile.y
+		projectile.x, projectile.y = oldX + projectile.vx * dt, oldY + projectile.vy * dt
+		projectile.life = projectile.life - dt
+		local targetId = 3 - projectile.owner
+		local target, old = state.fighters[targetId], previous[targetId]
+		local hit = sweep(oldX, oldY, projectile.x, projectile.y,
+			old.x, old.y, target.x, target.y, target.radius + (projectile.radius or 3.5))
+		if hit then
+			local nx, ny = direction(projectile.vx, projectile.vy)
+			local successful, absorbed = damage(state, projectile.owner, targetId,
+				oldX + (projectile.x - oldX) * hit, oldY + (projectile.y - oldY) * hit, nx, ny, "rocket")
+			if successful then landed[projectile.owner] = true end
+			if successful or absorbed then resolved[projectile.owner] = true end
+			-- Impact protection absorbs subsequent projectiles visibly at contact;
+			-- they never wait inside a protected plane to deal delayed damage.
+			if not successful and not absorbed then event(state, "miss", projectile.x, projectile.y, projectile.owner, targetId) end
+		elseif projectile.life &lt;= 0 or projectile.x &lt; state.bounds.left - 10 or projectile.x &gt; state.bounds.right + 10 or
+			projectile.y &lt; state.bounds.bottom - 10 or projectile.y &gt; state.bounds.top + 10 then
+			event(state, "miss", projectile.x, projectile.y, projectile.owner, targetId)
+		else
+			surviving[#surviving + 1] = projectile
+		end
+	end
+	state.projectiles = surviving
+	local remainingWakes = {}
+	for _, wake in ipairs(state.wakes) do
+		wake.life = wake.life - dt
+		wake.armLeft = math.max(0, wake.armLeft - dt)
+		local targetId = 3 - wake.owner
+		local target, old = state.fighters[targetId], previous[targetId]
+		local hit = wake.armLeft &lt;= 0 and wake.life &gt; 0 and sweep(wake.x, wake.y, wake.x, wake.y,
+			old.x, old.y, target.x, target.y, target.radius + wake.radius)
+		if hit then
+			local nx, ny = direction(target.x - wake.x, target.y - wake.y, targetId == 1 and -1 or 1)
+			local successful, absorbed = damage(state, wake.owner, targetId, wake.x, wake.y, nx, ny, "wake")
+			if successful then landed[wake.owner] = true end
+			if successful or absorbed then resolved[wake.owner] = true end
+			-- A crossed puff is consumed even during impact protection. No delayed
+			-- damage can hide inside the protected plane, and the owner is immune.
+		elseif wake.life &gt; 0 then
+			remainingWakes[#remainingWakes + 1] = wake
+		end
+	end
+	state.wakes = remainingWakes
+	for id, fighter in ipairs(state.fighters) do
+		if resolved[id] or resolved[3 - id] then
+			recover(state, fighter, state.fighters[3 - id])
+		elseif edgeHit[id] and fighter.phase == "Attack" then
+			if fighter.powerId == "Meteor" and not fighter._attackHit then
+				event(state, "miss", fighter.x, fighter.y, id, 3 - id)
+			end
+			recover(state, fighter, state.fighters[3 - id])
+		end
+	end
+	if a.armor &lt;= 0 or b.armor &lt;= 0 then
+		finish(state, "knockout")
+	elseif state.elapsed &gt;= BattleSimulation.MAX_TIME - EPSILON then
+		state.elapsed = BattleSimulation.MAX_TIME
+		finish(state, "timeout")
+	end
+end
+
+function BattleSimulation.step(state, dt)
+	if state.finished or not finite(dt) or dt &lt;= 0 then return state end
+	state._accumulator = state._accumulator + math.min(dt, BattleSimulation.MAX_STEP_DT)
+	while state._accumulator + EPSILON &gt;= BattleSimulation.FIXED_DT and not state.finished do
+		state._accumulator = math.max(0, state._accumulator - BattleSimulation.FIXED_DT)
+		tick(state)
+	end
+	return state
+end
+
+return BattleSimulation
+</ProtectedString>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="RBX9">
+        <Properties>
+          <string name="Name">BattleModifiers</string>
+          <ProtectedString name="Source">-- One optional, temporary Battle Lab effect. Detached records keep UI edits
+-- from changing the authoritative catalog. No Roblox services are required.
+local BattleModifiers = {}
+
+BattleModifiers.DEFAULT_ID = "None"
+local order = { "None", "Afterburner", "SpringBumper", "FizzyFuel" }
+local modifiers = {
+	None = { id = "None", name = "No Effect", description = "Your power, with no extra effect.",
+		color = { r = 194, g = 204, b = 218 } },
+	Afterburner = { id = "Afterburner", name = "Afterburner", description = "Burst forward and turn tighter after attacking.",
+		color = { r = 255, g = 168, b = 66 } },
+	SpringBumper = { id = "SpringBumper", name = "Spring Bumper", description = "Block the first hit and spring apart.",
+		color = { r = 196, g = 255, b = 91 } },
+	FizzyFuel = { id = "FizzyFuel", name = "Fizzy Fuel", description = "Leave a brief wake that damages rivals.",
+		color = { r = 96, g = 255, b = 214 } },
+}
+
+function BattleModifiers.valid(id)
+	return type(id) == "string" and modifiers[id] ~= nil
+end
+
+function BattleModifiers.get(id)
+	if not BattleModifiers.valid(id) then return nil end
+	local result = {}
+	for key, value in pairs(modifiers[id]) do
+		if type(value) == "table" then
+			local copy = {}
+			for channel, amount in pairs(value) do copy[channel] = amount end
+			result[key] = copy
+		else
+			result[key] = value
+		end
+	end
+	return result
+end
+
+function BattleModifiers.all()
+	local result = {}
+	for _, id in ipairs(order) do result[#result + 1] = BattleModifiers.get(id) end
+	return result
+end
+
+return BattleModifiers
+</ProtectedString>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="RBX10">
+        <Properties>
           <string name="Name">World</string>
           <ProtectedString name="Source">--!nonstrict
 -- Original, asset-free arcade scenery. Gameplay decisions live in Simulation.
@@ -1965,23 +2489,33 @@ return World
 </ProtectedString>
         </Properties>
       </Item>
-      <Item class="RemoteEvent" referent="RBX9">
+      <Item class="RemoteEvent" referent="RBX11">
         <Properties>
           <string name="Name">Command</string>
         </Properties>
       </Item>
-      <Item class="RemoteEvent" referent="RBX10">
+      <Item class="RemoteEvent" referent="RBX12">
         <Properties>
           <string name="Name">Snapshot</string>
         </Properties>
       </Item>
+      <Item class="RemoteEvent" referent="RBX13">
+        <Properties>
+          <string name="Name">BattleCommand</string>
+        </Properties>
+      </Item>
+      <Item class="RemoteEvent" referent="RBX14">
+        <Properties>
+          <string name="Name">BattleSnapshot</string>
+        </Properties>
+      </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="RBX11">
+  <Item class="ServerScriptService" referent="RBX15">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Script" referent="RBX12">
+    <Item class="Script" referent="RBX16">
       <Properties>
         <string name="Name">FlightServer</string>
         <ProtectedString name="Source">-- Independent two-pilot duels with fenced persistent personal statistics.
@@ -1991,6 +2525,7 @@ local RunService = game:GetService("RunService")
 local ServerStorage = game:GetService("ServerStorage")
 local HttpService = game:GetService("HttpService")
 local PlayerStats = require(script.Parent:WaitForChild("PlayerStats"))
+local BattleLab = require(script.Parent:WaitForChild("BattleLab"))
 local Telemetry = require(script.Parent:WaitForChild("Telemetry"))
 local shared = ReplicatedStorage:WaitForChild("FlightGame")
 local PlaneCatalog = require(shared.PlaneCatalog)
@@ -1998,6 +2533,7 @@ local PowerCatalog = require(shared.PowerCatalog)
 local CosmeticCatalog = require(shared.CosmeticCatalog)
 local Simulation = require(shared.Simulation)
 local World = require(shared.World)
+local BattleSimulation = require(shared.BattleSimulation)
 local command, snapshots = shared.Command, shared.Snapshot
 World.buildLobby()
 
@@ -2105,7 +2641,7 @@ local function publishLook(p)
     player:SetAttribute("SkyboundPlane",p.settings.planeId)
     player:SetAttribute("SkyboundColor",p.settings.color)
     player:SetAttribute("SkyboundTrail",p.settings.trailId)
-    player:SetAttribute("SkyboundFlying",p.matchId~=nil)
+    player:SetAttribute("SkyboundFlying",p.matchId~=nil or p.inBattleLab==true)
     player:SetAttribute("SkyboundBay",p.bay or 0)
 end
 local function release(p, message)
@@ -2166,10 +2702,10 @@ local function snapshot(p)
     end
     local personalStats,saveStatus=statsService:get(p.statsHandle)
     local economy=statsService:getEconomy(p.statsHandle)
-    economy.canShop=economy.canShop and not m and not p.queue and not p.quick
+    economy.canShop=economy.canShop and not m and not p.queue and not p.quick and not p.inBattleLab
     local queue=p.queue
     if not queue and p.quick then queue={quick=true,stationName="QUICK MATCH",fallbackAt=p.quick.fallbackAt} end
-    return {phase=m and m.phase or (queue and "Queued" or "Lobby"),
+    return {phase=p.inBattleLab and "BattleLab" or (m and m.phase or (queue and "Queued" or "Lobby")),
         matchId=m and m.id or 0,roundId=m and m.round or 0,
         endsAt=m and m.endsAt or 0,courseName=m and m.courseName or "Coast",
         courseSeed=m and m.course.seed or 104729,votes=m and voteCounts(m) or {},players=list,
@@ -2312,7 +2848,7 @@ local function finish(m)
     print("SKYBOUND_DUEL_COMPLETE",m.id,m.round,message)
 end
 local function createMatch(ids, practice)
-    for _,id in ipairs(ids) do if not profiles[id] or profiles[id].matchId then return nil end end
+    for _,id in ipairs(ids) do if not profiles[id] or profiles[id].matchId or profiles[id].inBattleLab then return nil end end
     if #ids~=(practice and 1 or 2) or (#ids==2 and ids[1]==ids[2]) then return nil end
     nextMatchId+=1
     local m={id=nextMatchId,round=0,entrants={},votes={},rematchVotes={},results={},elapsed=0,accumulator=0,
@@ -2356,7 +2892,7 @@ local function leaveMatch(p)
     if abandonedPhase~="Results" then telemetry:phaseAbandoned(p.player,abandonedPhase) end
 end
 local function onPad(p, position)
-    if p.matchId or now()&lt;(p.queueCooldown or 0) then return false end
+    if p.matchId or p.inBattleLab or now()&lt;(p.queueCooldown or 0) then return false end
     local character=p.player.Character
     local root=character and character:FindFirstChild("HumanoidRootPart")
     local humanoid=character and character:FindFirstChildOfClass("Humanoid")
@@ -2443,6 +2979,24 @@ local function updateBoard()
     end
     World.updateLobbyBoard(flying,clubBest)
 end
+local battleLab=BattleLab.new({simulation=BattleSimulation,now=now,
+    canEnter=function(player)
+        local p=profiles[player.UserId]
+        return not shuttingDown and p~=nil and not p.matchId and not p.queue and not p.quick and not p.inBattleLab
+    end,
+    entered=function(player)
+        local p=profiles[player.UserId]
+        p.inBattleLab=true; moveCharacter(p,true); broadcast()
+    end,
+    exited=function(player)
+        local p=profiles[player.UserId]
+        if p then p.inBattleLab=false; release(p); broadcast() end
+    end,
+    emit=function(player,data) shared.BattleSnapshot:FireClient(player,data) end})
+shared.BattleCommand.OnServerEvent:Connect(function(player,payload)
+    if not shuttingDown and profiles[player.UserId] then battleLab:command(player,payload) end
+end)
+
 local function joined(player)
     if shuttingDown then return end
     local p={player=player,settings=copySettings({planeId=PlaneCatalog.DEFAULT_ID,gadget="Shield",color=1}),ready=false,best=0,
@@ -2458,7 +3012,7 @@ local function joined(player)
     telemetry:sessionStart(player)
     task.spawn(function() statsService:load(p.statsHandle) end)
     local function placeCharacter(character)
-        if character:WaitForChild("HumanoidRootPart",10) then moveCharacter(p,p.matchId~=nil) end
+        if character:WaitForChild("HumanoidRootPart",10) then moveCharacter(p,p.matchId~=nil or p.inBattleLab==true) end
     end
     player.CharacterAdded:Connect(placeCharacter)
     if player.Character then task.spawn(placeCharacter,player.Character) end
@@ -2466,6 +3020,7 @@ local function joined(player)
 end
 Players.PlayerAdded:Connect(joined)
 Players.PlayerRemoving:Connect(function(player)
+    battleLab:remove(player)
     local p=profiles[player.UserId]
     if p then
         if not shuttingDown then leaveMatch(p) end
@@ -2492,6 +3047,7 @@ local function handleCommand(p,payload)
     p.lastCommand[payload.kind]=now()
     local m=p.matchId and matches[p.matchId]
     if payload.kind=="request" then snapshots:FireClient(p.player,snapshot(p)); return end
+    if p.inBattleLab then return end
     if payload.kind=="buyCosmetic" or payload.kind=="equipCosmetic" then
         -- One shared limit prevents alternating buy/equip from bypassing it.
         if now()-(p.lastCosmeticCommand or -math.huge)&lt;0.25 then return end
@@ -2545,6 +3101,7 @@ end)
 RunService.Heartbeat:Connect(function(dt)
     if shuttingDown then return end
     statsService:step()
+    battleLab:step(dt)
     queueAccumulator+=dt
     if queueAccumulator&gt;=0.15 then queueAccumulator=0; scanQueues(); scanQuick(); updateBoard() end
     for id,m in pairs(matches) do
@@ -2608,6 +3165,8 @@ if RunService:IsStudio() then
     debugFunction.OnInvoke=function(action,data)
         data=data or {}
         local p=profiles[data.userId or (Players:GetPlayers()[1] and Players:GetPlayers()[1].UserId)]
+        if action=="battleSnapshot" then return p and battleLab:snapshot(p.player) end
+        if action=="battleCommand" and p then battleLab:command(p.player,data.payload); return battleLab:snapshot(p.player) end
         if action=="snapshot" then return p and snapshot(p) end
         if action=="snapshots" then local all={}; for id,profile in pairs(profiles) do all[tostring(id)]=snapshot(profile) end; return all end
         if action=="validateSettings" then return safeSettings(data) end
@@ -2639,7 +3198,7 @@ print("SKYBOUND_SERVER_READY","walkable hub · independent 1v1 duels")
 </ProtectedString>
       </Properties>
     </Item>
-    <Item class="ModuleScript" referent="RBX13">
+    <Item class="ModuleScript" referent="RBX17">
       <Properties>
         <string name="Name">PlayerStats</string>
         <ProtectedString name="Source">--!nonstrict
@@ -2973,7 +3532,7 @@ return PlayerStats
 </ProtectedString>
       </Properties>
     </Item>
-    <Item class="ModuleScript" referent="RBX14">
+    <Item class="ModuleScript" referent="RBX18">
       <Properties>
         <string name="Name">Telemetry</string>
         <ProtectedString name="Source">-- Native server analytics; explicitly opt in with Telemetry.new({enabled = true}).
@@ -3137,12 +3696,126 @@ return Telemetry
 </ProtectedString>
       </Properties>
     </Item>
+    <Item class="ModuleScript" referent="RBX19">
+      <Properties>
+        <string name="Name">BattleLab</string>
+        <ProtectedString name="Source">-- Server-owned single-round combat toy. No rewards, queues, or live opponents.
+local BattleLab = {}
+BattleLab.__index = BattleLab
+
+local function finite(v)
+    return type(v)=="number" and v==v and v&gt;-math.huge and v&lt;math.huge
+end
+local function checked(value,simulation)
+    if type(value)~="table" or (value.powerId~="Meteor" and value.powerId~="Firework")
+        or not finite(value.angle) then return nil end
+    local modifier=value.modifierId
+    if modifier==nil then modifier="None" end
+    if not simulation.validModifier(modifier) then return nil end
+    return {powerId=value.powerId,modifierId=modifier,angle=math.floor(math.max(10,math.min(55,value.angle))+0.5)}
+end
+function BattleLab.new(deps)
+    return setmetatable({deps=deps,sessions={},throttle={},sequence=0,broadcastTime=0},BattleLab)
+end
+function BattleLab:snapshot(player)
+    local s=self.sessions[player.UserId]
+    if not s then return {active=false} end
+    return {active=true,phase=s.phase,roundId=s.roundId,settings=s.settings,
+        simulation=s.simulation,endsAt=s.endsAt,serverTime=self.deps.now(),simulatedOpponent=true}
+end
+function BattleLab:emit(player)
+    self.deps.emit(player,self:snapshot(player))
+end
+function BattleLab:prepare(s)
+    self.sequence=self.sequence+1
+    s.roundId=self.sequence
+    s.phase="Configure"
+    s.endsAt=0
+    s.accumulator=0
+    -- Replaying identical settings keeps the same deterministic experiment.
+    s.simulation=self.deps.simulation.newRound(731,s.settings[1],s.settings[2])
+end
+function BattleLab:command(player,payload)
+    if type(payload)~="table" or type(payload.kind)~="string" then return end
+    local kind=payload.kind
+    if kind~="request" and kind~="enter" and kind~="exit" and kind~="configure"
+        and kind~="launch" and kind~="restart" then return end
+    local time=self.deps.now()
+    -- A small burst budget accepts ordered setup + launch packets that arrive
+    -- together after network jitter, while bounding work from remote floods.
+    local budget=self.throttle[player.UserId] or {time=time,tokens=4}
+    budget.tokens=math.min(4,budget.tokens+math.max(0,time-budget.time)*15)
+    budget.time=time
+    self.throttle[player.UserId]=budget
+    if budget.tokens&lt;1 then return end
+    budget.tokens=budget.tokens-1
+    local s=self.sessions[player.UserId]
+    if kind=="enter" and not s and self.deps.canEnter(player) then
+        s={player=player,settings={{powerId="Meteor",modifierId="None",angle=35},{powerId="Firework",modifierId="None",angle=30}}}
+        self:prepare(s)
+        self.sessions[player.UserId]=s
+        self.deps.entered(player)
+    elseif kind=="exit" and s then
+        self.sessions[player.UserId]=nil
+        self.deps.exited(player)
+    elseif kind=="configure" and s and s.phase=="Configure" then
+        local a=type(payload.settings)=="table" and checked(payload.settings[1],self.deps.simulation)
+        local b=type(payload.settings)=="table" and checked(payload.settings[2],self.deps.simulation)
+        if not a or not b then return end
+        s.settings={a,b}
+        self:prepare(s)
+    elseif kind=="launch" and s and s.phase=="Configure" then
+        -- Commit exactly the setup visible on the launching client's screen.
+        -- Earlier configure packets can be rate-limited after network stalls.
+        if payload.settings~=nil then
+            local a=type(payload.settings)=="table" and checked(payload.settings[1],self.deps.simulation)
+            local b=type(payload.settings)=="table" and checked(payload.settings[2],self.deps.simulation)
+            if not a or not b then return end
+            s.settings={a,b}; self:prepare(s)
+        end
+        s.phase="Countdown"; s.endsAt=time+2
+    elseif kind=="restart" and s and s.phase=="Results" then
+        self:prepare(s)
+        -- One tap repeats the experiment. Edit is an explicit separate action.
+        if payload.edit~=true then s.phase="Countdown"; s.endsAt=time+1 end
+    end
+    self:emit(player)
+end
+function BattleLab:step(dt)
+    if not finite(dt) or dt&lt;=0 then return end
+    self.broadcastTime=self.broadcastTime+dt
+    local emit=self.broadcastTime&gt;=1/20
+    if emit then self.broadcastTime=0 end
+    for _,s in pairs(self.sessions) do
+        if s.phase=="Countdown" and self.deps.now()&gt;=s.endsAt then
+            s.phase="Fight"; s.accumulator=0
+        end
+        if s.phase=="Fight" then
+            -- Bound catch-up work after a server stall; never trust client time.
+            s.accumulator=math.min(s.accumulator+dt,0.25)
+            while s.accumulator&gt;=self.deps.simulation.FIXED_DT do
+                s.accumulator=s.accumulator-self.deps.simulation.FIXED_DT
+                self.deps.simulation.step(s.simulation,self.deps.simulation.FIXED_DT)
+                if s.simulation.finished then s.phase="Results"; break end
+            end
+        end
+        if emit then self:emit(s.player) end
+    end
+end
+function BattleLab:remove(player)
+    self.sessions[player.UserId]=nil
+    self.throttle[player.UserId]=nil
+end
+return BattleLab
+</ProtectedString>
+      </Properties>
+    </Item>
   </Item>
-  <Item class="ServerStorage" referent="RBX15">
+  <Item class="ServerStorage" referent="RBX20">
     <Properties>
       <string name="Name">ServerStorage</string>
     </Properties>
-    <Item class="ModuleScript" referent="RBX16">
+    <Item class="ModuleScript" referent="RBX21">
       <Properties>
         <string name="Name">SimulationTests</string>
         <ProtectedString name="Source">-- Pure tests: run require(thisModule)(Simulation) in Studio or any Lua runtime.
@@ -3752,7 +4425,492 @@ end
 </ProtectedString>
       </Properties>
     </Item>
-    <Item class="ModuleScript" referent="RBX17">
+    <Item class="ModuleScript" referent="RBX22">
+      <Properties>
+        <string name="Name">BattleSimulationTests</string>
+        <ProtectedString name="Source">-- Pure tests: require(thisModule)(BattleSimulation) in Studio or a Lua runtime.
+return function(Simulation, Modifiers)
+	local passed = 0
+	local function check(value, message) assert(value, message) end
+	local function close(a, b) return math.abs(a - b) &lt; 0.0000001 end
+	local function test(name, callback)
+		local ok, problem = pcall(callback)
+		assert(ok, name .. ": " .. tostring(problem))
+		passed = passed + 1
+	end
+	local function equal(a, b)
+		if type(a) ~= type(b) then return false end
+		if type(a) ~= "table" then return a == b end
+		for key, value in pairs(a) do if not equal(value, b[key]) then return false end end
+		for key in pairs(b) do if a[key] == nil then return false end end
+		return true
+	end
+	local function run(seed, a, b)
+		local state = Simulation.newRound(seed, a, b)
+		for _ = 1, math.ceil(Simulation.MAX_TIME / Simulation.FIXED_DT) + 2 do
+			Simulation.step(state, Simulation.FIXED_DT)
+			if state.finished then return state end
+		end
+		error("Round exceeded hard limit")
+	end
+	local function passive(fighter, x, y, heading)
+		fighter.x, fighter.y, fighter.heading = x, y, heading or 0
+		fighter.vx, fighter.vy = math.cos(fighter.heading) * 30, math.sin(fighter.heading) * 30
+		fighter.phase, fighter.phaseLeft, fighter.armed = "Recover", 100, false
+		fighter._recoverX = x + math.cos(fighter.heading) * 30
+		fighter._recoverY = y + math.sin(fighter.heading) * 30
+		fighter._knockX, fighter._knockY = 0, 0
+	end
+	local function projectile(id, owner, x, y, vx, vy)
+		return { id = id, owner = owner, x = x, y = y, vx = vx, vy = vy, life = 2, radius = 3.5 }
+	end
+	local function armed(fighter, x, heading)
+		passive(fighter, x, 50, heading)
+		fighter.powerId = "Meteor"
+		fighter.phase, fighter.phaseLeft, fighter.armed = "Attack", 1, true
+		fighter._attackHeading, fighter._attackHit = heading, false
+	end
+	local function wake(id, owner, x, y, armLeft)
+		return { id = id, owner = owner, x = x, y = y, radius = Simulation.WAKE_RADIUS,
+			life = Simulation.WAKE_LIFE, maxLife = Simulation.WAKE_LIFE, armLeft = armLeft or 0 }
+	end
+
+	test("same seed settings and frame times reproduce entire round", function()
+		local a = run(8137, { powerId = "Meteor", angle = 10 }, { powerId = "Firework", angle = 55 })
+		local b = run(8137, { powerId = "Meteor", angle = 10 }, { powerId = "Firework", angle = 55 })
+		check(equal(a, b), "Deterministic replay differed")
+		check(a.finished and a.eventSerial &gt; 2, "No combat occurred")
+	end)
+
+	test("fixed ticks are independent of frame grouping", function()
+		local a, b = Simulation.newRound(37), Simulation.newRound(37)
+		for _ = 1, 60 do Simulation.step(a, 1 / 60) end
+		for _ = 1, 10 do Simulation.step(b, 0.1) end
+		check(close(a.elapsed, 1) and close(b.elapsed, 1), "Wrong accumulated time")
+		check(equal(a.fighters, b.fighters) and equal(a.events, b.events), "Frame partition changed combat")
+	end)
+
+	test("invalid dt is ignored and stalled frames are bounded", function()
+		local state = Simulation.newRound(1)
+		for _, dt in ipairs({ 0, -1, math.huge, -math.huge, 0 / 0, "1" }) do Simulation.step(state, dt) end
+		Simulation.step(state, nil)
+		check(state.elapsed == 0, "Invalid time advanced the round")
+		Simulation.step(state, 10000)
+		check(close(state.elapsed, Simulation.MAX_STEP_DT), "Stalled frame ran unbounded work")
+		local partial = Simulation.newRound(1)
+		Simulation.step(partial, Simulation.FIXED_DT / 2)
+		check(partial.elapsed == 0, "Partial tick advanced")
+		Simulation.step(partial, Simulation.FIXED_DT / 2)
+		check(close(partial.elapsed, Simulation.FIXED_DT), "Partial ticks were discarded")
+	end)
+
+	test("settings are validated copied and bounded", function()
+		local input = { powerId = "Meteor", angle = 999 }
+		local state = Simulation.newRound(0 / 0, input, { powerId = "unknown", angle = math.huge })
+		input.angle = 10
+		check(state.seed == 1 and state.fighters[1].settings.angle == 55, "Seed or settings ownership failed")
+		check(state.fighters[2].powerId == "Firework" and state.fighters[2].settings.angle == 32, "Fallback failed")
+		local other = Simulation.newRound({}, { angle = -99 }, false)
+		check(other.fighters[1].settings.angle == 10 and other.fighters[2].armor == 3, "Malformed settings failed")
+		check(Simulation.validPower("Meteor") and Simulation.validPower("Firework") and not Simulation.validPower("Paid"), "Power validation failed")
+	end)
+
+	test("passive body contact only bumps", function()
+		local state = Simulation.newRound(1)
+		passive(state.fighters[1], -3, 50, math.pi)
+		passive(state.fighters[2], 3, 50, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[1].armor == 3 and state.fighters[2].armor == 3, "Passive collision dealt damage")
+		check(state.events[#state.events].kind == "bump", "Body contact lacked feedback")
+		check(state.fighters[1]._knockX &lt; 0 and state.fighters[2]._knockX &gt; 0, "Bump did not separate fighters")
+	end)
+
+	test("armed frontal strike deals one pip and rear contact does not", function()
+		local hit = Simulation.newRound(1)
+		armed(hit.fighters[1], -8, 0)
+		passive(hit.fighters[2], 0, 50, 0)
+		Simulation.step(hit, Simulation.FIXED_DT)
+		check(hit.fighters[2].armor == 2 and hit.fighters[1].hits == 1, "Frontal strike failed")
+		check(hit.fighters[2].invulnerable &gt; 0 and hit.fighters[1].phase == "Recover", "Hit lacked protection/recovery")
+		local back = Simulation.newRound(1)
+		armed(back.fighters[1], 5, 0)
+		passive(back.fighters[2], 0, 50, 0)
+		Simulation.step(back, Simulation.FIXED_DT)
+		check(back.fighters[2].armor == 3, "Rear body contact counted as an armed nose")
+	end)
+
+	test("projectile sweep catches a target between endpoints", function()
+		local state = Simulation.newRound(1)
+		passive(state.fighters[1], -55, 50, 0)
+		passive(state.fighters[2], 0, 50, 0)
+		state.projectiles = { projectile(1, 1, -25, 50, 6000, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[2].armor == 2 and #state.projectiles == 0, "Swept rocket missed or survived impact")
+		check(state.fighters[1].armor == 3 and state.fighters[1].hits == 1, "Wrong rocket attribution")
+	end)
+
+	test("projectile ownership excludes its own plane", function()
+		local state = Simulation.newRound(1)
+		passive(state.fighters[1], 0, 50, 0)
+		passive(state.fighters[2], 50, 80, 0)
+		state.projectiles = { projectile(1, 1, -20, 50, 1800, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[1].armor == 3 and state.fighters[2].armor == 3, "Projectile hit its owner")
+		check(#state.projectiles == 1, "Projectile consumed itself against owner")
+	end)
+
+	test("impact protection blocks stacked hits and consumes rockets", function()
+		local state = Simulation.newRound(1)
+		passive(state.fighters[1], -55, 50, 0)
+		passive(state.fighters[2], 0, 50, 0)
+		state.projectiles = { projectile(1, 1, -25, 50, 6000, 0), projectile(2, 1, -25, 50, 6000, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[2].armor == 2 and state.fighters[1].hits == 1, "Stacked damage bypassed protection")
+		check(#state.projectiles == 0, "Blocked rocket remained inside target")
+		for _ = 1, 10 do Simulation.step(state, Simulation.FIXED_DT) end
+		check(state.fighters[2].armor == 2, "Protection allowed delayed impact damage")
+	end)
+
+	test("committed attacks and rockets cannot home", function()
+		local state = Simulation.newRound(1)
+		armed(state.fighters[1], -40, 0.3)
+		passive(state.fighters[2], 40, 80, 0)
+		state.projectiles = { projectile(1, 1, -50, 15, 30, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[1].heading == 0.3, "Committed dive turned toward opponent")
+		check(state.projectiles[1].vx == 30 and state.projectiles[1].vy == 0, "Rocket homed after launch")
+	end)
+
+	test("dive commitment survives a hit and recovery within one broadcast interval", function()
+		local state = Simulation.newRound(1, { powerId = "Meteor", modifierId = "None" })
+		passive(state.fighters[1], -8, 50, 0)
+		passive(state.fighters[2], 0, 50, 0)
+		state.fighters[1].phase, state.fighters[1].phaseLeft = "Windup", 0
+		Simulation.step(state, 1 / 20)
+		check(state.fighters[1].phase == "Recover" and state.fighters[2].armor == 2, "Fixture did not commit and hit before next snapshot")
+		local count, commitment, impact = 0, nil, nil
+		for _, entry in ipairs(state.events) do
+			if entry.kind == "dive" then count, commitment = count + 1, entry end
+			if entry.kind == "hit" then impact = entry end
+		end
+		check(count == 1 and commitment and impact and commitment.serial &lt; impact.serial, "Commit event missing, duplicated, or out of order")
+		check(commitment.actor == 1 and commitment.target == 2 and commitment.source == "meteor", "Wrong dive attribution")
+		check(commitment.heading == 0 and commitment.x == -8 and commitment.y == 50, "Commit did not retain its actual origin and heading")
+		check(commitment.at &lt;= 1 / 20 and commitment.at == impact.at, "Immediate commit timing changed")
+	end)
+
+	test("normal Meteor charge creates continuous space before a visible landed dive", function()
+		local state = Simulation.newRound(731, { powerId = "Meteor", angle = 32 }, { powerId = "Firework", angle = 32 })
+		local charge, commitment, impact, waypointX, waypointY, previousHeading
+		local serial = state.eventSerial
+		for _ = 1, 300 do
+			local fighter = state.fighters[1]
+			local oldX, oldY = fighter.x, fighter.y
+			previousHeading = fighter.heading
+			Simulation.step(state, Simulation.FIXED_DT)
+			for _, entry in ipairs(state.events) do
+				if entry.serial &gt; serial and entry.actor == 1 then
+					if entry.kind == "windup" then charge = entry end
+					if entry.kind == "dive" then commitment = entry end
+					if entry.kind == "hit" and entry.source == "meteor" then impact = entry end
+				end
+			end
+			serial = state.eventSerial
+			check((fighter.x - oldX) ^ 2 + (fighter.y - oldY) ^ 2 &lt;= (65 * Simulation.FIXED_DT + 0.00001) ^ 2,
+				"Charging or release teleported the plane")
+			if fighter.phase == "Windup" then
+				check(not fighter.armed and fighter.invulnerable == 0, "Charge gained damage or immunity")
+				check(fighter.windupDuration == Simulation.METEOR_WINDUP, "Renderer charge duration differs")
+				waypointX, waypointY = waypointX or fighter._chargeX, waypointY or fighter._chargeY
+				check(fighter._chargeX == waypointX and fighter._chargeY == waypointY, "Backoff waypoint homed during charge")
+				local turn = (fighter.heading - previousHeading + math.pi) % (math.pi * 2) - math.pi
+				check(math.abs(turn) &lt;= 8 * Simulation.FIXED_DT + 0.00001, "Charge heading snapped")
+			end
+			if impact then break end
+		end
+		check(charge and commitment and impact, "Default charge did not finish in a real strike")
+		check(close(commitment.at - charge.at, Simulation.METEOR_WINDUP), "Charge duration changed")
+		check(impact.at - commitment.at &gt;= 0.25 and impact.at - commitment.at &lt;= 0.7, "Default strike has no visible flight")
+		check(math.abs(commitment.x - charge.x) &gt; 20, "Charge failed to create real separation")
+		check(state.fighters[2].armor == 2 and state.fighters[1].armor == 3, "Strike changed the one-pip damage rule")
+		check(state.fighters[2].windupDuration == 1.05, "Firework windup changed")
+	end)
+
+	test("Meteor remains vulnerable during the backoff charge", function()
+		local state = Simulation.newRound(1)
+		local fighter = state.fighters[1]
+		passive(fighter, 0, 50, 0)
+		fighter.phase, fighter.phaseLeft = "Windup", 0.8
+		fighter._chargeX, fighter._chargeY = -40, 80
+		passive(state.fighters[2], -40, 50, 0)
+		state.projectiles = { projectile(1, 2, -25, 50, 6000, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(fighter.armor == 2 and fighter.phase == "Recover", "Charging Meteor ignored a valid rocket")
+		check(not fighter.armed and fighter.attacks == 0, "Interrupted charge still released a dive")
+	end)
+
+	test("a committed Meteor can visibly miss and bank without damage", function()
+		local state = Simulation.newRound(1)
+		armed(state.fighters[1], -40, 0)
+		passive(state.fighters[2], 30, 80, 0)
+		for _ = 1, 62 do Simulation.step(state, Simulation.FIXED_DT) end
+		local missed = false
+		for _, entry in ipairs(state.events) do
+			if entry.kind == "miss" and entry.actor == 1 then missed = true end
+		end
+		check(missed and state.fighters[1].phase == "Recover", "Miss lacked normal recovery")
+		check(state.fighters[1].hits == 0 and state.fighters[2].armor == 3, "Miss fabricated a hit")
+	end)
+
+	test("simultaneous knockout is a draw without player-index priority", function()
+		local state = Simulation.newRound(1)
+		armed(state.fighters[1], -4, 0)
+		armed(state.fighters[2], 4, math.pi)
+		state.fighters[1].armor, state.fighters[2].armor = 1, 1
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.finished and state.winner == 0 and state.reason == "knockout", "Double knockout was biased")
+		check(state.fighters[1].armor == 0 and state.fighters[2].armor == 0, "One simultaneous hit disappeared")
+	end)
+
+	test("pressure visibly shrinks bounds without dealing damage", function()
+		local state = Simulation.newRound(1)
+		state.elapsed = 26.5
+		passive(state.fighters[1], -72, 8, math.pi)
+		passive(state.fighters[2], 72, 96, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(close(state.pressure, (state.elapsed - 18) / 17), "Pressure timing differs")
+		check(close(state.bounds.left, -72 + 24 * state.pressure) and close(state.bounds.top, 96 - 14 * state.pressure), "Rendered bounds contract differs")
+		for _, fighter in ipairs(state.fighters) do
+			check(fighter.x &gt;= state.bounds.left and fighter.x &lt;= state.bounds.right and fighter.y &gt;= state.bounds.bottom and fighter.y &lt;= state.bounds.top, "Plane escaped pressure")
+			check(fighter.armor == 3, "Invisible edge damage")
+		end
+	end)
+
+	test("time cap awards higher armor and preserves equal armor draws", function()
+		for _, armor in ipairs({ 2, 3 }) do
+			local state = Simulation.newRound(1)
+			state.elapsed = Simulation.MAX_TIME - 0.005
+			state.fighters[2].armor = armor
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(state.finished and state.elapsed == Simulation.MAX_TIME and state.reason == "timeout", "Hard limit failed")
+			check(state.winner == (armor == 3 and 0 or 1), "Armor tiebreak failed")
+			local elapsed, serial, x = state.elapsed, state.eventSerial, state.fighters[1].x
+			Simulation.step(state, 1)
+			check(state.elapsed == elapsed and state.eventSerial == serial and state.fighters[1].x == x, "Finished round changed")
+		end
+	end)
+
+	test("extreme angles both sides stay finite bounded and finish", function()
+		local wins, phases = {}, {}
+		for _, power in ipairs({ "Meteor", "Firework" }) do
+			for _, a in ipairs({ 10, 32, 55 }) do
+				for _, b in ipairs({ 10, 32, 55 }) do
+					local state = Simulation.newRound(104729 + a * 7919 + b, { powerId = power, angle = a },
+						{ powerId = power == "Meteor" and "Firework" or "Meteor", angle = b })
+					for _ = 1, 2102 do
+						Simulation.step(state, Simulation.FIXED_DT)
+						check(#state.events &lt;= 24, "Event history leaked")
+						for _, fighter in ipairs(state.fighters) do
+							check(fighter.x == fighter.x and fighter.y == fighter.y and math.abs(fighter.vx) &lt; 100 and math.abs(fighter.vy) &lt; 100, "Nonfinite/excessive motion")
+							check(fighter.x &gt;= state.bounds.left and fighter.x &lt;= state.bounds.right and fighter.y &gt;= state.bounds.bottom and fighter.y &lt;= state.bounds.top, "Out of bounds")
+							check(fighter.armor &gt;= 0 and fighter.armor &lt;= 3, "Armor out of bounds")
+							phases[fighter.phase] = true
+						end
+						if state.finished then break end
+					end
+					check(state.finished and state.elapsed &lt;= Simulation.MAX_TIME, "Nonterminating match")
+					if state.winner ~= 0 then wins[state.fighters[state.winner].powerId] = true end
+					for index = 2, #state.events do check(state.events[index].serial &gt; state.events[index - 1].serial, "Event order changed") end
+				end
+			end
+		end
+		check(phases.Approach and phases.Windup and phases.Attack and phases.Recover, "A combat phase never occurred")
+		check(wins.Meteor and wins.Firework, "One signature could never win the sample")
+	end)
+
+	test("modifiers validate and reset independently each round", function()
+		local invalid = Simulation.newRound(1, { modifierId = "PaidShield" }, { modifierId = {} })
+		check(invalid.fighters[1].modifierId == "None" and invalid.fighters[2].modifierId == "None", "Invalid modifiers accepted")
+		for _, id in ipairs({ "None", "Afterburner", "SpringBumper", "FizzyFuel" }) do
+			check(Simulation.validModifier(id), "Catalog modifier rejected")
+			local first = Simulation.newRound(12, { modifierId = id }, { modifierId = id })
+			first.fighters[1].armor, first.fighters[1].boostLeft, first.fighters[1].bumperReady = 0, 0.8, false
+			first.wakes = { wake(1, 1, 0, 50) }
+			local nextRound = Simulation.newRound(12, { modifierId = id }, { modifierId = id })
+			check(nextRound.fighters[1].armor == 3 and nextRound.fighters[1].boostLeft == 0 and #nextRound.wakes == 0, "Previous round effects leaked")
+			check(nextRound.fighters[1].bumperReady == (id == "SpringBumper"), "Bumper charge did not reset")
+			check(nextRound.eventSerial == 2, "Activation events leaked into launch")
+		end
+	end)
+
+	if Modifiers then
+		test("shared catalog agrees with validation and returns detached records", function()
+			check(Modifiers.DEFAULT_ID == "None" and #Modifiers.all() == 4, "Catalog default or size differs")
+			for _, entry in ipairs(Modifiers.all()) do
+				check(Simulation.validModifier(entry.id) and Modifiers.valid(entry.id), "Catalog and simulation disagree")
+				check(type(entry.name) == "string" and type(entry.description) == "string", "Missing UI copy")
+				local original = Modifiers.get(entry.id)
+				entry.name, entry.color.r = "mutated", -1
+				check(Modifiers.get(original.id).name == original.name and Modifiers.get(original.id).color.r == original.color.r, "UI mutated catalog")
+			end
+			check(Modifiers.get("unknown") == nil and not Modifiers.valid({}), "Invalid catalog ID accepted")
+		end)
+	end
+
+	test("afterburner starts only after an attack and expires without retriggering", function()
+		local state = Simulation.newRound(1, { powerId = "Firework", modifierId = "Afterburner" })
+		local fighter = state.fighters[1]
+		passive(fighter, -40, 50, 0)
+		passive(state.fighters[2], 50, 80, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(fighter.boostLeft == 0 and close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 30), "Boost appeared without attacking")
+		fighter.phase, fighter.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(fighter.phase == "Attack" and fighter.boostLeft == 0, "Boost altered committed attack")
+		fighter.phaseLeft = 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(fighter.phase == "Recover" and fighter.boostLeft &gt; 0, "Attack did not trigger recovery boost")
+		check(close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 44), "Boost did not change recovery speed")
+		local activations = 0
+		for _, entry in ipairs(state.events) do
+			if entry.kind == "modifier" and entry.modifierId == "Afterburner" then activations = activations + 1 end
+		end
+		check(activations == 1, "Boost activation duplicated")
+		for _ = 1, 60 do Simulation.step(state, Simulation.FIXED_DT) end
+		check(fighter.boostLeft == 0 and fighter.phase == "Recover", "Boost did not expire during recovery")
+		check(close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 30), "Boost speed persisted")
+	end)
+
+	test("spring bumper ignores passive or protected contact and blocks one valid strike", function()
+		local state = Simulation.newRound(1, nil, { modifierId = "SpringBumper" })
+		passive(state.fighters[1], -3, 50, math.pi)
+		passive(state.fighters[2], 3, 50, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[2].bumperReady, "Passive bump spent the bumper")
+		armed(state.fighters[1], -8, 0)
+		passive(state.fighters[2], 0, 50, 0)
+		state.fighters[2].invulnerable = 0.2
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[2].bumperReady and state.fighters[2].armor == 3, "Protected contact spent the bumper")
+		armed(state.fighters[1], -8, 0)
+		passive(state.fighters[2], 0, 50, 0)
+		state.fighters[2].invulnerable = 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(not state.fighters[2].bumperReady and state.fighters[2].armor == 3, "Bumper did not absorb strike")
+		check(state.fighters[1].hits == 0 and state.fighters[1].phase == "Recover", "Blocked strike counted as armor damage")
+		check(state.fighters[1]._knockX &lt; 0 and state.fighters[2]._knockX &gt; 0, "Bumper failed to separate planes")
+		local entry = state.events[#state.events]
+		check(entry.kind == "blocked" and entry.actor == 2 and entry.target == 1 and entry.source == "meteor", "Block attribution differs")
+		state.fighters[2].invulnerable = 0
+		state.projectiles = { projectile(7, 1, -25, state.fighters[2].y, 6000, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[2].armor == 2, "Spent bumper blocked a second hit")
+	end)
+
+	test("spring bumper consumes a rocket without reporting armor loss", function()
+		local state = Simulation.newRound(1, nil, { modifierId = "SpringBumper" })
+		passive(state.fighters[1], -55, 50, 0)
+		passive(state.fighters[2], 0, 50, 0)
+		state.projectiles = { projectile(1, 1, -25, 50, 6000, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(#state.projectiles == 0 and state.fighters[2].armor == 3, "Bumper rocket resolution failed")
+		local entry = state.events[#state.events]
+		check(entry.kind == "blocked" and entry.source == "rocket" and entry.at == state.elapsed, "Blocked rocket has wrong feedback")
+	end)
+
+	test("fizzy wake starts at commitment and visibly arms before damage", function()
+		local state = Simulation.newRound(1, { powerId = "Firework", modifierId = "FizzyFuel" })
+		local fighter = state.fighters[1]
+		passive(fighter, -40, 50, 0)
+		passive(state.fighters[2], 50, 80, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(#state.wakes == 0, "Wake emitted outside attack")
+		fighter.phase, fighter.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(#state.wakes == 1 and state.wakes[1].x &lt; fighter.x, "Attack did not leave a wake behind")
+		check(state.wakes[1].armLeft &gt; 0 and state.wakes[1].radius == Simulation.WAKE_RADIUS, "Wake lacks visible arming/radius")
+		local emitted = state._wakeSerial
+		fighter.phaseLeft = 0
+		for _ = 1, 12 do Simulation.step(state, Simulation.FIXED_DT) end
+		check(fighter.phase == "Recover" and state._wakeSerial &gt; emitted, "An early attack ending truncated its promised wake")
+		local contact = Simulation.newRound(1)
+		passive(contact.fighters[1], -55, 50, 0)
+		passive(contact.fighters[2], 0, 50, 0)
+		contact.wakes = { wake(1, 1, 0, 50, Simulation.WAKE_ARM_TIME) }
+		for _ = 1, 3 do Simulation.step(contact, Simulation.FIXED_DT) end
+		check(contact.fighters[2].armor == 3, "Wake damaged before its cue armed")
+		for _ = 1, 6 do Simulation.step(contact, Simulation.FIXED_DT) end
+		check(contact.fighters[2].armor == 2 and #contact.wakes == 0, "Armed wake failed contact resolution")
+		local count = 0
+		for _, entry in ipairs(contact.events) do
+			if entry.kind == "wake_hit" then count = count + 1 end
+			check(entry.kind ~= "hit", "Wake duplicated its hit event")
+		end
+		check(count == 1, "Wake damage feedback duplicated or missing")
+	end)
+
+	test("wake ownership protection and bumper interactions are consistent", function()
+		local owner = Simulation.newRound(1)
+		passive(owner.fighters[1], 0, 50, 0)
+		passive(owner.fighters[2], 50, 80, 0)
+		owner.wakes = { wake(1, 1, 0, 50) }
+		Simulation.step(owner, Simulation.FIXED_DT)
+		check(owner.fighters[1].armor == 3 and #owner.wakes == 1, "Wake hit its owner")
+		for _, modifier in ipairs({ "None", "SpringBumper" }) do
+			local state = Simulation.newRound(1, nil, { modifierId = modifier })
+			passive(state.fighters[1], -55, 50, 0)
+			passive(state.fighters[2], 0, 50, 0)
+			state.wakes = { wake(1, 1, 0, 50), wake(2, 1, 0, 50) }
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(state.fighters[2].armor == (modifier == "None" and 2 or 3), "Wake bypassed bumper/protection")
+			check(#state.wakes == 0, "Overlapping wake remained inside protected plane")
+			if modifier == "SpringBumper" then
+				local entry = state.events[#state.events]
+				check(not state.fighters[2].bumperReady and entry.kind == "blocked" and entry.source == "wake", "Wake did not consume bumper visibly")
+			end
+		end
+	end)
+
+	test("wake instances are bounded and expire after emission stops", function()
+		local state = Simulation.newRound(1, { modifierId = "FizzyFuel" }, { modifierId = "FizzyFuel" })
+		for _ = 1, 180 do
+			for id, fighter in ipairs(state.fighters) do
+				passive(fighter, 0, id == 1 and 80 or 20, id == 1 and 0 or math.pi)
+				fighter.phase, fighter.phaseLeft, fighter._attackHeading = "Attack", 100, fighter.heading
+				fighter.armed, fighter._wakeLeft = false, 100
+			end
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(#state.wakes &lt;= Simulation.MAX_WAKES, "Wake instance count leaked")
+			local owned = { 0, 0 }
+			for _, entry in ipairs(state.wakes) do owned[entry.owner] = owned[entry.owner] + 1 end
+			check(owned[1] &lt;= 6 and owned[2] &lt;= 6, "One plane exhausted the shared wake budget")
+		end
+		for id, fighter in ipairs(state.fighters) do
+			passive(fighter, id == 1 and -50 or 50, 50, id == 1 and math.pi or 0)
+			fighter._wakeLeft = 0
+		end
+		for _ = 1, math.ceil(Simulation.WAKE_LIFE / Simulation.FIXED_DT) + 2 do Simulation.step(state, Simulation.FIXED_DT) end
+		check(#state.wakes == 0, "Expired wake persisted")
+	end)
+
+	test("all modifier pairs remain deterministic bounded and terminate", function()
+		for _, a in ipairs({ "None", "Afterburner", "SpringBumper", "FizzyFuel" }) do
+			for _, b in ipairs({ "None", "Afterburner", "SpringBumper", "FizzyFuel" }) do
+				local settingsA, settingsB = { powerId = "Meteor", modifierId = a, angle = 10 }, { powerId = "Firework", modifierId = b, angle = 55 }
+				local first, second = run(91273, settingsA, settingsB), run(91273, settingsA, settingsB)
+				check(equal(first, second), "Modifier replay differed: " .. a .. "/" .. b)
+				check(#first.wakes &lt;= Simulation.MAX_WAKES and first.elapsed &lt;= Simulation.MAX_TIME, "Modifier lifecycle escaped bounds")
+				for _, entry in ipairs(first.events) do check(type(entry.at) == "number" and entry.at &lt;= first.elapsed, "Event timestamp missing") end
+			end
+		end
+	end)
+
+	return string.format("BattleSimulation: %d tests passed (determinism, fixed ticks, collisions, protection, endings, modifiers, wakes)", passed)
+end
+</ProtectedString>
+      </Properties>
+    </Item>
+    <Item class="ModuleScript" referent="RBX23">
       <Properties>
         <string name="Name">PlaneCatalogTests</string>
         <ProtectedString name="Source">-- Pure catalog contract tests: require(thisModule)(PlaneCatalog).
@@ -3780,7 +4938,7 @@ end
 </ProtectedString>
       </Properties>
     </Item>
-    <Item class="ModuleScript" referent="RBX18">
+    <Item class="ModuleScript" referent="RBX24">
       <Properties>
         <string name="Name">PowerCatalogTests</string>
         <ProtectedString name="Source">-- Pure catalog checks: require(thisModule)(PowerCatalog).
@@ -3812,7 +4970,7 @@ end
 </ProtectedString>
       </Properties>
     </Item>
-    <Item class="ModuleScript" referent="RBX19">
+    <Item class="ModuleScript" referent="RBX25">
       <Properties>
         <string name="Name">CosmeticCatalogTests</string>
         <ProtectedString name="Source">-- Pure catalog contract checks; visuals must never alter flight parameters.
@@ -3843,7 +5001,7 @@ end
 </ProtectedString>
       </Properties>
     </Item>
-    <Item class="ModuleScript" referent="RBX20">
+    <Item class="ModuleScript" referent="RBX26">
       <Properties>
         <string name="Name">PlayerStatsTests</string>
         <ProtectedString name="Source">-- Pure injected-store tests. No live Roblox DataStore is accessed.
@@ -4238,7 +5396,7 @@ end
 </ProtectedString>
       </Properties>
     </Item>
-    <Item class="ModuleScript" referent="RBX21">
+    <Item class="ModuleScript" referent="RBX27">
       <Properties>
         <string name="Name">TelemetryTests</string>
         <ProtectedString name="Source">-- Pure tests: require(thisModule)(Telemetry). All service calls use doubles.
@@ -4413,7 +5571,7 @@ end
 </ProtectedString>
       </Properties>
     </Item>
-    <Item class="ModuleScript" referent="RBX22">
+    <Item class="ModuleScript" referent="RBX28">
       <Properties>
         <string name="Name">FlightAudioTests</string>
         <ProtectedString name="Source">-- Regression checks for the two-pilot event mix. No real sound is emitted.
@@ -4554,16 +5712,412 @@ end
 </ProtectedString>
       </Properties>
     </Item>
+    <Item class="ModuleScript" referent="RBX29">
+      <Properties>
+        <string name="Name">BattleAudioTests</string>
+        <ProtectedString name="Source">-- Cursor, mixing and lifecycle checks without loading or playing real sounds.
+return function(Audio)
+    local passed=0
+    local function test(name,body)
+        local ok,problem=pcall(body)
+        assert(ok,name..": "..tostring(problem)); passed=passed+1
+    end
+    local function fixture()
+        local calls,attributes={},{}
+        local folder={Parent=true,destroyed=0}
+        function folder:SetAttribute(key,value) attributes[key]=value end
+        function folder:Destroy() self.destroyed=self.destroyed+1; self.Parent=nil end
+        local mix=setmetatable({voices={},nextVoice={},tweens={},lastAt={},lastSerial=0,
+            key=nil,started=false,muted=false,destroyed=false,played=0,
+            folder=folder,group={Volume=0.7}},Audio)
+        mix._voice=function(_,name,volume,pitch,duration,finishPitch,swell)
+            calls[#calls+1]={name=name,volume=volume,pitch=pitch,duration=duration,finishPitch=finishPitch,swell=swell}
+        end
+        return mix,calls,attributes
+    end
+    local function event(serial,kind,at,actor)
+        return {serial=serial,kind=kind,at=at,actor=actor or 1,target=2}
+    end
+    local function snapshot(phase,elapsed,events,roundId)
+        return {active=true,phase=phase,roundId=roundId or 1,
+            simulation={elapsed=elapsed,events=events or {},fighters={{id=1,powerId="Meteor",armor=3},{id=2,powerId="Firework",armor=3}}}}
+    end
+    local function results(roundId,armorA,armorB,reason)
+        local s=snapshot("Results",5,{},roundId)
+        s.simulation.finished=true; s.simulation.reason=reason or "knockout"
+        s.simulation.fighters[1].armor=armorA; s.simulation.fighters[2].armor=armorB
+        return s
+    end
+
+    test("setup and countdown defer launch cues until Fight",function()
+        local mix,calls=fixture()
+        local launches={event(1,"launch",0),event(2,"launch",0,2)}
+        mix:update(snapshot("Configure",0,launches))
+        mix:update(snapshot("Countdown",0,launches)); assert(#calls==0)
+        mix:update(snapshot("Fight",0.05,launches)); assert(#calls==2)
+        mix:update(snapshot("Fight",0.1,launches)); assert(#calls==2)
+    end)
+    test("fresh events from both fighters play once across repeated snapshots",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",0,{}))
+        local s=snapshot("Fight",0.2,{event(3,"rocket",0.2),event(4,"hit",0.2,2)})
+        mix:update(s); local count=#calls
+        assert(count==4 and mix.lastSerial==4)
+        for _=1,10 do mix:update(s) end
+        assert(#calls==count)
+    end)
+    test("late join consumes history and only future events sound",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",12,{event(18,"rocket",11.9),event(19,"hit",12)}))
+        assert(#calls==0 and mix.lastSerial==19)
+        mix:update(snapshot("Fight",12.2,{event(19,"hit",12),event(20,"hit",12.2,2)}))
+        assert(#calls==2 and mix.lastSerial==20)
+    end)
+    test("late Results entry and stale delivery do not replay the past",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Results",35,{event(25,"finish",35)})); assert(#calls==0)
+        mix:update(snapshot("Fight",0,{},2))
+        mix:update(snapshot("Fight",3,{event(2,"hit",1),event(3,"rocket",1.2)} ,2))
+        assert(#calls==0 and mix.lastSerial==3)
+        mix:update(snapshot("Fight",3.1,{event(4,"windup",3.1)},2)); assert(#calls==2)
+    end)
+    test("mute stops existing voices and consumes events without replay on unmute",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",0,{}))
+        local stopped,cancelled=0,0
+        mix.voices={test={{Stop=function() stopped=stopped+1 end}}}
+        mix.tweens={test={Cancel=function() cancelled=cancelled+1 end}}
+        mix:setMuted(true)
+        assert(stopped==1 and cancelled==1 and next(mix.tweens)==nil and mix.group.Volume==0)
+        local s=snapshot("Fight",0.2,{event(2,"hit",0.2)})
+        mix:update(s); assert(#calls==0 and mix.lastSerial==2)
+        mix:setMuted(false); mix:update(s); assert(#calls==0 and mix.group.Volume==0.7)
+        mix:update(snapshot("Fight",0.4,{event(3,"hit",0.4)})); assert(#calls==2)
+    end)
+    test("retry resets serials and exit stops all voices",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",0.05,{event(1,"launch",0)}))
+        mix:update(snapshot("Configure",0,{event(1,"launch",0)},2)); assert(#calls==1)
+        mix:update(snapshot("Fight",0.05,{event(1,"launch",0)},2)); assert(#calls==2)
+        local stopped,cancelled=0,0
+        mix.voices={test={{Stop=function() stopped=stopped+1 end}}}
+        mix.tweens={test={Cancel=function() cancelled=cancelled+1 end}}
+        mix:update({active=false})
+        assert(stopped==1 and cancelled==1 and mix.key==nil and mix.lastSerial==0)
+        mix:update({active=false}); assert(stopped==1)
+    end)
+    test("a delivery batch is bounded and keeps the newest finish",function()
+        local mix,calls,attrs=fixture()
+        mix:update(snapshot("Fight",0,{}))
+        local events={}
+        for i=1,12 do events[i]=event(i,"hit",1+i*0.02,i%2+1) end
+        events[13]=event(13,"finish",1.28)
+        local s=snapshot("Results",1.3,events); s.simulation.reason="knockout"
+        mix:update(s)
+        assert(mix.played&lt;=Audio.MAX_EVENTS_PER_UPDATE and #calls&lt;=Audio.MAX_EVENTS_PER_UPDATE*2)
+        assert(attrs.LastEvent=="finish" and mix.lastSerial==13)
+        local count=#calls; mix:update(s); assert(#calls==count)
+    end)
+    test("bumps blocks damage and modifiers have distinct mixes",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",0,{}))
+        mix:update(snapshot("Fight",0.2,{event(1,"bump",0.2)}))
+        assert(#calls==1 and calls[1].name=="land" and calls[1].volume&lt;0.1)
+        local block=event(2,"blocked",0.4); block.modifierId="SpringBumper"
+        mix:update(snapshot("Fight",0.4,{block}))
+        assert(calls[2].name=="jump" and calls[3].name=="chime")
+        mix:update(snapshot("Fight",0.6,{event(3,"wake_hit",0.6)}))
+        assert(calls[4].name=="land" and calls[5].name=="boom")
+        local boost=event(4,"modifier",0.8); boost.modifierId="Afterburner"
+        mix:update(snapshot("Fight",0.8,{boost}))
+        assert(calls[6].name=="jump" and calls[6].finishPitch&gt;calls[6].pitch)
+        local wake=event(5,"modifier",1); wake.modifierId="FizzyFuel"
+        mix:update(snapshot("Fight",1,{wake}))
+        assert(#calls==6,"wake emission sounded like an armor hit")
+    end)
+    test("Meteor charge and committed dive differ from Firework arming and ignition",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",0,{}))
+        mix:update(snapshot("Fight",0.2,{event(1,"windup",0.2)}))
+        assert(calls[1].name=="jump" and calls[1].swell and calls[1].finishPitch&gt;calls[1].pitch)
+        assert(calls[2].name~="boom","charge sounded like damage")
+        mix:update(snapshot("Fight",0.85,{event(2,"dive",0.85)}))
+        assert(calls[3].name=="jump" and calls[3].finishPitch&lt;calls[3].pitch)
+        assert(calls[4].name~="boom","committing to a dive claimed a hit")
+        mix:update(snapshot("Fight",1.2,{event(3,"windup",1.2,2)}))
+        assert(calls[5].name=="chime" and calls[5].pitch&gt;calls[1].pitch)
+        mix:update(snapshot("Fight",2.25,{event(4,"rocket",2.25,2)}))
+        assert(calls[7].name=="jump" and calls[7].finishPitch&gt;calls[7].pitch)
+        assert(calls[8].name=="boom" and calls[8].volume&lt;0.15)
+        local count=#calls
+        mix:update(snapshot("Fight",2.3,{event(2,"dive",0.85),event(4,"rocket",2.25,2)}))
+        assert(#calls==count,"commit cue replayed")
+    end)
+    test("damage source changes the impact and aerial knockout leaves room for the landing",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",0,{}))
+        local meteor=event(1,"hit",0.2); meteor.source="meteor"
+        mix:update(snapshot("Fight",0.2,{meteor}))
+        local rocket=event(2,"hit",0.4); rocket.source="rocket"
+        mix:update(snapshot("Fight",0.4,{rocket}))
+        assert(calls[1].name=="boom" and calls[3].name=="boom")
+        assert(calls[1].pitch&lt;calls[3].pitch and calls[2].pitch&lt;calls[4].pitch)
+        local ending=snapshot("Results",0.5,{event(3,"finish",0.5)})
+        ending.simulation.reason="knockout"; mix:update(ending)
+        assert(calls[5].volume&lt;calls[1].volume and calls[5].duration&lt;calls[1].duration)
+        assert(calls[6].name=="chime" and not calls[6].swell)
+    end)
+    test("Meteor charge follows remaining authoritative windup time",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",0,{}))
+        local charge=snapshot("Fight",0.4,{event(1,"windup",0.2)})
+        charge.simulation.fighters[1].windupDuration=1.15
+        mix:update(charge)
+        assert(math.abs(calls[1].duration-0.95)&lt;0.0001 and calls[1].swell)
+        mix:update(charge); assert(#calls==2)
+        mix:update(snapshot("Fight",1.35,{event(2,"dive",1.35)}))
+        assert(#calls==4 and calls[3].finishPitch&lt;calls[3].pitch)
+        local legacy=snapshot("Fight",2,{event(3,"windup",2)})
+        legacy.simulation.fighters[1].windupDuration=0/0
+        mix:update(legacy)
+        assert(math.abs(calls[5].duration-0.65)&lt;0.0001,"old snapshots lost their charge fallback")
+    end)
+    test("release stops its own charge and Results interrupts remaining charges",function()
+        local mix=fixture()
+        mix:update(snapshot("Fight",0,{}))
+        local stopped,cancelled={0,0},{0,0}
+        local a={Stop=function() stopped[1]=stopped[1]+1 end}
+        local b={Stop=function() stopped[2]=stopped[2]+1 end}
+        mix.charging={[a]=1,[b]=2}
+        mix.tweens={[a]={Cancel=function()cancelled[1]=cancelled[1]+1 end},
+            [b]={Cancel=function()cancelled[2]=cancelled[2]+1 end}}
+        mix:update(snapshot("Fight",0.2,{event(1,"dive",0.2)}))
+        assert(stopped[1]==1 and stopped[2]==0 and mix.charging[b]==2)
+        mix:update(results(1,1,0))
+        assert(stopped[2]==1 and cancelled[1]==1 and cancelled[2]==1)
+        assert(next(mix.charging)==nil and next(mix.tweens)==nil)
+        mix:update(results(1,1,0)); assert(stopped[2]==1)
+    end)
+    test("ground crash needs a defeated plane in current Results and plays only once",function()
+        local mix,calls,attrs=fixture()
+        assert(not mix:playCrash(1,2))
+        mix:update(snapshot("Fight",0,{}))
+        assert(not mix:playCrash(1,2))
+        mix:update(results(1,2,0))
+        assert(not mix:playCrash(1,1),"surviving plane crashed")
+        assert(not mix:playCrash(1,0) and not mix:playCrash(1,3))
+        assert(mix:playCrash(1,2) and #calls==2 and attrs.LastEvent=="crash")
+        assert(calls[1].name=="land" and calls[2].name=="boom" and calls[1].pitch&lt;0.7)
+        for _=1,8 do mix:update(results(1,2,0)); assert(not mix:playCrash(1,2)) end
+        assert(#calls==2)
+    end)
+    test("a simultaneous knockout has one landing per plane",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",0,{})); mix:update(results(1,0,0))
+        assert(mix:playCrash(1,1) and mix:playCrash(1,2))
+        assert(not mix:playCrash(1,1) and not mix:playCrash(1,2) and #calls==4)
+    end)
+    test("muted ground landings are consumed instead of replayed on unmute",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",0,{})); mix:update(results(1,1,0))
+        mix:setMuted(true); assert(not mix:playCrash(1,2))
+        mix:setMuted(false); assert(not mix:playCrash(1,2) and #calls==0)
+    end)
+    test("restart and exit invalidate old crash callbacks but permit the next landing",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",0,{})); mix:update(results(1,1,0))
+        mix:update(snapshot("Configure",0,{},2))
+        assert(not mix:playCrash(1,2) and not mix:playCrash(2,2))
+        mix:update(snapshot("Fight",0,{},2)); mix:update(results(2,1,0))
+        assert(not mix:playCrash(1,2) and mix:playCrash(2,2) and #calls==2)
+        mix:update({active=false}); assert(not mix:playCrash(2,2))
+        mix:destroy(); assert(not mix:playCrash(2,2) and #calls==2)
+    end)
+    test("late Results entry and delayed presentation callbacks stay silent",function()
+        local mix,calls=fixture()
+        mix:update(results(1,1,0)); assert(not mix:playCrash(1,2))
+        mix:update(results(1,1,0)); assert(not mix:playCrash(1,2))
+        mix:update(snapshot("Fight",0,{},2)); mix:update(results(2,1,0))
+        mix.resultsAt=os.clock()-Audio.MAX_CRASH_AGE-1
+        mix:update(results(2,1,0))
+        assert(not mix:playCrash(2,2) and #calls==0,"a repeated Results snapshot refreshed stale crash eligibility")
+    end)
+    test("timeouts and unfinished Results cannot claim a knockout crash",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",0,{})); mix:update(results(1,2,1,"timeout"))
+        assert(not mix:playCrash(1,2))
+        mix:update(results(1,1,0,"timeout")); assert(not mix:playCrash(1,2))
+        local invalid=results(1,1,0); invalid.simulation.finished=false
+        mix:update(invalid); assert(not mix:playCrash(1,2) and #calls==0)
+    end)
+    test("duplicate commit bursts are limited per actor without silencing the rival",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",0,{}))
+        mix:update(snapshot("Fight",0.2,{event(1,"dive",0.2)}))
+        mix:update(snapshot("Fight",0.23,{event(2,"dive",0.23),event(3,"dive",0.23,2)}))
+        assert(#calls==4 and mix.played==2 and mix.lastSerial==3)
+    end)
+    test("missing timestamps are supported after initialization and unknown events are consumed",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",0,{}))
+        mix:update(snapshot("Fight",0.1,{event(1,"miss",0.1),event(2,"rocket",nil)}))
+        assert(#calls==2 and mix.lastSerial==2)
+        mix:update(snapshot("Fight",0.2,{event(1,"hit",0.2),event(2,"rocket",nil)}))
+        assert(#calls==2)
+    end)
+    test("destroy is idempotent and later input cannot resurrect the mix",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",0,{})); mix:destroy(); mix:destroy()
+        mix:setMuted(false); mix:update(snapshot("Fight",0.1,{event(1,"hit",0.1)}))
+        assert(#calls==0 and mix.folder.destroyed==1 and next(mix.voices)==nil)
+    end)
+    return tostring(passed).." battle-audio tests passed"
+end
+</ProtectedString>
+      </Properties>
+    </Item>
+    <Item class="ModuleScript" referent="RBX30">
+      <Properties>
+        <string name="Name">BattleViewTests</string>
+        <ProtectedString name="Source">-- Native Roblox engine checks for post-result presentation, not subjective feel.
+-- require(thisModule)(BattleView, World, BattleSimulation). Fixtures are destroyed.
+return function(View, World, Simulation)
+    local passed=0
+    local function test(name,body)
+        local cues={}
+        local view=View.new(World,function(cue) cues[#cues+1]=cue end)
+        view.folder.Name="BattlePresentationFixture"
+        local function advance(snapshot,seconds)
+            for i=1,math.ceil(seconds*60) do
+                view:update(snapshot,1/60)
+                if i%12==0 then task.wait() end
+            end
+        end
+        local function snapshot(roundId,phase,armor1,armor2,reason)
+            local sim=Simulation.newRound(731)
+            sim.fighters[1].x,sim.fighters[1].y=-20,70
+            sim.fighters[2].x,sim.fighters[2].y=30,60
+            for i,f in ipairs(sim.fighters) do
+                f.armor=i==1 and armor1 or armor2
+                f.vx,f.vy,f.armed=0,0,false
+            end
+            sim.finished=phase=="Results"; sim.reason=reason
+            sim.winner=armor1==armor2 and 0 or (armor1&gt;armor2 and 1 or 2)
+            sim.events={}; sim.elapsed=20
+            return {roundId=roundId,phase=phase,active=true,simulation=sim}
+        end
+        local ok,err=pcall(body,view,cues,advance,snapshot)
+        view:destroy()
+        assert(view.folder.Parent==nil,"Fixture cleanup failed")
+        assert(ok,name..": "..tostring(err))
+        passed=passed+1
+    end
+    local function lowestSolid(model)
+        local lowest=math.huge
+        for _,p in ipairs(model:GetDescendants()) do
+            if p:IsA("BasePart") and p.Transparency&lt;0.5 and not string.find(p.Name,"Smoke") then
+                local c,s=p.CFrame,p.Size
+                local extent=(math.abs(c.RightVector.Y)*s.X+math.abs(c.UpVector.Y)*s.Y+math.abs(c.LookVector.Y)*s.Z)/2
+                lowest=math.min(lowest,p.Position.Y-extent)
+            end
+        end
+        return lowest
+    end
+    test("KO falls onto the visible floor once without moving the winner or simulation",function(view,cues,advance,snapshot)
+        local s=snapshot(1,"Fight",1,2)
+        view:update(s,1/60)
+        local start=view.fighters[1].model:GetPivot().Position
+        local winner=view.fighters[2].model:GetPivot().Position
+        s.phase="Results";s.simulation.finished=true;s.simulation.reason="knockout";s.simulation.fighters[1].armor=0
+        advance(s,0.25)
+        assert(view.fighters[1].model:GetPivot().Position.Y&lt;start.Y,"Defeated plane did not descend")
+        assert(#cues==0,"Ground sound played before landing")
+        advance(s,2)
+        assert(#cues==1 and cues[1].kind=="crash" and cues[1].actor==1 and cues[1].roundId==1,"Missing or duplicate landing cue")
+        assert(view.fighters[1].model:GetAttribute("CrashState")=="Landed","KO did not settle")
+        local lip=view.folder.Stadium.FloorLip
+        local ground=lip.Position.Y+lip.Size.Y/2
+        assert(math.abs(lowestSolid(view.fighters[1].model)-ground)&lt;0.8,"Wreck floats above or penetrates the floor")
+        assert((view.fighters[2].model:GetPivot().Position-winner).Magnitude&lt;0.01,"Winner fell or moved")
+        assert(s.simulation.fighters[1].y==70 and s.simulation.winner==2,"Presentation changed authoritative result")
+        advance(s,1)
+        assert(#cues==1,"Ground cue repeated on Results snapshots")
+    end)
+    test("simultaneous knockout crashes both planes",function(view,cues,advance,snapshot)
+        local s=snapshot(2,"Results",0,0,"knockout")
+        advance(s,2.5)
+        assert(#cues==2 and cues[1].actor~=cues[2].actor,"Double KO did not land both planes once")
+        for _,f in pairs(view.fighters) do assert(f.model:GetAttribute("CrashState")=="Landed") end
+        assert(s.simulation.winner==0,"Crash changed the draw")
+    end)
+    test("timeout survivors do not crash",function(view,cues,advance,snapshot)
+        local s=snapshot(3,"Results",1,2,"timeout")
+        view:update(s,1/60)
+        local y=view.fighters[1].model:GetPivot().Position.Y
+        advance(s,2)
+        assert(#cues==0 and view.fighters[1].model:GetAttribute("CrashState")==nil,"Timeout survivor crashed")
+        assert(math.abs(view.fighters[1].model:GetPivot().Position.Y-y)&lt;0.01,"Timeout survivor fell")
+    end)
+    test("retry during a fall cancels the old landing",function(view,cues,advance,snapshot)
+        advance(snapshot(4,"Results",0,2,"knockout"),0.2)
+        local nextRound=snapshot(5,"Configure",3,3)
+        advance(nextRound,2)
+        assert(#cues==0,"Old crash sounded after retry")
+        for _,f in pairs(view.fighters) do assert(f.model:GetAttribute("CrashState")==nil,"Retry kept crash state") end
+    end)
+    test("destroy during a fall cancels pending presentation",function(view,cues,advance,snapshot)
+        local s=snapshot(6,"Results",0,2,"knockout")
+        advance(s,0.2)
+        view:destroy()
+        advance(s,2)
+        assert(#cues==0,"Destroyed view emitted a delayed landing")
+    end)
+    test("near-floor knockout reaches first contact and cues in the same update",function(view,cues,advance,snapshot)
+        for sample,height in ipairs({8,10,14}) do
+            local s=snapshot(20+sample,"Fight",1,2)
+            s.simulation.fighters[1].y=height
+            view:update(s,1/60)
+            s.phase="Results";s.simulation.finished=true;s.simulation.reason="knockout";s.simulation.fighters[1].armor=0
+            local before=#cues
+            local previousBottom=math.huge
+            local landed=false
+            for frame=1,90 do
+                view:update(s,1/60)
+                local fighter=view.fighters[1]
+                local bottom=lowestSolid(fighter.model)
+                local gap=bottom-view.groundY
+                assert(gap&gt;=-0.002,"Near-floor crash penetrated the floor")
+                assert(bottom&lt;=previousBottom+0.002,"Near-floor wreck lifted away from the floor")
+                previousBottom=bottom
+                if fighter.model:GetAttribute("CrashState")=="Landed" then
+                    assert(math.abs(gap)&lt;0.002,"Landing cue happened before actual contact")
+                    assert(#cues==before+1 and cues[#cues].roundId==s.roundId,"Contact did not emit exactly one current-round cue")
+                    landed=true
+                    break
+                end
+                assert(gap&gt;0.002 and #cues==before,"Wreck touched the floor before landing cue")
+                if frame%12==0 then task.wait() end
+            end
+            assert(landed,"Near-floor crash did not settle")
+            advance(s,0.25)
+            assert(#cues==before+1,"Near-floor landing cue repeated")
+        end
+    end)
+    return string.format("BattleView: %d native crash tests passed",passed)
+end
+</ProtectedString>
+      </Properties>
+    </Item>
   </Item>
-  <Item class="StarterPlayer" referent="RBX23">
+  <Item class="StarterPlayer" referent="RBX31">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="RBX24">
+    <Item class="StarterPlayerScripts" referent="RBX32">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="RBX25">
+      <Item class="LocalScript" referent="RBX33">
         <Properties>
           <string name="Name">FlightClient</string>
           <ProtectedString name="Source">local Players = game:GetService("Players")
@@ -4583,6 +6137,8 @@ local EffectsShop = require(script.Parent:WaitForChild("EffectsShop"))
 local FlightAudio = require(script.Parent:WaitForChild("FlightAudio"))
 local PilotAvatar = require(script.Parent:WaitForChild("PilotAvatar"))
 local HangarBay = require(script.Parent:WaitForChild("HangarBay"))
+local BattleLab = require(script.Parent:WaitForChild("BattleLab"))
+local battleLab = BattleLab.new(World,shared)
 local audio = FlightAudio.new()
 local command = shared:WaitForChild("Command")
 local snapshots = shared:WaitForChild("Snapshot")
@@ -4681,9 +6237,17 @@ hud=Hud.new({
     returnLobby=function() send("returnLobby") end,
     rematch=function() send("rematch") end,
     lobby=function() send("returnLobby") end,
-    mute=function(muted) audio:setMuted(muted) end,
+    mute=function(muted) localPlayer:SetAttribute("SkyboundSoundMuted",muted) end,
     powerSelect=function(powerId,confirmed) audio:playSelection(powerId,confirmed) end,
 })
+local function syncMute()
+    local muted=localPlayer:GetAttribute("SkyboundSoundMuted")==true
+    audio:setMuted(muted)
+    hud.soundMuted=muted
+    hud.soundButton.Text=muted and "SOUND OFF" or "SOUND ON"
+end
+localPlayer:GetAttributeChangedSignal("SkyboundSoundMuted"):Connect(syncMute)
+syncMute()
 pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack,false) end)
 pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList,false) end)
 
@@ -4727,6 +6291,14 @@ snapshots.OnClientEvent:Connect(function(data)
         manualSpectate=false
         if previewPlane then previewPlane:Destroy(); previewPlane=nil end
     end
+    if data.phase=="BattleLab" then
+        clearPlanes()
+        if previewPlane then previewPlane:Destroy(); previewPlane=nil end
+        if renderedCourse then World.destroyCourse(renderedCourse); renderedCourse=nil; courseKey="" end
+        lastPhase=data.phase
+        localPlayer:SetAttribute("SkyboundPhase",data.phase)
+        return
+    end
     local key=tostring(data.courseSeed)..data.courseName
     if key~=courseKey and not lobbyView then
         if renderedCourse then World.destroyCourse(renderedCourse) end
@@ -4757,7 +6329,7 @@ local function adjust(key, amount, low, high)
     if hud.setLocalSettings then hud:setLocalSettings(current) else send("configure",{settings=current}) end
 end
 UserInputService.InputBegan:Connect(function(input,processed)
-    if processed or UserInputService:GetFocusedTextBox() then return end
+    if battleLab:isActive() or processed or UserInputService:GetFocusedTextBox() then return end
     if input.KeyCode==Enum.KeyCode.R or input.KeyCode==Enum.KeyCode.ButtonY then
         if latest and (latest.phase=="Configure" or latest.phase=="Aim") then
             if hud.toggleReady then hud:toggleReady()
@@ -4825,12 +6397,24 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
     if not latest or not camera then return end
     local phase=latest.phase
     -- Roblox may re-enable avatar controls when a character finishes spawning.
-    local allowMovement=lobbyView and not effectsShop:isOpen()
+    local allowMovement=lobbyView and not effectsShop:isOpen() and not battleLab:isActive()
     if characterControls and (controlsEnabled~=allowMovement or characterControls.controlsEnabled~=allowMovement) then
         controlsEnabled=allowMovement
         if allowMovement then characterControls:Enable() else characterControls:Disable() end
         localPlayer:SetAttribute("SkyboundLobbyControls",characterControls.controlsEnabled)
     end
+    local inLab=battleLab:isActive()
+    hud.gui.Enabled=not inLab and phase~="BattleLab"
+    effectsShop.gui.Enabled=not inLab and phase~="BattleLab"
+    if inLab or phase=="BattleLab" then
+        if effectsShop:isOpen() then effectsShop:close() end
+        audio:update({},"battle-lab",localPlayer.UserId,false)
+        hangarBay:update(latest,nil,false,dt)
+        battleLab:update(dt,false)
+        return
+    end
+    battleLab.entryBottom=hud:getHubStackTop()
+    battleLab:update(dt,phase=="Lobby" and not effectsShop:isOpen())
     local active=phase=="Flight" or phase=="Results"
     local target=getEntry(watchedUserId)
     if active and (not target or not target.flight) then
@@ -5067,7 +6651,7 @@ print("SKYBOUND_CLIENT_READY")
 </ProtectedString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="RBX26">
+      <Item class="ModuleScript" referent="RBX34">
         <Properties>
           <string name="Name">Hud</string>
           <ProtectedString name="Source">-- SKYBOUND's client-only presentation. Match state and rewards stay on the server.
@@ -6617,6 +8201,13 @@ function Hud:getFlightViewport()
 	return { left = 18, right = viewport.X - 18, top = top, bottom = math.max(top + 40, bottom) }
 end
 
+-- Offset from the bottom edge to just above the hub's plane selector, for
+-- other hub controls that stack on top of it.
+function Hud:getHubStackTop()
+	self:_resize()
+	return self.planeRow.Position.Y.Offset - self.planeRow.Size.Y.Offset - 8
+end
+
 function Hud:getAimViewport()
 	self:_resize()
 	local topInset = GuiService:GetGuiInset()
@@ -7056,7 +8647,7 @@ return Hud
 </ProtectedString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="RBX27">
+      <Item class="ModuleScript" referent="RBX35">
         <Properties>
           <string name="Name">EffectsShop</string>
           <ProtectedString name="Source">-- A browse -&gt; preview -&gt; buy -&gt; equip flow. Only server snapshots grant ownership.
@@ -7434,7 +9025,7 @@ return Shop
 </ProtectedString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="RBX28">
+      <Item class="ModuleScript" referent="RBX36">
         <Properties>
           <string name="Name">HangarBay</string>
           <ProtectedString name="Source">-- The living parts of the hangar that differ for every pilot, built locally:
@@ -7837,7 +9428,7 @@ return Bay
 </ProtectedString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="RBX29">
+      <Item class="ModuleScript" referent="RBX37">
         <Properties>
           <string name="Name">FlightAudio</string>
           <ProtectedString name="Source">-- Local presentation only: both duel pilots share a bounded mix. Each pilot
@@ -8047,7 +9638,7 @@ return Audio
 </ProtectedString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="RBX30">
+      <Item class="ModuleScript" referent="RBX38">
         <Properties>
           <string name="Name">PilotAvatar</string>
           <ProtectedString name="Source">-- Decorative, client-only seated pilots. The real character is never reparented
@@ -8346,9 +9937,1714 @@ return PilotAvatar
 </ProtectedString>
         </Properties>
       </Item>
+      <Item class="ModuleScript" referent="RBX39">
+        <Properties>
+          <string name="Name">BattleLab</string>
+          <ProtectedString name="Source">-- A deliberately small control surface for the first combat playtest.
+local Players=game:GetService("Players")
+local GuiService=game:GetService("GuiService")
+local BattleView=require(script.Parent:WaitForChild("BattleView"))
+local BattleAudio=require(script.Parent:WaitForChild("BattleAudio"))
+local BattleLab={}
+BattleLab.__index=BattleLab
+local NAVY=Color3.fromRGB(18,31,51)
+local WHITE=Color3.fromRGB(255,245,221)
+local MUTED=Color3.fromRGB(172,191,210)
+local ACCENTS={Color3.fromRGB(255,113,111),Color3.fromRGB(70,221,234)}
+local DESCRIPTIONS={Meteor="Pull up, charge, then slam into a dive.",Firework="Launch a slow rocket on each attack pass."}
+local function make(class,parent,name)
+    local item=Instance.new(class); item.Name=name; item.Parent=parent; return item
+end
+local function surface(item,color,thickness)
+    local stroke=make("UIStroke",item,"Edge")
+    stroke.ApplyStrokeMode=Enum.ApplyStrokeMode.Border
+    stroke.Color=color; stroke.Thickness=thickness or 1; stroke.Transparency=0.6
+    local gradient=make("UIGradient",item,"Shading")
+    gradient.Rotation=90
+    gradient.Color=ColorSequence.new(Color3.new(1,1,1),Color3.fromRGB(185,199,220))
+    return stroke
+end
+local function label(parent,name,size,color)
+    local item=make("TextLabel",parent,name)
+    item.BackgroundTransparency=1; item.TextColor3=color or WHITE
+    item.TextSize=size; item.Font=Enum.Font.GothamBold
+    item.TextWrapped=true; item.Text=""
+    return item
+end
+local function button(parent,name,text,callback)
+    local item=make("TextButton",parent,name)
+    item.BackgroundColor3=Color3.fromRGB(44,63,86); item.BorderSizePixel=0
+    item.TextColor3=WHITE; item.Font=Enum.Font.GothamBold; item.TextSize=16; item.Text=text
+    item.AutoButtonColor=true; item.Selectable=true
+    make("UICorner",item,"Corner").CornerRadius=UDim.new(0,10)
+    surface(item,Color3.fromRGB(132,169,201),1)
+    item.Activated:Connect(callback)
+    return item
+end
+local function place(item,x,y,w,h)
+    item.Position=UDim2.fromOffset(x,y); item.Size=UDim2.fromOffset(w,h)
+end
+function BattleLab.new(World,shared)
+    local self=setmetatable({World=World,active=false,data=nil,settings={},cards={},armorBars={},scorePlates={},outbox={},sending=false,lastSend=-math.huge},BattleLab)
+    self.modifiers=require(shared:WaitForChild("BattleModifiers"))
+    self.audio=BattleAudio.new()
+    self.showAngles=false
+    self.command=shared:WaitForChild("BattleCommand")
+    self.gui=make("ScreenGui",Players.LocalPlayer:WaitForChild("PlayerGui"),"SkyboundBattleLab")
+    self.gui.ResetOnSpawn=false; self.gui.DisplayOrder=30; self.gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+    self.root=make("Frame",self.gui,"Root"); self.root.Size=UDim2.fromScale(1,1); self.root.BackgroundTransparency=1
+    self.entry=button(self.root,"EnterBattleLab","PLAY PLANE BATTLES  /  BATTLE LAB",function() self:send("enter") end)
+    self.entry.BackgroundColor3=Color3.fromRGB(224,81,64)
+    self.entry.Edge.Color=Color3.fromRGB(255,211,119); self.entry.Edge.Transparency=0.15; self.entry.Edge.Thickness=2
+    self.entry.AnchorPoint=Vector2.new(0.5,1)
+    self.panel=make("Frame",self.root,"Lab"); self.panel.Size=UDim2.fromScale(1,1); self.panel.BackgroundTransparency=1; self.panel.Visible=false
+    self.header=make("Frame",self.panel,"Header"); self.header.BackgroundColor3=NAVY; self.header.BorderSizePixel=0
+    surface(self.header,Color3.fromRGB(67,111,147),1)
+    self.title=label(self.header,"Title",20); self.title.Text="SKYBOUND CLASH"
+    self.subtitle=label(self.header,"Subtitle",12,MUTED); self.subtitle.Text="BATTLE LAB · SIMULATED OPPONENT"
+    self.exit=button(self.header,"Exit","Hangar",function() self:send("exit") end)
+    self.mute=button(self.header,"Mute","Sound ON",function()
+        local p=Players.LocalPlayer
+        p:SetAttribute("SkyboundSoundMuted",p:GetAttribute("SkyboundSoundMuted")~=true)
+    end)
+    self.mute.TextSize=12
+    self.status=label(self.panel,"Status",22)
+    self.status.BackgroundColor3=Color3.fromRGB(31,49,69); self.status.BackgroundTransparency=0.08
+    make("UICorner",self.status,"Corner").CornerRadius=UDim.new(0,10)
+    self.statusEdge=surface(self.status,Color3.fromRGB(118,154,187),1)
+    self.help=label(self.panel,"Help",14,MUTED)
+    self.footer=make("Frame",self.panel,"Controls"); self.footer.BackgroundColor3=NAVY; self.footer.BorderSizePixel=0
+    surface(self.footer,Color3.fromRGB(67,111,147),1)
+    self.footer.AnchorPoint=Vector2.new(0,1)
+    for index=1,2 do
+        local i=index
+        local card={}
+        card.frame=make("Frame",self.footer,"Pilot"..i); card.frame.BackgroundTransparency=1
+        card.role=label(card.frame,"Role",12,ACCENTS[i]); card.role.Text=i==1 and "YOUR PLANE" or "SIMULATED OPPONENT"
+        card.power=button(card.frame,"Power","",function()
+            if not self.data or self.data.phase~="Configure" then return end
+            self.settings[i].powerId=self.settings[i].powerId=="Meteor" and "Firework" or "Meteor"
+            self:send("configure",{settings=self.settings})
+        end)
+        card.description=label(card.frame,"Description",13,MUTED)
+        card.modifier=button(card.frame,"Modifier","",function() self:cycleModifier(i) end)
+        card.modifierDescription=label(card.frame,"ModifierDescription",13,MUTED)
+        card.angle=label(card.frame,"Angle",14)
+        card.minus=button(card.frame,"LowerAngle","−",function() self:angle(i,-5) end)
+        card.plus=button(card.frame,"RaiseAngle","+",function() self:angle(i,5) end)
+        self.cards[i]=card
+        local plate=make("Frame",self.header,"ScorePlate"..i)
+        plate.BackgroundColor3=NAVY:Lerp(ACCENTS[i],0.14); plate.BorderSizePixel=0
+        make("UICorner",plate,"Corner").CornerRadius=UDim.new(0,8)
+        surface(plate,ACCENTS[i],1)
+        self.scorePlates[i]=plate
+        local score=label(plate,"Score"..i,16,ACCENTS[i]); self["score"..i]=score
+        self.armorBars[i]={}
+        for pip=1,3 do
+            local bar=make("Frame",plate,"Armor"..pip); bar.BorderSizePixel=0; bar.BackgroundColor3=ACCENTS[i]
+            make("UICorner",bar,"Corner").CornerRadius=UDim.new(0,3)
+            self.armorBars[i][pip]=bar
+        end
+    end
+    self.angleToggle=button(self.footer,"Angles","Angles",function() self.showAngles=not self.showAngles end)
+    self.launch=button(self.footer,"Launch","Launch battle",function() self:send("launch",{settings=self.settings}) end)
+    self.launch.BackgroundColor3=Color3.fromRGB(224,81,64)
+    self.launch.Edge.Color=Color3.fromRGB(255,207,117); self.launch.Edge.Transparency=0.2
+    self.replay=button(self.footer,"Replay","Run it again",function() self:send("restart") end)
+    self.replay.BackgroundColor3=Color3.fromRGB(224,81,64)
+    self.edit=button(self.footer,"Edit","Change setup",function() self:send("restart",{edit=true}) end)
+    self.footerHint=label(self.footer,"Hint",13,MUTED)
+    shared:WaitForChild("BattleSnapshot").OnClientEvent:Connect(function(data)
+        if type(data)~="table" then return end
+        local wasActive=self.active
+        local previousPhase=self.data and self.data.phase
+        self.active=data.active==true; self.data=data
+        if self.active then
+            -- This pilot owns setup edits. Older periodic snapshots must not
+            -- roll back a tap that is still travelling to the server.
+            if not wasActive or data.phase~="Configure" or previousPhase~="Configure" then
+            self.settings={{powerId=data.settings[1].powerId,angle=data.settings[1].angle,modifierId=data.settings[1].modifierId or "None"},
+                {powerId=data.settings[2].powerId,angle=data.settings[2].angle,modifierId=data.settings[2].modifierId or "None"}}
+            end
+            if not self.view then
+                self.view=BattleView.new(World,function(cue)
+                    if cue.kind=="crash" then self.audio:playCrash(cue.roundId,cue.actor) end
+                end)
+            end
+        elseif self.view then self.view:destroy(); self.view=nil end
+        self.panel.Visible=self.active
+        Players.LocalPlayer:SetAttribute("BattleLabPhase",self.active and data.phase or "Inactive")
+    end)
+    self:send("request")
+    return self
+end
+function BattleLab:send(kind,payload)
+    payload=payload or {}; payload.kind=kind
+    if payload.settings then
+        payload.settings={{powerId=payload.settings[1].powerId,angle=payload.settings[1].angle,modifierId=payload.settings[1].modifierId},
+            {powerId=payload.settings[2].powerId,angle=payload.settings[2].angle,modifierId=payload.settings[2].modifierId}}
+    end
+    -- Queue button intents in order, including configuration before launch.
+    -- Coalesce rapid setup taps and stay below the server's shared rate limit.
+    local last=self.outbox[#self.outbox]
+    if last and last.kind=="configure" and kind=="configure" then self.outbox[#self.outbox]=payload
+    else table.insert(self.outbox,payload) end
+    if self.sending then return end
+    self.sending=true
+    task.spawn(function()
+        while #self.outbox&gt;0 do
+            local delay=0.08-(os.clock()-self.lastSend)
+            if delay&gt;0 then task.wait(delay) end
+            local nextPayload=table.remove(self.outbox,1)
+            self.command:FireServer(nextPayload); self.lastSend=os.clock()
+        end
+        self.sending=false
+    end)
+end
+function BattleLab:isActive() return self.active end
+function BattleLab:angle(index,delta)
+    if not self.data or self.data.phase~="Configure" then return end
+    self.settings[index].angle=math.clamp(self.settings[index].angle+delta,10,55)
+    self:send("configure",{settings=self.settings})
+end
+function BattleLab:cycleModifier(index)
+    if not self.data or self.data.phase~="Configure" then return end
+    local choices=self.modifiers.all()
+    local current=1
+    for i,value in ipairs(choices) do if value.id==self.settings[index].modifierId then current=i end end
+    self.settings[index].modifierId=choices[current%#choices+1].id
+    self:send("configure",{settings=self.settings})
+end
+function BattleLab:feedback(data)
+    local sim=data.simulation
+    if self.feedbackRound~=data.roundId then
+        self.feedbackRound=data.roundId; self.eventSerial=0; self.feedbackUntil=0; self.lastHit=nil; self.hitTimes={}
+    end
+    if data.phase=="Configure" or data.phase=="Countdown" then return end
+    for _,event in ipairs(sim.events or {}) do
+        if event.serial&gt;(self.eventSerial or 0) then
+            self.eventSerial=event.serial
+            local recent=sim.elapsed-(event.at or 0)&lt;0.75
+            if event.kind=="hit" or event.kind=="wake_hit" then
+                local attack=event.source=="meteor" and "METEOR SLAM" or (event.source=="wake" and "FIZZY WAKE HIT" or "ROCKET HIT")
+                local victim=event.target==1 and "YOUR PLANE" or "SIM PLANE"
+                self.lastHit={target=event.target,source=attack}
+                if recent then
+                    self.feedbackText=attack.." · "..victim.." −1"; self.feedbackUntil=os.clock()+0.7
+                    self.hitTimes[event.target]=os.clock()
+                end
+            elseif event.kind=="blocked" and recent then
+                self.feedbackText=(event.actor==1 and "YOUR BUMPER" or "SIM BUMPER").." SAVED A HIT!"
+                self.feedbackUntil=os.clock()+0.8
+            end
+        end
+    end
+end
+function BattleLab:update(dt,canEnter)
+    local width,height=self.root.AbsoluteSize.X,self.root.AbsoluteSize.Y
+    self.entry.Visible=not self.active and canEnter==true
+    -- The hub HUD reports where its bottom stack ends so the two never overlap.
+    self.entry.Position=UDim2.new(0.5,0,1,self.entryBottom or -78)
+    self.entry.Size=UDim2.fromOffset(math.min(width-24,420),height&lt;430 and 40 or 48)
+    local muted=Players.LocalPlayer:GetAttribute("SkyboundSoundMuted")==true
+    if self.muted~=muted then self.audio:setMuted(muted); self.muted=muted end
+    self.audio:update(self.data or {active=false})
+    if not self.active or not self.data or not self.view then return end
+    local data=self.data
+    local config=data.phase=="Configure"
+    local results=data.phase=="Results"
+    local compact=width&lt;600
+    local short=height&lt;500
+    local headerHeight=short and 82 or 94
+    local plainFight=data.phase=="Fight" and (data.settings[1].modifierId or "None")=="None"
+        and (data.settings[2].modifierId or "None")=="None"
+    local footerHeight=config and (short and (compact and 146 or 112) or (self.showAngles and 282 or 240)) or (results and 108 or (plainFight and 0 or 54))
+    self.footer.Visible=not plainFight
+    place(self.header,0,0,width,headerHeight)
+    place(self.title,12,4,width-184,26); self.title.TextXAlignment=Enum.TextXAlignment.Left
+    self.title.TextSize=compact and 16 or 22
+    self.title.Text=short and "LAB · SIMULATED OPPONENT" or "SKYBOUND CLASH"
+    if short then self.title.TextSize=compact and 11 or 16 end
+    place(self.subtitle,12,30,width-184,18); self.subtitle.TextXAlignment=Enum.TextXAlignment.Left
+    self.subtitle.TextSize=compact and 9 or 12
+    self.subtitle.Visible=not short
+    place(self.exit,width-96,5,84,40)
+    place(self.mute,width-166,5,64,40); self.mute.Text=muted and "Sound OFF" or "Sound ON"; self.mute.TextWrapped=true
+    local scoreWidth=math.min(width/2-20,360)
+    for i,plate in ipairs(self.scorePlates) do
+        place(plate,width*(i==1 and 0.25 or 0.75)-scoreWidth/2,short and 48 or 52,scoreWidth,short and 30 or 38)
+        place(self["score"..i],4,0,scoreWidth-8,short and 21 or 25)
+        local pipWidth=(scoreWidth-28)/3
+        for pip,bar in ipairs(self.armorBars[i]) do
+            place(bar,8+(pip-1)*(pipWidth+6),short and 23 or 28,pipWidth,short and 4 or 6)
+        end
+    end
+    self.score1.TextSize=compact and 13 or 17; self.score2.TextSize=self.score1.TextSize
+    local statusWidth=math.min(width-24,620)
+    place(self.status,(width-statusWidth)/2,headerHeight+3,statusWidth,28)
+    self.status.TextSize=compact and 17 or 22
+    place(self.help,12,headerHeight+30,width-24,22)
+    self.help.TextSize=compact and 11 or 14
+    self.help.Visible=not (short and config)
+    place(self.footer,0,height,width,footerHeight)
+    local half=(math.min(width,900)-32)/2
+    if short and config and not compact then half=(width-204)/2 end
+    local left=short and config and not compact and 12 or (width-half*2-8)/2
+    for i,card in ipairs(self.cards) do
+        card.frame.Visible=config
+        place(card.frame,left+(i-1)*(half+8),8,half,footerHeight-62)
+        place(card.role,0,0,half,17); card.role.Visible=not short
+        place(card.power,0,short and 0 or 21,half,short and 34 or 40)
+        card.power.Text=(short and (i==1 and "YOU · " or "SIM · ") or "")..self.settings[i].powerId.."  ↔"
+        card.power.TextSize=short and 14 or 16
+        card.power.TextColor3=ACCENTS[i]
+        card.power.BackgroundColor3=Color3.fromRGB(37,54,76):Lerp(ACCENTS[i],0.22)
+        card.power.Edge.Color=ACCENTS[i]; card.power.Edge.Transparency=0.18
+        place(card.description,4,63,half-8,28); card.description.Visible=not short
+        card.description.Text=DESCRIPTIONS[self.settings[i].powerId]
+        local modifier=self.modifiers.get(self.settings[i].modifierId) or self.modifiers.get("None")
+        card.modifier.Visible=not short or not self.showAngles
+        place(card.modifier,0,short and 40 or 96,half,short and 46 or 40)
+        card.modifier.Text=short and (modifier.name.."  ↔\n"..modifier.description) or (modifier.name.."  ↔")
+        card.modifier.TextWrapped=true
+        card.modifier.TextSize=short and 11 or 15
+        card.modifier.TextColor3=modifier.id=="None" and MUTED or ACCENTS[i]
+        card.modifier.BackgroundColor3=modifier.id=="None" and Color3.fromRGB(36,48,67) or Color3.fromRGB(48,68,91)
+        place(card.modifierDescription,4,139,half-8,34)
+        card.modifierDescription.Text=modifier.description
+        card.modifierDescription.Visible=not short
+        local y=short and 40 or 178
+        card.minus.Visible=self.showAngles; card.plus.Visible=self.showAngles; card.angle.Visible=self.showAngles
+        place(card.minus,0,y,44,38); place(card.plus,half-44,y,44,38)
+        place(card.angle,46,y,half-92,38); card.angle.Text="Aim "..self.settings[i].angle.."°"
+    end
+    self.launch.Visible=config; self.angleToggle.Visible=config
+    self.replay.Visible=results; self.edit.Visible=results
+    local actionWidth=math.min(width-24,510)
+    place(self.angleToggle,(width-actionWidth)/2,footerHeight-54,112,44)
+    place(self.launch,(width-actionWidth)/2+120,footerHeight-54,actionWidth-120,44)
+    self.angleToggle.Text=self.showAngles and "Hide angles" or "Angles"
+    if short and config and not compact then
+        place(self.launch,width-172,8,160,48)
+        place(self.angleToggle,width-172,62,160,40)
+        self.angleToggle.Text=self.showAngles and "Back to effects" or "Tune angles"
+    end
+    local buttonWidth=math.min(260,(width-36)/2)
+    place(self.replay,width/2-buttonWidth-6,footerHeight-54,buttonWidth,44)
+    place(self.edit,width/2+6,footerHeight-54,buttonWidth,44)
+    self.footerHint.Visible=not config
+    self.footerHint.TextSize=compact and 12 or 13
+    place(self.footerHint,12,results and 5 or 7,width-24,results and 40 or 40)
+    local sim=data.simulation
+    self:feedback(data)
+    for i,f in ipairs(sim.fighters) do
+        self["score"..i].Text=(i==1 and "YOU" or "SIM").." · "..string.upper(f.powerId)
+        self["score"..i].TextColor3=ACCENTS[i]
+        local flash=math.max(0,1-(os.clock()-((self.hitTimes or {})[i] or -100))/0.35)
+        for pip,bar in ipairs(self.armorBars[i]) do
+            bar.BackgroundColor3=(pip&lt;=f.armor and ACCENTS[i] or Color3.fromRGB(43,51,66)):Lerp(WHITE,flash*0.65)
+            bar.BackgroundTransparency=pip&lt;=f.armor and 0 or 0.25
+        end
+        self.scorePlates[i].Edge.Transparency=0.55-flash*0.45
+    end
+    self.status.TextColor3=WHITE
+    self.statusEdge.Color=Color3.fromRGB(118,154,187)
+    self.statusEdge.Transparency=0.6
+    if config then
+        self.status.Text="Choose a power. Add one twist."
+        self.help.Text="One optional effect per plane. Both fly and fight automatically."
+    elseif data.phase=="Countdown" then
+        self.status.Text="LAUNCH IN "..math.max(1,math.ceil(data.endsAt-workspace:GetServerTimeNow()))
+        self.help.Text="Watch the windup. The attack is committed."
+        self.footerHint.Text="Meteor dives into a ram · Firework sends a rocket"
+    elseif results then
+        self.status.Text=sim.winner==0 and "DRAW · EVENLY MATCHED" or (sim.winner==1 and "YOUR PLANE WINS!" or "SIMULATED OPPONENT WINS")
+        self.status.TextColor3=sim.winner==0 and WHITE or ACCENTS[sim.winner]
+        self.statusEdge.Color=self.status.TextColor3; self.statusEdge.Transparency=0.1
+        self.help.Text=string.format("%.1f seconds · %s",sim.elapsed,sim.reason=="timeout" and "armor at the time limit" or "armor depleted")
+        self.footerHint.Text=string.format("You landed %d hits · SIM landed %d. Change one effect and see what happens.",sim.fighters[1].hits,sim.fighters[2].hits)
+    else
+        self.status.Text=sim.pressure&gt;0 and "WIND CLOSING IN" or "BATTLE!"
+        if os.clock()&lt;(self.feedbackUntil or 0) then
+            self.status.Text=self.feedbackText; self.status.TextColor3=Color3.fromRGB(255,213,94)
+            self.statusEdge.Color=self.status.TextColor3; self.statusEdge.Transparency=0.15
+        end
+        self.help.Text=string.format("%02d seconds left · %s",math.max(0,math.ceil(35-sim.elapsed)),
+            sim.pressure&gt;0 and "Arena closing" or "Automatic combat")
+        local effects={}
+        for i,f in ipairs(sim.fighters) do
+            local effect=self.modifiers.get(f.modifierId or "None")
+            local name=effect and effect.name or "No effect"
+            if f.modifierId=="SpringBumper" then name=f.bumperReady and "Bumper ready" or "Bumper spent" end
+            if (f.boostLeft or 0)&gt;0 then name="Afterburner firing!" end
+            effects[i]=(i==1 and "YOU: " or "SIM: ")..name
+        end
+        self.footerHint.Text=table.concat(effects,"   ·   ")
+    end
+    local inset=GuiService:GetGuiInset()
+    local origin=self.root.AbsolutePosition+inset
+    self.view:update(data,dt,{left=origin.X+10,right=origin.X+width-10,
+        top=origin.Y+headerHeight+(short and config and 32 or 56),bottom=origin.Y+height-footerHeight-8})
+end
+return BattleLab
+</ProtectedString>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="RBX40">
+        <Properties>
+          <string name="Name">BattleView</string>
+          <ProtectedString name="Source">--!nonstrict
+-- Local presentation for Battle Lab. Simulation owns every hit and outcome.
+-- The caller owns the render connection and must skip its normal flight camera
+-- while calling update. viewportRect uses Camera.ViewportSize pixel coordinates.
+local Workspace = game:GetService("Workspace")
+
+local BattleView = {}
+BattleView.__index = BattleView
+
+local ORIGIN = Vector3.new(0, 80, -4000)
+local SCALE = 1.5
+local MIN_X, MAX_X, MIN_Y, MAX_Y = -72, 72, 8, 96
+local CENTER_Y = (MIN_Y + MAX_Y) / 2
+local COLORS = {
+	coral = Color3.fromRGB(255, 104, 102), cyan = Color3.fromRGB(66, 225, 239),
+	cream = Color3.fromRGB(255, 245, 217), yellow = Color3.fromRGB(255, 212, 80),
+	fire = Color3.fromRGB(255, 145, 54), boost = Color3.fromRGB(161, 246, 255),
+	navy = Color3.fromRGB(20, 35, 59), dark = Color3.fromRGB(12, 22, 39),
+	grid = Color3.fromRGB(39, 62, 83), steel = Color3.fromRGB(60, 86, 104),
+}
+local PLAYER_COLORS = { COLORS.coral, COLORS.cyan }
+local EFFECT_LIMIT, ROCKET_LIMIT, WAKE_LIMIT = 10, 24, 12
+
+local function part(parent, name, size, pose, color, material, shape)
+	local object = Instance.new("Part")
+	object.Name = name
+	object.Size = size
+	object.CFrame = pose
+	object.Color = color
+	object.Material = material or Enum.Material.SmoothPlastic
+	object.Anchored = true
+	object.CanCollide = false
+	object.CanTouch = false
+	object.CanQuery = false
+	object.CastShadow = false
+	object.TopSurface = Enum.SurfaceType.Smooth
+	object.BottomSurface = Enum.SurfaceType.Smooth
+	if shape then object.Shape = shape end
+	object.Parent = parent
+	return object
+end
+
+local function ellipsoid(parent, name, size, pose, color, material)
+	local object = part(parent, name, size, pose, color, material)
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Sphere
+	mesh.Parent = object
+	return object
+end
+
+local function arenaPose(x, y, z)
+	return CFrame.new(ORIGIN + Vector3.new(x, y, z or 0))
+end
+
+local function numeric(value, fallback)
+	return type(value) == "number" and value == value and math.abs(value) &lt; 1e7 and value or fallback
+end
+
+local function hide(pieces)
+	for _, piece in ipairs(pieces) do piece.Transparency = 1 end
+end
+
+local function makeRing(parent, name, count, color)
+	local pieces = {}
+	for index = 1, count do
+		pieces[index] = part(parent, name, Vector3.one, CFrame.identity, color, Enum.Material.Neon)
+		pieces[index].Transparency = 1
+	end
+	return pieces
+end
+
+local function ring(pieces, center, radius, color, transparency, rotation, thickness)
+	for index, piece in ipairs(pieces) do
+		local angle = index / #pieces * math.pi * 2 + (rotation or 0)
+		piece.Size = Vector3.new(math.max(0.1, 2 * radius * math.sin(math.pi / #pieces) * 0.78), thickness or 0.35, 0.18)
+		piece.CFrame = CFrame.new(center + Vector3.new(math.cos(angle) * radius, math.sin(angle) * radius, 0))
+			* CFrame.Angles(0, 0, angle + math.pi / 2)
+		piece.Color, piece.Transparency = color, transparency
+	end
+end
+
+local function makeWake(parent)
+	local disc = part(parent, "FizzyFuelHazard", Vector3.one, CFrame.identity, COLORS.fire, Enum.Material.Neon, Enum.PartType.Cylinder)
+	disc.Transparency = 1
+	return { disc = disc, edge = makeRing(parent, "WakeBoundary", 8, COLORS.fire) }
+end
+
+local function hideWake(wake)
+	wake.disc.Transparency = 1
+	hide(wake.edge)
+end
+
+local function poseForVelocity(position, vx, vy, facing, bank)
+	-- Plane geometry points along local +X. Yaw when facing left preserves the
+	-- cockpit above the wings instead of flipping the aircraft upside down.
+	-- Yaw(pi) * Rz(pitch) maps the nose to (-cos(pitch), sin(pitch), 0),
+	-- so positive vertical velocity correctly pitches UP on either heading.
+	local pitch = math.clamp(math.atan2(vy, math.max(0.1, math.abs(vx))), -1.5, 1.5)
+	return CFrame.new(position) * CFrame.Angles(0, facing &lt; 0 and math.pi or 0, 0)
+		* CFrame.Angles(0, 0, pitch) * CFrame.Angles(bank or 0.22, 0, 0)
+end
+
+local function chargeProgress(fighter, state, sampleAge)
+	local duration = math.max(0.01, numeric(state.windupDuration, fighter.observedWindupDuration or 1))
+	return math.clamp(1 - (numeric(state.phaseLeft, duration) - sampleAge) / duration, 0, 1)
+end
+
+local function solidBottom(geometry, rotation)
+	local bottom = math.huge
+	for _, solid in ipairs(geometry) do
+		local pose = rotation * solid.pose
+		local half = solid.half
+		local extent = math.abs(pose.RightVector.Y) * half.X
+			+ math.abs(pose.UpVector.Y) * half.Y + math.abs(pose.LookVector.Y) * half.Z
+		bottom = math.min(bottom, pose.Position.Y - extent)
+	end
+	return bottom &lt; math.huge and bottom or -3
+end
+
+local function makeArena(parent)
+	local scenery = Instance.new("Folder")
+	scenery.Name = "Stadium"
+	scenery.Parent = parent
+	-- Fill the entire view, including space underneath the screen-space HUD.
+	-- The smaller field plate remains distinct; sky must not reduce caption
+	-- contrast when the camera makes room for setup controls or a narrow screen.
+	part(scenery, "Background", Vector3.new(2048, 2048, 3), arenaPose(0, CENTER_Y, -32), COLORS.dark)
+	part(scenery, "Backdrop", Vector3.new(180, 126, 3), arenaPose(0, CENTER_Y, -14), COLORS.dark)
+	part(scenery, "PlayingField", Vector3.new(148, 92, 1), arenaPose(0, CENTER_Y, -11), COLORS.navy)
+	-- An inset toy stadium, rather than a flat rectangle: quiet raised borders,
+	-- recessed light bars, and a faint center medallion stay behind the flight.
+	for _, side in ipairs({ -1, 1 }) do
+		part(scenery, "OuterFrame", Vector3.new(4, 105, 6), arenaPose(side * 79, CENTER_Y, -8), Color3.fromRGB(28, 47, 65), Enum.Material.Metal)
+		part(scenery, "InsetRail", Vector3.new(0.5, 91, 0.4), arenaPose(side * 76.8, CENTER_Y, -3.5), COLORS.grid, Enum.Material.Neon)
+		for _, y in ipairs({ MIN_Y - 4, MAX_Y + 4 }) do
+			part(scenery, "CornerBrace", Vector3.new(11, 2.4, 3), arenaPose(side * 74, y, -6), COLORS.steel)
+			local lamp = part(scenery, "StadiumLamp", Vector3.new(6.5, 0.65, 0.7), arenaPose(side * 74, y, -3.8),
+				side &lt; 0 and COLORS.coral or COLORS.cyan, Enum.Material.Neon)
+			local light = Instance.new("PointLight")
+			light.Color, light.Brightness, light.Range = lamp.Color, 0.45, 38
+			light.Shadows = false
+			light.Parent = lamp
+		end
+	end
+	local medallion = makeRing(scenery, "CenterMedallion", 24, COLORS.grid)
+	ring(medallion, ORIGIN + Vector3.new(0, CENTER_Y, -10.2), 13, COLORS.grid, 0.5, 0, 0.18)
+	-- A quiet drafting-board grid makes movement and a shared collision plane
+	-- legible. All grid parts are behind the action; none can collide.
+	for x = -60, 60, 20 do
+		part(scenery, "GridVertical", Vector3.new(0.13, 88, 0.1), arenaPose(x, CENTER_Y, -10.3), COLORS.grid)
+	end
+	for y = 12, 92, 20 do
+		part(scenery, "GridHorizontal", Vector3.new(144, 0.13, 0.1), arenaPose(0, y, -10.3), COLORS.grid)
+	end
+	part(scenery, "Floor", Vector3.new(162, 5, 26), arenaPose(0, MIN_Y - 5, -4), COLORS.steel)
+	local floorLip = part(scenery, "FloorLip", Vector3.new(160, 0.7, 1.2), arenaPose(0, MIN_Y - 2.1, 9), COLORS.cream)
+	for index = -3, 3 do
+		part(scenery, "FloorInset", Vector3.new(13, 0.2, 1), arenaPose(index * 21, MIN_Y - 2.25, 4),
+			index &lt; 0 and COLORS.coral or (index &gt; 0 and COLORS.cyan or COLORS.yellow), Enum.Material.Neon)
+	end
+	local edges = {}
+	for index, x in ipairs({ MIN_X, MAX_X }) do
+		part(scenery, "Pylon" .. index, Vector3.new(2.2, 100, 5), arenaPose(x + (index == 1 and -3 or 3), CENTER_Y, -4), COLORS.steel)
+		edges[index] = part(scenery, "SideBoundary" .. index, Vector3.new(0.6, 88, 0.5), arenaPose(x, CENTER_Y, -2), PLAYER_COLORS[index], Enum.Material.Neon)
+		edges[index].Transparency = 0.35
+		for y = MIN_Y, MAX_Y, 22 do
+			part(scenery, "BoundaryTick", Vector3.new(2.2, 0.4, 0.5), arenaPose(x + (index == 1 and -1.8 or 1.8), y, -2), COLORS.cream)
+		end
+	end
+	edges[3] = part(scenery, "CeilingBoundary", Vector3.new(144, 0.5, 0.5), arenaPose(0, MAX_Y, -2), COLORS.steel, Enum.Material.Neon)
+	edges[4] = part(scenery, "FloorBoundary", Vector3.new(144, 0.5, 0.5), arenaPose(0, MIN_Y, -2), COLORS.steel, Enum.Material.Neon)
+	local wind = {}
+	for index = 1, 4 do
+		wind[index] = part(scenery, "WindPressure" .. index, Vector3.one, arenaPose(0, CENTER_Y, -5), COLORS.yellow, Enum.Material.Neon)
+		wind[index].Transparency = 1
+	end
+	return edges, wind, floorLip
+end
+
+local function makeRocket(parent)
+	local model = Instance.new("Model")
+	model.Name = "BattleRocket"
+	model.Parent = parent
+	local body = part(model, "Body", Vector3.new(5, 1.65, 1.65), CFrame.identity, COLORS.cream, nil, Enum.PartType.Cylinder)
+	model.PrimaryPart = body
+	local nose = part(model, "Warhead", Vector3.new(2, 2, 2), CFrame.new(2.4, 0, 0), COLORS.coral, nil, Enum.PartType.Ball)
+	local fin = part(model, "Fins", Vector3.new(1.6, 3.2, 0.3), CFrame.new(-1.65, 0, 0), COLORS.coral)
+	local crossFin = part(model, "CrossFins", Vector3.new(1.6, 0.3, 3.2), CFrame.new(-1.65, 0, 0), COLORS.coral)
+	local exhaust = ellipsoid(model, "Exhaust", Vector3.new(3.5, 1.1, 1.1), CFrame.new(-4, 0, 0), COLORS.fire, Enum.Material.Neon)
+	local core = ellipsoid(model, "ExhaustCore", Vector3.new(2.6, 0.55, 0.55), CFrame.new(-3.5, 0, 0), COLORS.cream, Enum.Material.Neon)
+	local stripes = {}
+	local pieces = { body, nose, fin, crossFin, exhaust, core }
+	for _, x in ipairs({ -0.8, 0.65 }) do
+		local stripe = part(model, "CandyStripe", Vector3.new(0.45, 1.72, 1.72), CFrame.new(x, 0, 0), COLORS.coral, nil, Enum.PartType.Cylinder)
+		table.insert(stripes, stripe)
+		table.insert(pieces, stripe)
+	end
+	local sparks = {}
+	for index = 1, 3 do
+		sparks[index] = part(model, "RocketSpark", Vector3.one * 0.35, CFrame.identity, COLORS.yellow, Enum.Material.Neon)
+		table.insert(pieces, sparks[index])
+	end
+	local a = Instance.new("Attachment")
+	a.Position = Vector3.new(-2.5, -0.6, 0)
+	a.Parent = body
+	local b = Instance.new("Attachment")
+	b.Position = Vector3.new(-2.5, 0.6, 0)
+	b.Parent = body
+	local trail = Instance.new("Trail")
+	trail.Attachment0, trail.Attachment1 = a, b
+	trail.Color = ColorSequence.new(COLORS.yellow, COLORS.cream)
+	trail.Transparency = NumberSequence.new(0.28, 1)
+	trail.Lifetime = 0.26
+	trail.LightEmission = 0.8
+	trail.MinLength = 0.15
+	trail.Parent = body
+	return { model = model, nose = nose, fin = fin, crossFin = crossFin, trail = trail, pieces = pieces,
+		stripes = stripes, sparks = sparks, exhaust = exhaust, core = core }
+end
+
+function BattleView.new(World, onPresentationCue)
+	local self = setmetatable({
+		World = World, fighters = {}, rockets = {}, rocketPool = {}, effects = {}, wakes = {}, wakePool = {},
+		effectCursor = 0, roundId = nil, lastEvent = 0, clock = 0,
+		sampleElapsed = nil, sampleAge = 0, destroyed = false,
+		onPresentationCue = type(onPresentationCue) == "function" and onPresentationCue or nil,
+	}, BattleView)
+	self.folder = Instance.new("Folder")
+	self.folder.Name = "SkyboundBattleView"
+	self.folder.Parent = Workspace
+	self.edges, self.wind, self.floorLip = makeArena(self.folder)
+	self.groundY = self.floorLip.Position.Y + self.floorLip.Size.Y / 2
+	self.folder:SetAttribute("GroundY", self.groundY)
+	self.dynamic = Instance.new("Folder")
+	self.dynamic.Name = "Combat"
+	self.dynamic.Parent = self.folder
+	return self
+end
+
+function BattleView:_resetRound(roundId)
+	self.roundId, self.lastEvent, self.sampleElapsed, self.sampleAge = roundId, 0, nil, 0
+	self.finishTime = nil
+	for _, fighter in pairs(self.fighters) do
+		fighter.position, fighter.pose, fighter.armor = nil, nil, nil
+		fighter.hitTime, fighter.blockTime, fighter.lastHitBurst = -100, -100, -100
+		fighter.shotTime = -100
+		fighter.finishRotation, fighter.finishPosition = nil, nil
+		fighter.crash, fighter.crashLanded, fighter.crashContactY = nil, false, nil
+		fighter.crashGroundY = nil
+		fighter.previousPhase, fighter.observedWindupDuration = nil, nil
+		fighter.model:SetAttribute("CrashState", nil)
+		fighter.model:SetAttribute("CrashContactY", nil)
+		fighter.scuff.Transparency = 1
+		hide(fighter.debris)
+		fighter.highlight.Enabled = false
+		hide(fighter.reticle)
+		hide(fighter.aimDots)
+		hide(fighter.statusRing)
+		hide(fighter.speedLines)
+		hide(fighter.cometFlames)
+		hide(fighter.signatureSparks)
+		hide(fighter.muzzleFlashes)
+		fighter.chargeShell.Transparency = 1
+		fighter.noseLight.Brightness = 0
+		fighter.trail.Enabled = false
+		fighter.trail:Clear()
+	end
+	for id, wake in pairs(self.wakes) do
+		hideWake(wake)
+		table.insert(self.wakePool, wake)
+		self.wakes[id] = nil
+	end
+	for id, rocket in pairs(self.rockets) do
+		rocket.trail.Enabled = false
+		rocket.trail:Clear()
+		for _, piece in ipairs(rocket.pieces) do piece.Transparency = 1 end
+		table.insert(self.rocketPool, rocket)
+		self.rockets[id] = nil
+	end
+	for _, effect in ipairs(self.effects) do
+		effect.active = false
+		hide(effect.pieces)
+		hide(effect.ring)
+		effect.flash.Transparency = 1
+	end
+end
+
+function BattleView:_fighter(id, index)
+	local fighter = self.fighters[id]
+	if fighter then return fighter end
+	local color = PLAYER_COLORS[index] or PLAYER_COLORS[1]
+	local model = self.World.createPlane(self.dynamic, "BattlePlane" .. tostring(id), index, "cruiser")
+	model:ScaleTo(SCALE)
+	local pivot = model.PrimaryPart
+	local trail = pivot:FindFirstChild("Contrail")
+	-- The shared racing trail spans the wing axis, which is edge-on here. Give
+	-- it vertical separation for a readable ribbon in the fixed side camera.
+	trail.Attachment0.Position = Vector3.new(-4.1, -0.4, 0) * SCALE
+	trail.Attachment1.Position = Vector3.new(-4.1, 0.4, 0) * SCALE
+	trail.Color = ColorSequence.new(color, COLORS.cream)
+	trail.Transparency = NumberSequence.new(0.42, 1)
+	trail.Lifetime = 0.32
+	trail.WidthScale = NumberSequence.new(1, 0)
+	local noseGlow = part(model, "ArmedNose", Vector3.one * 2.7, CFrame.new(5.6 * SCALE, 0, 0), color, Enum.Material.Neon, Enum.PartType.Ball)
+	noseGlow.Transparency = 1
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "AttackTell"
+	gui.Adornee = pivot
+	gui.Size = UDim2.fromOffset(136, 26)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, 9, 0)
+	gui.AlwaysOnTop = true
+	gui.LightInfluence = 0
+	gui.MaxDistance = 10000
+	gui.Enabled = false
+	gui.Parent = pivot
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundColor3 = COLORS.dark
+	label.BackgroundTransparency = 0.12
+	label.BorderSizePixel = 0
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 13
+	label.TextColor3 = color
+	label.TextTransparency = 0
+	label.TextStrokeColor3 = COLORS.dark
+	label.TextStrokeTransparency = 0.15
+	label.Parent = gui
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent = label
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "CombatFeedback"
+	highlight.Adornee = model
+	highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+	highlight.Enabled = false
+	highlight.Parent = model
+	-- Keep the FX outside the aircraft model so the full-model hit highlight
+	-- cannot accidentally outline distant aim markers or a victory halo.
+	local fx = Instance.new("Folder")
+	fx.Name = "FighterEffects" .. tostring(id)
+	fx.Parent = self.dynamic
+	local chargeShell = ellipsoid(fx, "MeteorChargeShell", Vector3.one, CFrame.identity, COLORS.fire, Enum.Material.Neon)
+	chargeShell.Transparency = 1
+	local cometFlames = {}
+	for index = 1, 3 do
+		cometFlames[index] = ellipsoid(fx, "CometFlame" .. index, Vector3.one, CFrame.identity,
+			index == 1 and COLORS.fire or (index == 2 and COLORS.yellow or COLORS.cream), Enum.Material.Neon)
+		cometFlames[index].Transparency = 1
+	end
+	local muzzleFlashes = {}
+	for index = 1, 2 do
+		muzzleFlashes[index] = ellipsoid(fx, "LauncherFlash" .. index, Vector3.one, CFrame.identity, COLORS.yellow, Enum.Material.Neon)
+		muzzleFlashes[index].Transparency = 1
+	end
+	local lampAnchor = part(fx, "PowerLamp", Vector3.one, CFrame.identity, color)
+	lampAnchor.Transparency = 1
+	local noseLight = Instance.new("PointLight")
+	noseLight.Color, noseLight.Range, noseLight.Brightness = COLORS.fire, 16, 0
+	noseLight.Shadows = false
+	noseLight.Parent = lampAnchor
+	local scuff = ellipsoid(fx, "CrashScuff", Vector3.new(12, 0.6, 0.25), CFrame.identity, COLORS.dark)
+	scuff.Transparency = 1
+	local debris = makeRing(fx, "CrashDebris", 5, color)
+	for index, fragment in ipairs(debris) do
+		fragment.Material = Enum.Material.SmoothPlastic
+		fragment.Color = index % 2 == 0 and COLORS.steel or color
+	end
+	fighter = {
+		model = model, color = color, body = model:FindFirstChild("Fuselage"),
+		propeller = model:FindFirstChild("Propeller"), trail = trail,
+		flare = model:FindFirstChild("FlightFlare"), noseGlow = noseGlow,
+		smoke = { model:FindFirstChild("HitSmoke1"), model:FindFirstChild("HitSmoke2"), model:FindFirstChild("HitSmoke3") },
+		gui = gui, label = label, hitTime = -100, blockTime = -100, lastHitBurst = -100,
+		facing = index == 1 and 1 or -1, highlight = highlight, fx = fx,
+		reticle = makeRing(fx, "AttackLock", 8, color),
+		aimDots = makeRing(fx, "AimDash", 3, color),
+		statusRing = makeRing(fx, "BumperOrVictory", 12, COLORS.yellow),
+		speedLines = makeRing(fx, "AfterburnerStreak", 2, COLORS.boost),
+		chargeShell = chargeShell, cometFlames = cometFlames, muzzleFlashes = muzzleFlashes,
+		signatureSparks = makeRing(fx, "SignatureSpark", 8, COLORS.yellow),
+		lampAnchor = lampAnchor, noseLight = noseLight, shotTime = -100,
+		scuff = scuff, debris = debris, crashLanded = false,
+	}
+	-- Smoke is positioned in world space and must never enlarge aircraft
+	-- bounds or the damage highlight while a disabled plane falls.
+	for _, puff in ipairs(fighter.smoke) do puff.Parent = fx end
+	self.fighters[id] = fighter
+	return fighter
+end
+
+function BattleView:_crashPose(fighter, state, target)
+	local crash = fighter.crash
+	if not crash then
+		fighter.finishPosition, fighter.finishRotation = target, fighter.pose.Rotation
+		fighter.stoppedPropeller = math.pi / 4
+		-- Freeze the propeller before sampling the solid geometry. Visual
+		-- flames, hidden race wings, and smoke never determine floor contact.
+		local modelPose = fighter.model:GetPivot()
+		fighter.propeller:PivotTo(modelPose * CFrame.new(5.1 * SCALE, 0, 0) * CFrame.Angles(fighter.stoppedPropeller, 0, 0))
+		local geometry = {}
+		for _, object in ipairs(fighter.model:GetDescendants()) do
+			if object:IsA("BasePart") and object.Transparency &lt; 0.95
+				and object.Name ~= "FlightFlare" and object.Name ~= "ArmedNose" then
+				table.insert(geometry, { pose = modelPose:ToObjectSpace(object.CFrame), half = object.Size / 2 })
+			end
+		end
+		local clearance = math.max(0, target.Y + solidBottom(geometry, fighter.finishRotation) - self.groundY)
+		local roomToFall = math.clamp(clearance / 16, 0, 1)
+		local drift = (math.clamp(numeric(state.vx, 0) * 0.1, -6, 6) + (state.id == 1 and -3 or 3)) * roomToFall
+		crash = {
+			startedAt = self.clock,
+			duration = clearance &lt;= 0.01 and 0 or ((0.32 + roomToFall * 0.63) + math.clamp((clearance - 16) / 54, 0, 1) * 0.4),
+			geometry = geometry, clearance = clearance, smoke = {},
+			landX = math.clamp(target.X + drift, ORIGIN.X + MIN_X + 13, ORIGIN.X + MAX_X - 13),
+			restRotation = CFrame.Angles(0, fighter.facing &lt; 0 and math.pi or 0, 0) * CFrame.Angles(0.06, 0, -0.04),
+		}
+		fighter.crash, fighter.crashLanded, fighter.crashGroundY = crash, false, self.groundY
+		fighter.model:SetAttribute("CrashState", "Falling")
+	end
+	local progress = crash.duration == 0 and 1 or math.clamp((self.clock - crash.startedAt) / crash.duration, 0, 1)
+	local settle = math.clamp((progress - 0.64) / 0.36, 0, 1)
+	settle = settle * settle * (3 - 2 * settle)
+	local rotation
+	if crash.clearance &lt; 16 then
+		-- There is no room for a somersault immediately above the floor.
+		-- A brief belly-down settle reaches first contact with the thud.
+		rotation = fighter.finishRotation:Lerp(crash.restRotation, progress * progress * (3 - 2 * progress))
+	else
+		local spin = math.clamp((progress - 0.18) / 0.68, 0, 1)
+		rotation = (fighter.finishRotation * CFrame.Angles(0, 0, -math.pi * 2 * spin)):Lerp(crash.restRotation, settle)
+	end
+	local lower = solidBottom(crash.geometry, rotation)
+	-- Descend the lowest solid point, not the pivot. Clamping a tumbling
+	-- pivot to the floor can cause early contact followed by a ground spin.
+	local clearance = crash.clearance * (1 - progress * progress)
+	local position = Vector3.new(fighter.finishPosition.X + (crash.landX - fighter.finishPosition.X) * (1 - (1 - progress) ^ 2),
+		self.groundY - lower + clearance, ORIGIN.Z)
+	fighter.position = position
+	fighter.crashContactY = position.Y + lower
+	fighter.model:SetAttribute("CrashContactY", fighter.crashContactY)
+	if progress &gt;= 1 then
+		if not fighter.crashLanded then
+			fighter.crashLanded, crash.landedAt = true, self.clock
+			fighter.model:SetAttribute("CrashState", "Landed")
+			self:_burst(position.X - ORIGIN.X, self.groundY - ORIGIN.Y + 0.12, COLORS.yellow, true, "crash")
+			fighter.scuff.CFrame = CFrame.new(position.X, self.groundY + 0.05, ORIGIN.Z + 9.8)
+			fighter.scuff.Transparency = 0.2
+			if self.onPresentationCue then
+				local ok, err = pcall(self.onPresentationCue, { kind = "crash", roundId = self.roundId, actor = state.id })
+				if not ok then warn("BattleView presentation cue failed: " .. tostring(err)) end
+			end
+		end
+		local scatter = math.clamp((self.clock - crash.landedAt) / 0.45, 0, 1)
+		for index, fragment in ipairs(fighter.debris) do
+			local side = index % 2 == 0 and -1 or 1
+			local angle = index * 0.7 + scatter * side * 2
+			fragment.Size = Vector3.new(0.7 + index * 0.13, 0.4, 0.5)
+			local extent = math.abs(math.sin(angle)) * fragment.Size.X / 2 + math.abs(math.cos(angle)) * fragment.Size.Y / 2
+			fragment.CFrame = CFrame.new(position.X + side * (2 + index * 1.6) * scatter,
+				self.groundY + extent + math.sin(scatter * math.pi) * (1.5 + index * 0.3), ORIGIN.Z + 9.8)
+				* CFrame.Angles(0, 0, angle)
+			fragment.Transparency = 0
+		end
+	end
+	return CFrame.new(position) * rotation
+end
+
+function BattleView:_setSignature(fighter, powerId)
+	if fighter.powerId == powerId then return end
+	if fighter.signature then fighter.signature:Destroy() end
+	fighter.powerId = powerId
+	fighter.signature = Instance.new("Folder")
+	fighter.signature.Name = "Signature"
+	fighter.signature.Parent = fighter.model
+	local pose = fighter.model:GetPivot()
+	fighter.chargePieces, fighter.muzzleOffsets = {}, {}
+	for _, name in ipairs({ "MainWing", "LeftWingTip", "RightWingTip", "TailWing", "TailFin" }) do
+		local original = fighter.model:FindFirstChild(name)
+		if original then original.Transparency = 1 end
+	end
+	local function piece(name, size, offset, color, material, shape, rotation)
+		return part(fighter.signature, name, size * SCALE, pose * CFrame.new(offset * SCALE) * (rotation or CFrame.identity), color, material, shape)
+	end
+	if powerId == "Firework" then
+		fighter.body.Size = Vector3.new(9.7, 2.35, 2.6) * SCALE
+		piece("ForkedTail", Vector3.new(1.8, 0.25, 6.8), Vector3.new(-3.9, 0.2, 0), COLORS.cream)
+		for _, side in ipairs({ -1, 1 }) do
+			piece("SweptLaunchWing", Vector3.new(2.6, 0.32, 6.5), Vector3.new(-1.4, -0.45, side * 2.9), fighter.color,
+				nil, nil, CFrame.Angles(0, -side * 0.58, 0))
+			piece("TwinTailFin", Vector3.new(1.7, 1.7, 0.3), Vector3.new(-3.8, 1.05, side * 1.55), fighter.color,
+				nil, nil, CFrame.Angles(0, 0, -0.35))
+			piece("RocketPod", Vector3.new(4.1, 1.8, 1.8), Vector3.new(0.8, -0.65, side * 3.75), COLORS.cream, nil, Enum.PartType.Cylinder)
+			for _, stripeX in ipairs({ -0.45, 1.0 }) do
+				piece("LauncherStripe", Vector3.new(0.5, 1.85, 1.85), Vector3.new(stripeX, -0.65, side * 3.75), fighter.color, nil, Enum.PartType.Cylinder)
+			end
+			piece("LauncherRim", Vector3.new(0.38, 2.15, 2.15), Vector3.new(2.9, -0.65, side * 3.75), COLORS.steel, nil, Enum.PartType.Cylinder)
+			local mouth = piece("IgnitionChamber", Vector3.new(0.12, 1.6, 1.6), Vector3.new(3.11, -0.65, side * 3.75), COLORS.fire, Enum.Material.Neon, Enum.PartType.Cylinder)
+			table.insert(fighter.chargePieces, mouth)
+			table.insert(fighter.muzzleOffsets, Vector3.new(3.25, -0.65, side * 3.75) * SCALE)
+		end
+	else
+		fighter.body.Size = Vector3.new(8.9, 3.6, 3.8) * SCALE
+		piece("HeavyMainWing", Vector3.new(4.3, 0.65, 13.4), Vector3.new(-0.7, -0.15, 0), fighter.color)
+		piece("WingArmor", Vector3.new(2.4, 0.18, 10.6), Vector3.new(-0.8, 0.28, 0), COLORS.steel)
+		piece("HeavyTailWing", Vector3.new(2.2, 0.42, 6.0), Vector3.new(-3.5, 0.35, 0), COLORS.cream)
+		piece("HeavyTailFin", Vector3.new(2.5, 2.8, 0.55), Vector3.new(-3.3, 1.6, 0), fighter.color, nil, nil, CFrame.Angles(0, 0, -0.23))
+		piece("ImpactCollar", Vector3.new(1.15, 3.9, 3.9), Vector3.new(3.65, 0, 0), COLORS.yellow, nil, Enum.PartType.Cylinder)
+		piece("NoseArmorBand", Vector3.new(0.35, 4.05, 4.05), Vector3.new(3.25, 0, 0), COLORS.steel, nil, Enum.PartType.Cylinder)
+		for _, side in ipairs({ -1, 1 }) do
+			piece("ArmoredWingTip", Vector3.new(3.9, 0.85, 1.2), Vector3.new(-0.7, -0.05, side * 6.3), COLORS.cream)
+			local vent = piece("ChargeVent", Vector3.new(2.0, 0.22, 0.32), Vector3.new(0.3, 1.0, side * 1.65), COLORS.yellow, Enum.Material.Neon)
+			table.insert(fighter.chargePieces, vent)
+		end
+	end
+	-- Signature geometry is cosmetic. Collision and damage remain in the sim.
+	fighter.model:SetAttribute("PowerId", powerId)
+end
+
+function BattleView:_burst(x, y, color, strong, style, heading)
+	self.effectCursor = self.effectCursor % EFFECT_LIMIT + 1
+	local effect = self.effects[self.effectCursor]
+	if not effect then
+		effect = { pieces = {}, ring = makeRing(self.dynamic, "HitRing", 12, color) }
+		effect.flash = ellipsoid(self.dynamic, "ImpactFlash", Vector3.one, CFrame.identity, COLORS.cream, Enum.Material.Neon)
+		effect.flash.Transparency = 1
+		for index = 1, 10 do
+			effect.pieces[index] = part(self.dynamic, "ImpactRay", Vector3.one, CFrame.identity, color, Enum.Material.Neon)
+		end
+		self.effects[self.effectCursor] = effect
+	end
+	effect.active, effect.age, effect.x, effect.y, effect.strong = true, 0, x, y, strong
+	effect.color = color
+	effect.style, effect.heading = style, heading or 0
+	for _, piece in ipairs(effect.pieces) do piece.Color = color end
+	hide(effect.ring)
+	effect.flash.Transparency = 1
+end
+
+function BattleView:_hit(fighter, x, y, source, actorColor)
+	if fighter then
+		fighter.hitTime = self.clock
+		-- An armor delta and its event can arrive in the same snapshot. The
+		-- authoritative impact protection makes distinct hits farther apart.
+		if self.clock - fighter.lastHitBurst &lt; 0.12 then return end
+		fighter.lastHitBurst = self.clock
+	end
+	local color = source == "meteor" and COLORS.yellow or (source == "rocket" and actorColor and actorColor:Lerp(COLORS.cream, 0.55) or COLORS.cream)
+	self:_burst(x, y, color, true, source)
+end
+
+function BattleView:_events(simulation)
+	local newest = self.lastEvent
+	for _, event in ipairs(simulation.events or {}) do
+		local serial = numeric(event.serial, 0)
+		if serial &gt; self.lastEvent then
+			newest = math.max(newest, serial)
+			local kind = string.lower(tostring(event.kind or ""))
+			local target = self.fighters[event.target]
+			local actor = self.fighters[event.actor]
+			local x = numeric(event.x, target and target.position and target.position.X - ORIGIN.X or 0)
+			local y = numeric(event.y, target and target.position and target.position.Y - ORIGIN.Y or CENTER_Y)
+			local age = numeric(simulation.elapsed, 0) - numeric(event.at, numeric(simulation.elapsed, 0))
+			if age &lt;= 0.45 then
+				if kind == "hit" or kind == "wake_hit" or kind == "damage" or kind == "meteorhit" or kind == "rockethit" then
+					self:_hit(target, x, y, event.source, actor and actor.color)
+				elseif kind == "dive" and age &lt;= 0.18 then
+					-- A complete commitment can hit and recover between snapshots.
+					-- Record only a short streak at its real launch point; never keep
+					-- the plane looking armed after the simulation has recovered.
+					self:_burst(x, y, COLORS.yellow, false, "dive", numeric(event.heading, 0))
+				elseif kind == "rocket" then
+					if actor then actor.shotTime = self.clock - math.max(0, age) end
+				elseif kind == "miss" and actor and actor.powerId == "Firework" then
+					self:_burst(x, y, COLORS.steel, false, "fizzle")
+				elseif kind == "blocked" then
+					if actor then actor.blockTime = self.clock end
+					self:_burst(x, y, COLORS.yellow, false)
+				elseif kind == "bounce" or kind == "wall" or kind == "bump" then
+					self:_burst(x, y, COLORS.steel, false)
+				end
+			end
+		end
+	end
+	self.lastEvent = newest
+end
+
+function BattleView:_signatureEffects(fighter, state, simulation, moving, pose)
+	local meteor = fighter.powerId == "Meteor"
+	local windup = moving and state.phase == "Windup"
+	local armed = moving and state.armed == true
+	local charge = windup and chargeProgress(fighter, state, self.sampleAge) or 0
+	local shotAge = self.clock - fighter.shotTime
+	local shooting = moving and not meteor and shotAge &lt; 0.2
+	local winner = simulation.finished == true and simulation.winner == state.id
+	local finishAge = self.finishTime and self.clock - self.finishTime or 100
+	local pulse = 1 + math.sin(self.clock * 34) * 0.08
+	fighter.lampAnchor.CFrame = pose * CFrame.new(6, 0, 0)
+	fighter.noseLight.Color = meteor and COLORS.fire or fighter.color
+	fighter.noseLight.Brightness = armed and 0.85 or (shooting and 1 or charge * 0.5)
+	for index, piece in ipairs(fighter.chargePieces or {}) do
+		piece.Color = windup and COLORS.yellow or (armed and COLORS.cream or (meteor and COLORS.yellow or COLORS.fire))
+		piece.Transparency = (windup or armed or shooting) and (0.05 + (1 - charge) * 0.15) or 0.62
+		if not meteor and windup then piece.Transparency = 0.15 + (math.sin(self.clock * 24 + index * math.pi) + 1) * 0.2 end
+	end
+	if meteor and (windup or armed) then
+		local shellCharge = armed and 1 or charge
+		fighter.chargeShell.Size = Vector3.new(9 + shellCharge * 4, 3.8 + shellCharge * 3, 3.6 + shellCharge * 2.6) * SCALE
+		fighter.chargeShell.CFrame = pose * CFrame.new(0.8, 0, 0)
+		fighter.chargeShell.Color = armed and COLORS.yellow or COLORS.fire
+		fighter.chargeShell.Transparency = armed and 0.87 or (0.96 - charge * 0.22)
+	else
+		fighter.chargeShell.Transparency = 1
+	end
+	for index, flame in ipairs(fighter.cometFlames) do
+		if meteor and armed then
+			local length = (21 - index * 4) * pulse
+			local width = 5.8 - index * 1.4
+			flame.Size = Vector3.new(length, width, width * 0.8)
+			flame.CFrame = pose * CFrame.new(-7.4 - length * 0.3, 0, index * 0.2)
+			flame.Transparency = 0.42 - index * 0.1
+		else flame.Transparency = 1 end
+	end
+	for index, flash in ipairs(fighter.muzzleFlashes) do
+		if shooting and fighter.muzzleOffsets[index] then
+			local strength = 1 - shotAge / 0.2
+			flash.Size = Vector3.new(2 + strength * 4.5, 1 + strength * 1.8, 1.2)
+			flash.CFrame = pose * CFrame.new(fighter.muzzleOffsets[index] + Vector3.new(1.5, 0, 0))
+			flash.Transparency = 0.12 + (1 - strength) * 0.7
+		else flash.Transparency = 1 end
+	end
+	for index, spark in ipairs(fighter.signatureSparks) do
+		if winner and finishAge &lt; 1.1 then
+			local progress = math.clamp(finishAge / 1.1, 0, 1)
+			local angle = index / #fighter.signatureSparks * math.pi * 2
+			local offset = Vector3.new(math.cos(angle) * (6 + progress * 8), 4 + math.sin(angle) * (3 + progress * 7) - progress * progress * 6, 8)
+			spark.Size = Vector3.new(0.75, 1.7, 0.25)
+			spark.CFrame = CFrame.new(fighter.position + offset) * CFrame.Angles(0, 0, angle + progress * 5)
+			spark.Color = index % 2 == 0 and COLORS.yellow or fighter.color
+			spark.Transparency = progress * progress
+		elseif meteor and (windup or armed) then
+			local angle = index / #fighter.signatureSparks * math.pi * 2 + self.clock * 2
+			local radius = windup and (3.5 + charge * 2.2) or 3.8
+			local offset = Vector3.new(4.7 + math.cos(angle) * radius * 0.35, math.sin(angle) * radius, math.cos(angle) * radius)
+			spark.Size = Vector3.new(armed and 2.2 or (0.6 + charge * 0.6), 0.3, 0.3)
+			spark.CFrame = pose * CFrame.new(offset) * CFrame.Angles(0, 0, windup and angle or 0)
+			spark.Color, spark.Transparency = index % 2 == 0 and COLORS.cream or COLORS.yellow, windup and 0.35 or 0.14
+		else spark.Transparency = 1 end
+	end
+end
+
+function BattleView:_fighterEffects(fighter, state, simulation, moving, displayPose)
+	local windup = moving and state.phase == "Windup"
+	local boosted = moving and numeric(state.boostLeft, 0) &gt; self.sampleAge
+	local hitAge, blockAge = self.clock - fighter.hitTime, self.clock - fighter.blockTime
+	local winner = simulation.finished == true and simulation.winner == state.id
+	local knockedOut = simulation.finished == true and numeric(state.armor, 3) &lt;= 0
+	local flashing = hitAge &lt; 0.18
+	fighter.highlight.Enabled = flashing or winner
+	fighter.highlight.FillColor = flashing and COLORS.cream or COLORS.yellow
+	fighter.highlight.OutlineColor = flashing and COLORS.cream or COLORS.yellow
+	fighter.highlight.FillTransparency = flashing and (0.24 + math.min(1, hitAge / 0.18) * 0.65) or 0.88
+	fighter.highlight.OutlineTransparency = flashing and 0 or (0.2 + math.sin(self.clock * 3) * 0.08)
+	local center = fighter.position + Vector3.new(0, 0, 9)
+	if winner then
+		ring(fighter.statusRing, center, 10.5 + math.sin(self.clock * 3) * 0.3, COLORS.yellow, 0.2, self.clock * 0.2, 0.5)
+	elseif not knockedOut and fighter.modifierId == "SpringBumper" then
+		local ready = state.bumperReady == true
+		local popping = blockAge &lt; 0.38
+		local radius = popping and (8 + blockAge / 0.38 * 3) or 8
+		ring(fighter.statusRing, center, radius, (ready or popping) and COLORS.yellow or COLORS.steel,
+			popping and (0.15 + blockAge / 0.38 * 0.6) or (ready and 0.3 or 0.76), 0, ready and 0.5 or 0.22)
+	else
+		hide(fighter.statusRing)
+	end
+	if windup and type(state.lockX) == "number" and type(state.lockY) == "number" then
+		local target = ORIGIN + Vector3.new(state.lockX, state.lockY, 7)
+		local remaining = 1 - chargeProgress(fighter, state, self.sampleAge)
+		ring(fighter.reticle, target, 2.7 + remaining * 2.5, fighter.color, 0.18, math.pi / 8, 0.38)
+		local from = fighter.position + Vector3.new(0, 0, 7)
+		local direction = target - from
+		local angle = math.atan2(direction.Y, direction.X)
+		for index, dash in ipairs(fighter.aimDots) do
+			dash.Size = Vector3.new(2.4, 0.25, 0.18)
+			dash.CFrame = CFrame.new(from:Lerp(target, 0.35 + index * 0.12)) * CFrame.Angles(0, 0, angle)
+			dash.Color, dash.Transparency = fighter.color, 0.56
+		end
+	else
+		hide(fighter.reticle)
+		hide(fighter.aimDots)
+	end
+	for index, streak in ipairs(fighter.speedLines) do
+		if boosted then
+			local side = index == 1 and -1 or 1
+			local length = 6 + math.sin(self.clock * 28 + index) * 2
+			streak.Size = Vector3.new(length, 0.36, 0.25)
+			streak.CFrame = displayPose * CFrame.new(-10 - length * 0.2, side * 3.1, 3)
+			streak.Color, streak.Transparency = COLORS.boost, 0.18
+		else
+			streak.Transparency = 1
+		end
+	end
+	local tell
+	if winner then tell = "WINNER"
+	elseif knockedOut then tell = "KNOCKED OUT"
+	elseif hitAge &lt; 0.28 then tell = "HIT!"
+	elseif blockAge &lt; 0.45 then tell = "BOING!"
+	elseif windup then tell = fighter.powerId == "Meteor" and "CHARGING" or "TAKING AIM"
+	elseif moving and state.phase == "Attack" then tell = fighter.powerId == "Meteor" and "DIVE!" or "FIRE!"
+	elseif boosted then tell = "BOOST!" end
+	fighter.gui.Enabled = tell ~= nil
+	fighter.label.Text = tell or ""
+	fighter.label.TextColor3 = winner and COLORS.yellow or (hitAge &lt; 0.28 and COLORS.cream or fighter.color)
+	self:_signatureEffects(fighter, state, simulation, moving, displayPose)
+end
+
+function BattleView:_wakes(simulation, moving)
+	local active, states = {}, {}
+	if moving then
+		for index, state in ipairs(simulation.wakes or {}) do
+			if index &gt; WAKE_LIMIT then break end
+			local id = state.id or index
+			active[id] = true
+			table.insert(states, { id = id, state = state })
+		end
+	end
+	for id, wake in pairs(self.wakes) do
+		if not active[id] then
+			hideWake(wake)
+			table.insert(self.wakePool, wake)
+			self.wakes[id] = nil
+		end
+	end
+	for _, entry in ipairs(states) do
+		local state = entry.state
+		local wake = self.wakes[entry.id]
+		if not wake then
+			wake = table.remove(self.wakePool) or makeWake(self.dynamic)
+			self.wakes[entry.id] = wake
+		end
+		local radius = math.max(0.1, numeric(state.radius, 5))
+		local life = math.max(0, numeric(state.life, 0) - self.sampleAge)
+		local fraction = math.clamp(life / math.max(0.01, numeric(state.maxLife, 3.2)), 0, 1)
+		local arming = numeric(state.armLeft, 0) &gt; self.sampleAge
+		local center = ORIGIN + Vector3.new(numeric(state.x, 0), numeric(state.y, CENTER_Y), 4)
+		local owner = self.fighters[state.owner]
+		local edgeColor = owner and owner.color or COLORS.fire
+		-- Keep the authoritative collision footprint fixed as it fades. These
+		-- bright discs are hazardous, unlike the thin cosmetic contrails.
+		wake.disc.Size = Vector3.new(0.16, radius * 2, radius * 2)
+		wake.disc.CFrame = CFrame.new(center) * CFrame.Angles(0, math.pi / 2, 0)
+		wake.disc.Color = arming and COLORS.yellow or COLORS.fire
+		wake.disc.Transparency = life &lt;= 0 and 1 or (arming and 0.8 or (0.5 + (1 - fraction) * 0.25))
+		ring(wake.edge, center + Vector3.new(0, 0, 0.2), radius, edgeColor,
+			life &lt;= 0 and 1 or (arming and 0.5 or (0.12 + (1 - fraction) * 0.35)), self.clock * 0.5, 0.36)
+	end
+end
+
+function BattleView:_camera(rect)
+	local camera = Workspace.CurrentCamera
+	if not camera then return end
+	local viewport = camera.ViewportSize
+	local width, height = math.max(1, viewport.X), math.max(1, viewport.Y)
+	local left = math.clamp(numeric(rect and rect.left, 16), 0, width - 1)
+	local top = math.clamp(numeric(rect and rect.top, 90), 0, height - 1)
+	local right = math.clamp(numeric(rect and rect.right, width - 16), left + 1, width)
+	local bottom = math.clamp(numeric(rect and rect.bottom, height - 80), top + 1, height)
+	local regionWidth, regionHeight = math.max(1, right - left), math.max(1, bottom - top)
+	local aspect = width / height
+	-- Include the aircraft at their extreme positions, not just the playfield.
+	local fullHeight = math.max(172 / (regionWidth / width) / aspect, 112 / (regionHeight / height))
+	local fullWidth = fullHeight * aspect
+	local centerX = ORIGIN.X - ((left + right) / (2 * width) - 0.5) * fullWidth
+	local centerY = ORIGIN.Y + CENTER_Y + ((top + bottom) / (2 * height) - 0.5) * fullHeight
+	-- Keep geometry close enough for Studio's lowest detail setting. A narrow
+	-- lens with a far-away camera can cull the entire arena on small screens.
+	local fieldOfView = math.clamp(math.deg(2 * math.atan(fullHeight / 360)), 25, 120)
+	local distance = fullHeight / (2 * math.tan(math.rad(fieldOfView) / 2))
+	local focus = Vector3.new(centerX, centerY, ORIGIN.Z)
+	camera.CameraType = Enum.CameraType.Scriptable
+	camera.FieldOfView = fieldOfView
+	camera.CFrame = CFrame.lookAt(focus + Vector3.new(0, 0, distance), focus)
+	camera.Focus = CFrame.new(focus)
+	self.folder:SetAttribute("VisibleHeight", fullHeight)
+end
+
+function BattleView:update(snapshot, dt, viewportRect)
+	if self.destroyed or not snapshot then return end
+	dt = math.clamp(numeric(dt, 1 / 60), 0, 0.1)
+	self.clock = self.clock + dt
+	if snapshot.roundId ~= self.roundId then self:_resetRound(snapshot.roundId) end
+	local simulation = snapshot.simulation or {}
+	local elapsed = numeric(simulation.elapsed, 0)
+	if elapsed ~= self.sampleElapsed then
+		self.sampleElapsed, self.sampleAge = elapsed, 0
+	else
+		self.sampleAge = self.sampleAge + dt
+	end
+	local moving = snapshot.phase == "Fight" and simulation.finished ~= true
+	if simulation.finished == true then self.finishTime = self.finishTime or self.clock
+	else self.finishTime = nil end
+	local extrapolate = moving and math.min(self.sampleAge, 0.055) or 0
+	local smoothing = 1 - math.exp(-24 * dt)
+	local states = simulation.fighters
+	if not states or #states == 0 then
+		states = {}
+		for index = 1, 2 do
+			local settings = snapshot.settings and snapshot.settings[index] or {}
+			local direction = index == 1 and 1 or -1
+			local angle = math.rad(numeric(settings.angle, 25))
+			states[index] = { id = index, powerId = settings.powerId or (index == 1 and "Meteor" or "Firework"),
+				modifierId = settings.modifierId or "None", bumperReady = settings.modifierId == "SpringBumper",
+				x = -direction * 44, y = 34, vx = math.cos(angle) * direction, vy = math.sin(angle), armor = 3 }
+		end
+	end
+	local bounds = simulation.bounds or { left = MIN_X, right = MAX_X, bottom = MIN_Y, top = MAX_Y }
+	-- Ensure both event targets exist, then accept hits before drawing this
+	-- frame. All stronger flashes below correspond to damage, never a bump.
+	for index, state in ipairs(states) do
+		if index &gt; 2 then break end
+		self:_fighter(state.id or index, index)
+	end
+	self:_events(simulation)
+	local seenFighters = {}
+	for index, state in ipairs(states) do
+		if index &gt; 2 then break end
+		local id = state.id or index
+		seenFighters[id] = true
+		local fighter = self:_fighter(id, index)
+		local settings = snapshot.settings and snapshot.settings[index]
+		self:_setSignature(fighter, state.powerId or (settings and settings.powerId) or "Meteor")
+		fighter.modifierId = state.modifierId or (settings and settings.modifierId) or "None"
+		if state.phase == "Windup" and fighter.previousPhase ~= "Windup" then
+			fighter.observedWindupDuration = math.max(0.01, numeric(state.phaseLeft, 1))
+		end
+		fighter.previousPhase = state.phase
+		local vx, vy = numeric(state.vx, 0), numeric(state.vy, 0)
+		if math.abs(vx) &gt; 0.1 then fighter.facing = vx &gt; 0 and 1 or -1 end
+		local target = ORIGIN + Vector3.new(
+			math.clamp(numeric(state.x, index == 1 and -45 or 45) + vx * extrapolate, bounds.left, bounds.right),
+			math.clamp(numeric(state.y, CENTER_Y) + vy * extrapolate, bounds.bottom, bounds.top), 0)
+		fighter.position = fighter.position and fighter.position:Lerp(target, smoothing) or target
+		local desiredPose = poseForVelocity(fighter.position, vx, vy, fighter.facing, 0.20 + math.sin(self.clock * 3 + index) * 0.05)
+		fighter.pose = fighter.pose and fighter.pose:Lerp(desiredPose, smoothing) or desiredPose
+		-- Position interpolation happens once; keep turn interpolation independent.
+		fighter.pose = fighter.pose.Rotation + fighter.position
+		local armor = numeric(state.armor, 3)
+		local displayPose = fighter.pose
+		local knockedOut = simulation.finished == true and armor &lt;= 0
+		if knockedOut then
+			displayPose = self:_crashPose(fighter, state, target)
+		else
+			fighter.finishRotation, fighter.finishPosition = nil, nil
+		end
+		fighter.model:PivotTo(displayPose)
+		local propellerPhase = knockedOut and fighter.stoppedPropeller or self.clock * (moving and 52 or 16)
+		fighter.propeller:PivotTo(displayPose * CFrame.new(5.1 * SCALE, 0, 0) * CFrame.Angles(propellerPhase, 0, 0))
+		if fighter.armor and armor &lt; fighter.armor then self:_hit(fighter, state.x, state.y) end
+		fighter.armor = armor
+		fighter.model:SetAttribute("Armor", armor)
+		fighter.model:SetAttribute("Phase", state.phase or "Approach")
+		fighter.model:SetAttribute("ModifierId", fighter.modifierId)
+		fighter.model:SetAttribute("BumperReady", state.bumperReady == true)
+		local flash = self.clock - fighter.hitTime &lt; 0.14
+		fighter.body.Color = flash and COLORS.cream or (armor &lt;= 0 and fighter.color:Lerp(COLORS.steel, 0.65) or fighter.color)
+		local protected = state.invulnerable == true or numeric(state.invulnerable, 0) &gt; 0
+		fighter.body.Transparency = protected and 0.16 or 0
+		local windup = moving and state.phase == "Windup"
+		local armed = moving and state.armed == true
+		local boosted = moving and numeric(state.boostLeft, 0) &gt; self.sampleAge
+		fighter.noseGlow.Color = windup and COLORS.yellow or fighter.color
+		fighter.noseGlow.Transparency = armed and 0.18 or (windup and (0.48 + math.sin(self.clock * 25) * 0.18) or 1)
+		fighter.trail.Enabled = moving and armor &gt; 0 and vx * vx + vy * vy &gt; 4
+		fighter.trail.Lifetime = armed and 0.5 or 0.32
+		fighter.flare.Transparency = (armed or boosted) and 0.12 or 1
+		fighter.flare.Color = boosted and COLORS.boost or (fighter.powerId == "Meteor" and COLORS.yellow or fighter.color)
+		fighter.flare.Size = Vector3.new(boosted and 11 or (armed and 9 or 5), boosted and 2 or 1.5, 1.5) * SCALE
+		self:_fighterEffects(fighter, state, simulation, moving, displayPose)
+		for smokeIndex, puff in ipairs(fighter.smoke) do
+			local smokeAge = self.clock - fighter.hitTime - (smokeIndex - 1) * 0.13
+			if knockedOut and fighter.crash then
+				local crash = fighter.crash
+				local age = self.clock - crash.startedAt + (smokeIndex - 1) * 0.28
+				local cycle = math.floor(age / 0.84)
+				local sample = crash.smoke[smokeIndex]
+				if not sample or sample.cycle ~= cycle then
+					sample = { cycle = cycle, position = fighter.position + Vector3.new(-fighter.facing * 2, 1, 5) }
+					crash.smoke[smokeIndex] = sample
+				end
+				local progress = age / 0.84 - cycle
+				puff.Size = Vector3.one * (2 + progress * 4)
+				puff.CFrame = CFrame.new(sample.position + Vector3.new(fighter.facing * progress, progress * 7, 0))
+				puff.Transparency = 0.3 + progress * 0.7
+			elseif smokeAge &gt;= 0 and smokeAge &lt; 0.85 then
+				local progress = smokeAge / 0.85
+				puff.Size = Vector3.one * (1.4 + progress * 3.2)
+				puff.CFrame = displayPose * CFrame.new((-6 - progress * 4) * SCALE, 0, 0)
+					+ Vector3.new(0, progress * 5, 1)
+				puff.Transparency = 0.35 + progress * 0.65
+			else
+				puff.Transparency = 1
+			end
+		end
+		if not moving then fighter.trail.Enabled = false end
+	end
+	for id, fighter in pairs(self.fighters) do
+		if not seenFighters[id] then fighter.model:Destroy(); fighter.fx:Destroy(); self.fighters[id] = nil end
+	end
+
+	local seenRockets, rocketStates, rocketCount = {}, {}, 0
+	for _, state in ipairs(simulation.projectiles or {}) do
+		rocketCount = rocketCount + 1
+		if rocketCount &gt; ROCKET_LIMIT then break end
+		local id = state.id or rocketCount
+		seenRockets[id] = true
+		table.insert(rocketStates, { id = id, state = state })
+	end
+	-- Release vanished IDs before acquiring replacements, so even a complete
+	-- projectile turnover cannot grow the allocation beyond ROCKET_LIMIT.
+	for id, rocket in pairs(self.rockets) do
+		if not seenRockets[id] then
+			rocket.trail.Enabled = false
+			rocket.trail:Clear()
+			for _, piece in ipairs(rocket.pieces) do piece.Transparency = 1 end
+			table.insert(self.rocketPool, rocket)
+			self.rockets[id] = nil
+		end
+	end
+	for _, entry in ipairs(rocketStates) do
+		local id, state = entry.id, entry.state
+		local rocket = self.rockets[id]
+		if not rocket then
+			rocket = table.remove(self.rocketPool) or makeRocket(self.dynamic)
+			self.rockets[id] = rocket
+			rocket.position = nil
+			for _, piece in ipairs(rocket.pieces) do piece.Transparency = 0 end
+			rocket.trail:Clear()
+		end
+		local owner = self.fighters[state.owner]
+		local color = owner and owner.color or PLAYER_COLORS[tonumber(state.owner) or 1] or COLORS.yellow
+		rocket.nose.Color, rocket.fin.Color, rocket.crossFin.Color = color, color, color
+		for _, stripe in ipairs(rocket.stripes) do stripe.Color = color end
+		local vx, vy = numeric(state.vx, 0), numeric(state.vy, 0)
+		local target = ORIGIN + Vector3.new(numeric(state.x, 0) + vx * extrapolate, numeric(state.y, CENTER_Y) + vy * extrapolate, 2)
+		rocket.position = rocket.position and rocket.position:Lerp(target, smoothing) or target
+		local rocketPose = CFrame.new(rocket.position) * CFrame.Angles(0, 0, math.atan2(vy, vx))
+		rocket.model:PivotTo(rocketPose)
+		local sputter = 1 + math.sin(self.clock * 49 + numeric(tonumber(id), 0)) * 0.23
+		rocket.exhaust.Size = Vector3.new(3.6 * sputter, 1.25, 1.25)
+		rocket.exhaust.CFrame = rocketPose * CFrame.new(-3.9, 0, 0)
+		rocket.exhaust.Transparency = moving and (0.18 + (sputter - 0.77) * 0.2) or 1
+		rocket.core.Size = Vector3.new(2.4 * sputter, 0.62, 0.62)
+		rocket.core.CFrame = rocketPose * CFrame.new(-3.55, 0, 0.25)
+		rocket.core.Transparency = moving and 0.08 or 1
+		for index, spark in ipairs(rocket.sparks) do
+			local progress = (self.clock * 7 + index / 3) % 1
+			spark.Size = Vector3.new(0.55 * (1 - progress) + 0.12, 0.3, 0.25)
+			spark.CFrame = rocketPose * CFrame.new(-4.5 - progress * 3.5, (index % 2 == 0 and 1 or -1) * progress, 1)
+			spark.Transparency = moving and progress or 1
+		end
+		rocket.trail.Enabled = moving
+	end
+	self:_wakes(simulation, moving)
+	for _, effect in ipairs(self.effects) do
+		if effect.active then
+			effect.age = effect.age + dt
+			local duration = effect.style == "dive" and 0.18 or (effect.strong and 0.42 or 0.24)
+			local progress = math.clamp(effect.age / duration, 0, 1)
+			local radius = 2 + progress * (effect.strong and 11 or 6)
+			for index, piece in ipairs(effect.pieces) do
+				local angle = index / #effect.pieces * math.pi * 2
+				if effect.style == "dive" then
+					local forward, across = -3 + progress * 5, (index - 2) * 1.5
+					piece.Size = Vector3.new(8 * (1 - progress) + 0.1, 0.45, 0.3)
+					piece.CFrame = arenaPose(effect.x + math.cos(effect.heading) * forward - math.sin(effect.heading) * across,
+						effect.y + math.sin(effect.heading) * forward + math.cos(effect.heading) * across, 8) * CFrame.Angles(0, 0, effect.heading)
+					piece.Transparency = index &lt;= 3 and (0.2 + progress * 0.8) or 1
+				elseif effect.style == "crash" then
+					local groundAngle = (index - 0.5) / #effect.pieces * math.pi
+					piece.Size = Vector3.new(2.8 * (1 - progress) + 0.1, 0.4, 0.3)
+					piece.CFrame = arenaPose(effect.x + math.cos(groundAngle) * radius,
+						effect.y + math.sin(groundAngle) * radius * 0.55 + 0.3, 10) * CFrame.Angles(0, 0, groundAngle)
+					piece.Transparency = progress
+				else
+					local actualRadius = effect.style == "fizzle" and radius * 0.45 or radius
+					piece.Size = Vector3.new((effect.strong and 3.5 or 2) * (1 - progress) + 0.1, effect.strong and 0.5 or 0.3, 0.3)
+					piece.CFrame = arenaPose(effect.x + math.cos(angle) * actualRadius, effect.y + math.sin(angle) * actualRadius, 8) * CFrame.Angles(0, 0, angle)
+					piece.Transparency = effect.strong and progress or (0.6 + progress * 0.4)
+				end
+			end
+			if effect.strong then
+				if effect.style == "crash" then
+					for index, piece in ipairs(effect.ring) do
+						local angle = (index - 0.5) / #effect.ring * math.pi
+						piece.Size = Vector3.new(1.6, 0.3, 0.2)
+						piece.CFrame = arenaPose(effect.x + math.cos(angle) * (2 + progress * 9),
+							effect.y + math.sin(angle) * (2 + progress * 5), 10) * CFrame.Angles(0, 0, angle + math.pi / 2)
+						piece.Color, piece.Transparency = effect.color, progress
+					end
+				else
+					ring(effect.ring, ORIGIN + Vector3.new(effect.x, effect.y, 8), 2 + progress * 9,
+						effect.color, progress, 0, 0.7 * (1 - progress) + 0.1)
+				end
+				effect.flash.Size = Vector3.new(3 + progress * 7, effect.style == "crash" and 2 or (3 + progress * 7), 0.5)
+				effect.flash.CFrame = arenaPose(effect.x, effect.y + (effect.style == "crash" and 1 or 0), effect.style == "crash" and 10 or 8.5)
+				effect.flash.Transparency = progress &lt; 0.3 and (0.2 + progress * 2.5) or 1
+			end
+			if progress &gt;= 1 then effect.active = false; hide(effect.ring); effect.flash.Transparency = 1 end
+		end
+	end
+	local pressured = simulation.pressure == true or numeric(simulation.pressure, 0) &gt; 0
+	local fieldWidth, fieldHeight = bounds.right - bounds.left, bounds.top - bounds.bottom
+	local fieldX, fieldY = (bounds.left + bounds.right) / 2, (bounds.bottom + bounds.top) / 2
+	self.edges[1].Size = Vector3.new(0.6, fieldHeight, 0.5)
+	self.edges[1].CFrame = arenaPose(bounds.left, fieldY, -2)
+	self.edges[2].Size = Vector3.new(0.6, fieldHeight, 0.5)
+	self.edges[2].CFrame = arenaPose(bounds.right, fieldY, -2)
+	self.edges[3].Size = Vector3.new(fieldWidth, 0.5, 0.5)
+	self.edges[3].CFrame = arenaPose(fieldX, bounds.top, -2)
+	self.edges[4].Size = Vector3.new(fieldWidth, 0.5, 0.5)
+	self.edges[4].CFrame = arenaPose(fieldX, bounds.bottom, -2)
+	local windZones = {
+		{ bounds.left - MIN_X, MAX_Y - MIN_Y, (bounds.left + MIN_X) / 2, CENTER_Y },
+		{ MAX_X - bounds.right, MAX_Y - MIN_Y, (MAX_X + bounds.right) / 2, CENTER_Y },
+		{ fieldWidth, MAX_Y - bounds.top, fieldX, (MAX_Y + bounds.top) / 2 },
+		{ fieldWidth, bounds.bottom - MIN_Y, fieldX, (bounds.bottom + MIN_Y) / 2 },
+	}
+	for index, zone in ipairs(windZones) do
+		self.wind[index].Size = Vector3.new(math.max(0.05, zone[1]), math.max(0.05, zone[2]), 0.2)
+		self.wind[index].CFrame = arenaPose(zone[3], zone[4], -5)
+		self.wind[index].Transparency = pressured and 0.9 or 1
+	end
+	for index, edge in ipairs(self.edges) do
+		edge.Color = pressured and COLORS.yellow or (PLAYER_COLORS[index] or COLORS.steel)
+		edge.Transparency = pressured and (0.12 + 0.12 * math.sin(self.clock * 5)) or 0.35
+	end
+	self.folder:SetAttribute("Phase", snapshot.phase or "Configure")
+	self.folder:SetAttribute("RoundId", tostring(snapshot.roundId or ""))
+	self:_camera(viewportRect)
+end
+
+function BattleView:destroy()
+	if self.destroyed then return end
+	self.destroyed = true
+	self.folder:Destroy()
+	table.clear(self.fighters)
+	table.clear(self.rockets)
+	table.clear(self.rocketPool)
+	table.clear(self.effects)
+	table.clear(self.wakes)
+	table.clear(self.wakePool)
+	-- The normal client camera resumes on its next render. No connections,
+	-- lighting overrides, delayed callbacks, or external instances survive.
+end
+
+return BattleView
+</ProtectedString>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="RBX41">
+        <Properties>
+          <string name="Name">BattleAudio</string>
+          <ProtectedString name="Source">-- Local presentation only. Authoritative events decide which impacts are heard.
+-- No looping tracks, per-event instances, delayed callbacks, or uploaded assets.
+local SoundService = game:GetService("SoundService")
+local ContentProvider = game:GetService("ContentProvider")
+local TweenService = game:GetService("TweenService")
+
+local BattleAudio = {}
+BattleAudio.__index = BattleAudio
+BattleAudio.VOICES_PER_SOURCE = 4
+BattleAudio.VOICE_POOL_LIMIT = 16
+BattleAudio.MAX_EVENTS_PER_UPDATE = 4
+BattleAudio.MAX_EVENT_AGE = 0.55
+BattleAudio.JOIN_GRACE = 0.3
+BattleAudio.MAX_CRASH_AGE = 3
+
+local SOURCES = {
+    jump = "rbxasset://sounds/action_jump.mp3",
+    boom = "rbxasset://sounds/impact_explosion_03.mp3",
+    chime = "rbxasset://sounds/volume_slider.ogg",
+    land = "rbxasset://sounds/action_jump_land.mp3",
+}
+local KINDS = {
+    launch=true, windup=true, dive=true, rocket=true, hit=true, bump=true,
+    bumper_block=true, wake_hit=true, afterburner=true, finish=true, knockout=true,
+}
+local function finite(value)
+    return type(value)=="number" and value==value and value&gt;-math.huge and value&lt;math.huge
+end
+local function audibleKind(event)
+    if event.kind=="modifier" then
+        return event.modifierId=="Afterburner" and "afterburner" or nil
+    elseif event.kind=="blocked" then
+        return event.modifierId=="SpringBumper" and "bumper_block" or nil
+    end
+    return KINDS[event.kind] and event.kind or nil
+end
+
+function BattleAudio.new()
+    local self=setmetatable({voices={},nextVoice={},tweens={},lastAt={},lastSerial=0,
+        key=nil,started=false,muted=false,destroyed=false,played=0,crashes={},charging={}},BattleAudio)
+    self.folder=Instance.new("Folder")
+    self.folder.Name="SkyboundBattleAudio"; self.folder.Parent=SoundService
+    self.group=Instance.new("SoundGroup")
+    self.group.Name="BattleMix"; self.group.Volume=0.7; self.group.Parent=self.folder
+    local preload={}
+    for name,id in pairs(SOURCES) do
+        local pool={}; self.voices[name]=pool; self.nextVoice[name]=0
+        for index=1,BattleAudio.VOICES_PER_SOURCE do
+            local sound=Instance.new("Sound")
+            sound.Name=name..index; sound.SoundId=id; sound.Volume=0
+            sound.Looped=false; sound.SoundGroup=self.group; sound.Parent=self.folder
+            pool[index]=sound; preload[#preload+1]=sound
+        end
+    end
+    task.spawn(function()
+        local ok=pcall(function() ContentProvider:PreloadAsync(preload) end)
+        if self.destroyed or not self.folder.Parent then return end
+        self.folder:SetAttribute("PreloadCompleted",ok)
+    end)
+    return self
+end
+
+function BattleAudio:_silence()
+    for _,tween in pairs(self.tweens) do tween:Cancel() end
+    self.tweens={}; self.charging={}
+    for _,pool in pairs(self.voices) do
+        for _,sound in ipairs(pool) do sound:Stop() end
+    end
+end
+
+function BattleAudio:setMuted(muted)
+    if self.destroyed then return end
+    self.muted=muted==true
+    self.group.Volume=self.muted and 0 or 0.7
+    self.folder:SetAttribute("Muted",self.muted)
+    if self.muted then self:_silence() end
+end
+
+function BattleAudio:_stopCharges(actor)
+    for sound,owner in pairs(self.charging or {}) do
+        if not actor or owner==actor then
+            if self.tweens[sound] then self.tweens[sound]:Cancel(); self.tweens[sound]=nil end
+            sound:Stop(); self.charging[sound]=nil
+        end
+    end
+end
+
+function BattleAudio:_voice(name,volume,pitch,duration,finishPitch,swell,actor)
+    if self.destroyed or self.muted or not self.folder.Parent then return end
+    local pool=self.voices[name]
+    if not pool then return end
+    local index=self.nextVoice[name]%#pool+1
+    self.nextVoice[name]=index
+    local sound=pool[index]
+    if self.tweens[sound] then self.tweens[sound]:Cancel() end
+    -- Reusing a pooled voice transfers ownership, so a later dive cannot stop
+    -- another cue that has since borrowed that same Sound.
+    self.charging[sound]=swell and actor or nil
+    sound:Stop(); sound.TimePosition=0
+    if swell then
+        -- With Quad/In pitch interpolation, mean speed is (2*start+end)/3.
+        -- Fit the finite sample to the remaining windup instead of letting a
+        -- longer charge go silent early. Before preload, scale the old cue.
+        local endPitch=finishPitch or pitch
+        local meanPitch=(2*pitch+endPitch)/3
+        local fit=finite(sound.TimeLength) and sound.TimeLength&gt;0
+            and sound.TimeLength/(duration*meanPitch) or 0.65/duration
+        fit=math.max(0.2,math.min(2.5,fit))
+        pitch=pitch*fit; finishPitch=endPitch*fit
+    end
+    -- Charges swell on a finite, non-looping sample. Its natural end needs no
+    -- delayed callback; ordinary impacts instead decay immediately.
+    sound.Volume=swell and volume*0.18 or volume; sound.PlaybackSpeed=pitch
+    sound:Play()
+    local tween=TweenService:Create(sound,
+        TweenInfo.new(duration,Enum.EasingStyle.Quad,swell and Enum.EasingDirection.In or Enum.EasingDirection.Out),
+        {Volume=swell and volume or 0,PlaybackSpeed=finishPitch or pitch})
+    self.tweens[sound]=tween; tween:Play()
+end
+
+function BattleAudio:_playEvent(event,elapsed,simulation)
+    if self.muted or self.destroyed then return end
+    local kind=audibleKind(event)
+    if not kind then return end
+    local actor=event.actor==2 and 2 or 1
+    local time=finite(event.at) and event.at or elapsed
+    local key=kind..":"..actor
+    local cooldown=(kind=="bump" and 0.3) or (kind=="windup" and 0.25) or 0.08
+    if time-(self.lastAt[key] or -math.huge)&lt;cooldown then return end
+    self.lastAt[key]=time
+    -- Both aircraft remain audible; a small timbral difference separates them.
+    local gain=actor==2 and 0.88 or 1
+    local pitchShift=actor==2 and 1.06 or 1
+    local function voice(name,volume,pitch,duration,finishPitch,swell)
+        self:_voice(name,volume*gain,pitch*pitchShift,duration,
+            finishPitch and finishPitch*pitchShift,swell,actor)
+    end
+    if kind=="launch" then
+        voice("jump",0.14,0.75,0.28,1.5)
+    elseif kind=="windup" then
+        local fighter=simulation.fighters and simulation.fighters[actor]
+        if fighter and fighter.powerId=="Meteor" then
+            -- Low rising charge, then a separate downward sweep on commitment.
+            local duration=finite(fighter.windupDuration) and fighter.windupDuration&gt;0
+                and math.max(0.2,math.min(3,fighter.windupDuration)) or 0.65
+            local age=math.max(0,elapsed-time)
+            local remaining=math.max(0.08,duration-age)
+            voice("jump",0.16,0.55,remaining,1.15,true)
+            voice("chime",0.055,0.7,math.min(0.48,remaining),1.0)
+        else
+            -- A tiny bright arming cue leaves space for rocket ignition.
+            voice("chime",0.11,1.85,0.24,2.1)
+            voice("land",0.045,2.25,0.09)
+        end
+    elseif kind=="dive" then
+        self:_stopCharges(actor)
+        -- Commitment sounds fast and weighty, but never claims an armor hit.
+        voice("jump",0.25,1.65,0.46,0.55)
+        voice("land",0.10,0.75,0.16,0.5)
+    elseif kind=="rocket" then
+        voice("jump",0.22,1.15,0.3,1.9)
+        voice("boom",0.12,2.1,0.14,1.6)
+    elseif kind=="hit" then
+        if event.source=="meteor" then
+            voice("boom",0.30,0.8,0.46,0.55)
+            voice("land",0.30,0.55,0.18)
+        else
+            voice("boom",0.29,1.5,0.32,0.95)
+            voice("land",0.21,1.05,0.13)
+        end
+    elseif kind=="bumper_block" then
+        voice("jump",0.27,0.85,0.4,1.9)
+        voice("chime",0.12,1.6,0.28)
+    elseif kind=="wake_hit" then
+        voice("land",0.23,1.25,0.2)
+        voice("boom",0.17,1.8,0.3,1.1)
+    elseif kind=="afterburner" then
+        voice("jump",0.17,0.65,0.32,1.8)
+    elseif kind=="bump" then
+        -- A normal collision pushes without armor loss: never use the hit mix.
+        voice("land",0.065,1.55,0.11)
+    elseif kind=="knockout" or (kind=="finish" and simulation.reason=="knockout") then
+        self:_stopCharges()
+        -- Armor breaking ends the fight. The heavier ground thud belongs to
+        -- playCrash, when the defeated plane actually reaches the floor.
+        voice("boom",0.13,1.25,0.24,0.85)
+        voice("chime",0.21,0.95,0.48,1.4)
+    elseif kind=="finish" then
+        self:_stopCharges()
+        voice("land",0.12,0.9,0.2)
+        voice("chime",0.23,1.1,0.5)
+    end
+    self.played=self.played+1
+    self.folder:SetAttribute("PlayedEvents",self.played)
+    self.folder:SetAttribute("LastEvent",kind)
+end
+
+function BattleAudio:playCrash(roundId,actor)
+    if self.destroyed or not self.key or tostring(roundId)~=self.key
+        or (actor~=1 and actor~=2) or self.phase~="Results" or not self.crashAllowed
+        or not self.resultsAt or os.clock()-self.resultsAt&gt;BattleAudio.MAX_CRASH_AGE
+        or not self.resultArmor or not finite(self.resultArmor[actor]) or self.resultArmor[actor]&gt;0
+        or self.crashes[actor] then return false end
+    -- Consume muted landings too: unmuting must never replay an old crash.
+    self.crashes[actor]=true
+    if self.muted then return false end
+    local gain=actor==2 and 0.88 or 1
+    self:_voice("land",0.38*gain,0.5,0.24,0.4)
+    self:_voice("boom",0.26*gain,0.62,0.48,0.45)
+    self.played=self.played+1
+    self.folder:SetAttribute("PlayedEvents",self.played)
+    self.folder:SetAttribute("LastEvent","crash")
+    return true
+end
+
+function BattleAudio:stop()
+    if self.destroyed then return end
+    self:_silence()
+    self.key=nil; self.started=false; self.lastSerial=0; self.lastAt={}
+    self.phase=nil; self.sawFight=false; self.resultsAt=nil; self.crashAllowed=false
+    self.resultArmor=nil; self.crashes={}
+end
+
+function BattleAudio:update(snapshot)
+    if self.destroyed then return end
+    if type(snapshot)~="table" or snapshot.active~=true then
+        if self.key then self:stop() end
+        return
+    end
+    local key=tostring(snapshot.roundId)
+    if self.key~=key then self:stop(); self.key=key end
+    local phase=snapshot.phase
+    local previousPhase=self.phase
+    self.phase=phase
+    self.crashAllowed=false
+    -- newRound already contains launch events during setup. Leave their cursor
+    -- untouched until the actual fight starts; Configure/Countdown stay quiet.
+    if phase~="Fight" and phase~="Results" then return end
+    local simulation=snapshot.simulation
+    if type(simulation)~="table" then return end
+    if phase=="Fight" then
+        self.sawFight=true
+    elseif phase=="Results" then
+        if previousPhase~="Results" then self.resultsAt=os.clock(); self:_stopCharges() end
+        self.crashAllowed=self.sawFight==true and simulation.finished==true and simulation.reason=="knockout"
+        self.resultArmor={}
+        for index,fighter in ipairs(simulation.fighters or {}) do
+            if index&gt;2 then break end
+            self.resultArmor[fighter.id or index]=fighter.armor
+        end
+    end
+    local elapsed=finite(simulation.elapsed) and simulation.elapsed or 0
+    local events=type(simulation.events)=="table" and simulation.events or {}
+    local skipHistory=not self.started and (phase=="Results" or elapsed&gt;BattleAudio.JOIN_GRACE)
+    self.started=true
+    local newest=self.lastSerial
+    local pending={}
+    for index=1,math.min(#events,32) do
+        local event=events[index]
+        local serial=type(event)=="table" and event.serial
+        if finite(serial) and serial&gt;self.lastSerial then
+            newest=math.max(newest,serial)
+            local age=finite(event.at) and elapsed-event.at or 0
+            if not skipHistory and age&gt;=-0.001 and age&lt;=BattleAudio.MAX_EVENT_AGE
+                and audibleKind(event) then pending[#pending+1]=event end
+        end
+    end
+    -- Cursors advance even while muted, for unknown events, and stale batches.
+    self.lastSerial=newest
+    table.sort(pending,function(a,b) return a.serial&lt;b.serial end)
+    -- Keep the freshest feedback after a delivery stall; never burst the full
+    -- server history. Its serial order preserves a hit followed by its finish.
+    for index=math.max(1,#pending-BattleAudio.MAX_EVENTS_PER_UPDATE+1),#pending do
+        self:_playEvent(pending[index],elapsed,simulation)
+    end
+end
+
+function BattleAudio:destroy()
+    if self.destroyed then return end
+    self:stop(); self.destroyed=true
+    self.folder:Destroy()
+    self.voices={}; self.nextVoice={}
+end
+
+return BattleAudio
+</ProtectedString>
+        </Properties>
+      </Item>
     </Item>
   </Item>
-  <Item class="Lighting" referent="RBX31">
+  <Item class="Lighting" referent="RBX42">
     <Properties>
       <string name="Name">Lighting</string>
       <float name="ClockTime">14</float>

@@ -1545,6 +1545,13 @@ function Hud:getFlightViewport()
 	return { left = 18, right = viewport.X - 18, top = top, bottom = math.max(top + 40, bottom) }
 end
 
+-- Offset from the bottom edge to just above the hub's plane selector, for
+-- other hub controls that stack on top of it.
+function Hud:getHubStackTop()
+	self:_resize()
+	return self.planeRow.Position.Y.Offset - self.planeRow.Size.Y.Offset - 8
+end
+
 function Hud:getAimViewport()
 	self:_resize()
 	local topInset = GuiService:GetGuiInset()

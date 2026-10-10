@@ -1,4 +1,4 @@
-"""Exercise the real server and Simulation modules with in-memory Roblox service doubles.
+"""Exercise the real flight/Battle Lab servers with in-memory Roblox service doubles.
 
 Run: python3 scripts/test_server.py
 Requires the optional test dependency: python3 -m pip install lupa
@@ -22,12 +22,13 @@ ROOT = Path(__file__).resolve().parents[1]
 def make_runtime(studio=True, published=False):
     L=LuaRuntime(unpack_returned_tuples=True)
     L.execute(r'''
-    Harness={time=10,sent={},logs={},delays={}}
+    Harness={time=10,sent={},battleSent={},logs={},delays={}}
     math.clamp=function(v,lo,hi)return math.max(lo,math.min(hi,v))end
     math.round=function(v)return math.floor(v+0.5)end
     table.clone=function(t)local r={}for k,v in pairs(t)do r[k]=v end return r end
     table.find=function(t,v)for i,a in ipairs(t)do if a==v then return i end end end
     table.clear=function(t)for k in pairs(t)do t[k]=nil end end
+    local function deepCopy(value)if type(value)~='table'then return value end local result={}for k,v in pairs(value)do result[k]=deepCopy(v)end return result end
     local vector={};vector.__index=function(t,k)if k=='Magnitude'then return math.sqrt(t.X*t.X+t.Y*t.Y+t.Z*t.Z)end return vector[k]end
     Vector3={new=function(x,y,z)return setmetatable({X=x or 0,Y=y or 0,Z=z or 0},vector)end};Vector3.zero=Vector3.new(0,0,0)
     vector.__sub=function(a,b)return Vector3.new(a.X-b.X,a.Y-b.Y,a.Z-b.Z)end
@@ -54,13 +55,15 @@ def make_runtime(studio=True, published=False):
     local snapshots=obj('Snapshot');shared.children.Snapshot=snapshots
     function snapshots:FireClient(player,data)Harness.sent[player.UserId]=data end
     function snapshots:FireAllClients(data)for _,p in ipairs(players.players)do Harness.sent[p.UserId]=data end end
+    local battleCommand=obj('BattleCommand');battleCommand.OnServerEvent=signal();shared.children.BattleCommand=battleCommand
+    local battleSnapshots=obj('BattleSnapshot');shared.children.BattleSnapshot=battleSnapshots
+    function battleSnapshots:FireClient(player,data)Harness.battleSent[player.UserId]=deepCopy(data)end
     workspace=obj('Workspace');function workspace:GetServerTimeNow()return Harness.time end
     local world={LOBBY_SPAWN=Vector3.new(0,7,0),DUEL_STATIONS={},buildLobby=function()end,updateLobbyQueues=function(counts)Harness.queueCounts=counts end,
      LINEUP_BAYS={1,2,3,4},updateLobbyBoard=function(flying,best)Harness.board={flying=flying,best=best}end}
     for index,x in ipairs({-81,-27,27,81})do table.insert(world.DUEL_STATIONS,{id='duel'..index,name='DUEL '..index,seats={Vector3.new(x-8,4.3,-47),Vector3.new(x+8,4.3,-47)}})end
     shared.World={module=world}
     shared.Simulation={}
-    local function deepCopy(value)if type(value)~='table'then return value end local result={}for k,v in pairs(value)do result[k]=deepCopy(v)end return result end
     Harness.store={values={},calls=0,getCalls=0,failures=0}
     function Harness.store:UpdateAsync(key,transform)
      self.calls=self.calls+1
@@ -105,6 +108,8 @@ def make_runtime(studio=True, published=False):
     end
     function Harness.send(p,kind,extra)local payload=extra or {};payload.kind=kind;command.OnServerEvent:Fire(p,payload)end
     function Harness.latest(p)return Harness.sent[p.UserId]end
+    function Harness.battleSend(p,kind,extra)local payload=extra or {};payload.kind=kind;battleCommand.OnServerEvent:Fire(p,payload)end
+    function Harness.battleLatest(p)return Harness.battleSent[p.UserId]end
     function Harness.readyDuel(a,b)
      assert(Harness.latest(a).phase=='Configure')
      Harness.send(a,'ready',{ready=true});if b then Harness.send(b,'ready',{ready=true})end
@@ -122,11 +127,12 @@ def make_runtime(studio=True, published=False):
     L.execute('function Harness.services.RunService:IsStudio()return Harness.studio end')
     simulation, catalog = load_simulation(L)
     L.globals().Harness.shared.Simulation.module=simulation
+    L.globals().Harness.shared.children.BattleSimulation=L.table_from({'module':L.execute((ROOT/'src/shared/BattleSimulation.luau').read_text())})
     L.globals().Harness.shared.PlaneCatalog=L.table_from({'module':catalog})
     L.globals().Harness.shared.PowerCatalog=L.table_from({'module':L.execute((ROOT/'src/shared/PowerCatalog.luau').read_text())})
     L.globals().Harness.shared.children.CosmeticCatalog=L.table_from({'module':L.execute((ROOT/'src/shared/CosmeticCatalog.luau').read_text())})
     L.globals().Harness.services.ServerStorage.children.SimulationTests=L.table_from({'module':L.execute((ROOT/'tests/Simulation.spec.luau').read_text())})
-    for name in ('PlayerStats', 'Telemetry'):
+    for name in ('PlayerStats', 'Telemetry', 'BattleLab'):
         module=L.execute((ROOT/f'src/server/{name}.luau').read_text())
         L.globals().Harness.services.ServerScriptService.children[name]=L.table_from({'module':module})
     source=(ROOT/'src/server/Main.server.luau').read_text()
@@ -137,6 +143,187 @@ def make_runtime(studio=True, published=False):
     return L
 
 SCENARIOS = {
+    "Battle Lab launch commits visible settings after a throttled setup burst": r'''
+        local a=Harness.add(101)
+        Harness.battleSend(a,'enter');Harness.advance(1)
+        local function payload(angle,id)
+            return {settings={{powerId='Meteor',angle=angle,modifierId=id or 'Afterburner'},{powerId='Firework',angle=30,modifierId='SpringBumper'}}}
+        end
+        for _,angle in ipairs({15,20,25,30,35})do Harness.battleSend(a,'configure',payload(angle))end
+        assert(Harness.battleLatest(a).settings[1].angle==30,'burst did not reach throttle')
+        Harness.advance(.1)
+        Harness.battleSend(a,'launch',payload(35,'BadEffect'));Harness.advance(.1)
+        assert(Harness.battleLatest(a).phase=='Configure','invalid launch settings accepted')
+        Harness.battleSend(a,'launch',payload(35));Harness.advance(.1)
+        local s=Harness.battleLatest(a)
+        assert(s.phase=='Countdown' and s.settings[1].angle==35 and s.settings[1].modifierId=='Afterburner')
+        assert(s.simulation.fighters[1].settings.angle==35 and s.simulation.fighters[2].bumperReady)
+    ''',
+    "Battle Lab validates one modifier slot and locks it through a battle": r'''
+        local a=Harness.add(101)
+        Harness.battleSend(a,'enter');Harness.advance(.1)
+        local function setup(modifier)
+            return {settings={{powerId='Meteor',angle=35,modifierId=modifier},{powerId='Firework',angle=30,modifierId='SpringBumper'}}}
+        end
+        for _,id in ipairs({'None','Afterburner','SpringBumper','FizzyFuel'})do
+            Harness.battleSend(a,'configure',setup(id));Harness.advance(.1)
+            local s=Harness.battleLatest(a)
+            assert(s.settings[1].modifierId==id and s.simulation.fighters[1].modifierId==id)
+        end
+        local round=Harness.battleLatest(a).roundId
+        for _,invalid in ipairs({'unknown',false,999,{'Afterburner','SpringBumper'}})do
+            Harness.battleSend(a,'configure',setup(invalid));Harness.advance(.1)
+            assert(Harness.battleLatest(a).roundId==round,'invalid modifier accepted')
+        end
+        Harness.battleSend(a,'launch');Harness.advance(.1)
+        Harness.battleSend(a,'configure',setup('Afterburner'));Harness.advance(2.2)
+        assert(Harness.battleLatest(a).settings[1].modifierId=='FizzyFuel')
+        Harness.battleSend(a,'configure',setup('None'));Harness.advance(38)
+        assert(Harness.battleLatest(a).phase=='Results')
+        Harness.battleSend(a,'restart',{edit=true});Harness.advance(.1)
+        local reset=Harness.battleLatest(a)
+        assert(reset.phase=='Configure' and #reset.simulation.wakes==0)
+        assert(reset.simulation.fighters[2].bumperReady and reset.simulation.fighters[1].boostLeft==0)
+        assert(reset.settings[1].modifierId=='FizzyFuel')
+        Harness.battleSend(a,'exit');Harness.advance(.1);Harness.battleSend(a,'enter');Harness.advance(.1)
+        assert(Harness.battleLatest(a).settings[1].modifierId=='None')
+    ''',
+    "Battle Lab accepts a bounded ordered burst after network delay": r'''
+        local a=Harness.add(101)
+        Harness.battleSend(a,'enter')
+        Harness.battleSend(a,'configure',{settings={{powerId='Firework',angle=50},{powerId='Meteor',angle=15}}})
+        Harness.battleSend(a,'launch')
+        local s=Harness.battleLatest(a)
+        assert(s.phase=='Countdown' and s.settings[1].angle==50 and s.settings[1].powerId=='Firework')
+        for i=1,100 do Harness.battleSend(a,'request') end
+        Harness.advance(2.2)
+        assert(Harness.battleLatest(a).phase=='Fight')
+    ''',
+    "Battle Lab entry cannot overlap queue membership or any flight match phase": r'''
+        local a=Harness.add(101)
+        Harness.move(a,1,1);Harness.advance(0.3)
+        Harness.battleSend(a,'enter');Harness.advance(0.1)
+        assert(not Harness.battleLatest(a).active and Harness.latest(a).phase=='Queued')
+        assert(Harness.queueCounts.duel1==1)
+        Harness.send(a,'leaveQueue');Harness.advance(0.3)
+        Harness.battleSend(a,'enter');Harness.advance(0.1)
+        assert(Harness.battleLatest(a).active and Harness.battleLatest(a).phase=='Configure')
+        Harness.battleSend(a,'exit');Harness.advance(0.1)
+        for _,phase in ipairs({'Voting','Configure','Aim','Countdown','Flight','Results'})do
+            Harness.send(a,'practice')
+            if phase~='Voting'then Harness.debug('configure',{userId=a.UserId})end
+            if phase=='Aim' or phase=='Countdown'then Harness.debug('aim',{userId=a.UserId})end
+            if phase=='Countdown'then Harness.send(a,'ready',{ready=true});Harness.advance(1.2)end
+            if phase=='Flight' or phase=='Results'then Harness.debug('launch',{userId=a.UserId})end
+            if phase=='Results'then Harness.advance(46)end
+            local matchId=Harness.latest(a).matchId
+            assert(Harness.latest(a).phase==phase)
+            Harness.battleSend(a,'enter');Harness.advance(0.1)
+            assert(not Harness.battleLatest(a).active)
+            assert(Harness.latest(a).phase==phase and Harness.latest(a).matchId==matchId)
+            Harness.send(a,'returnLobby');Harness.advance(0.3)
+        end
+    ''',
+    "Battle Lab blocks flight commands pad pairing cosmetics and race rewards": r'''
+        local a,b=Harness.add(101),Harness.add(102)
+        local before=Harness.latest(a)
+        Harness.battleSend(a,'enter');Harness.advance(0.1)
+        assert(Harness.battleLatest(a).simulatedOpponent==true)
+        Harness.move(a,1,1);Harness.move(b,1,2);Harness.advance(0.3)
+        assert(Harness.queueCounts.duel1==1 and Harness.latest(b).phase=='Queued')
+        for _,kind in ipairs({'practice','configure','ready','vote','rematch','returnLobby','buyCosmetic','equipCosmetic'})do
+            Harness.send(a,kind,{settings={planeId='dart',angle=55,gadget='Boost',color=4},ready=true,variant='Storm',itemId='skyblue'})
+            Harness.advance(0.1)
+            assert(Harness.battleLatest(a).active and Harness.battleLatest(a).phase=='Configure')
+            assert(Harness.shared:GetAttribute('ActiveDuels')==0)
+        end
+        Harness.battleSend(a,'launch');Harness.advance(38)
+        assert(Harness.battleLatest(a).phase=='Results' and Harness.battleLatest(a).simulation.finished)
+        assert(Harness.latest(b).phase=='Queued' and Harness.shared:GetAttribute('ActiveDuels')==0)
+        Harness.battleSend(a,'exit');Harness.advance(0.3)
+        local after=Harness.latest(a)
+        assert(not Harness.battleLatest(a).active and after.phase=='Lobby')
+        assert(after.players[1].settings.planeId==before.players[1].settings.planeId)
+        assert(after.economy.credits==before.economy.credits and not after.economy.owned.skyblue)
+        assert(after.economy.equippedTrail==before.economy.equippedTrail)
+        for key,value in pairs(before.stats)do assert(after.stats[key]==value,'Battle Lab changed flight stat '..key)end
+        assert(not a.Character.HumanoidRootPart.Anchored)
+    ''',
+    "Battle Lab rejects malformed settings and locks configuration during countdown and fight": r'''
+        local a=Harness.add(101)
+        Harness.battleSend(a,'enter');Harness.advance(0.1)
+        local initial=Harness.battleLatest(a)
+        for _,payload in ipairs({false,12,'launch',{}, {kind=false},{kind='unknown'}})do
+            Harness.shared.BattleCommand.OnServerEvent:Fire(a,payload);Harness.advance(0.06)
+            assert(Harness.battleLatest(a).roundId==initial.roundId)
+        end
+        for _,settings in ipairs({
+            false,12,'Meteor',{},{{powerId='Meteor',angle=35}},
+            {{powerId='Unknown',angle=35},{powerId='Firework',angle=30}},
+            {{powerId='Meteor',angle=0/0},{powerId='Firework',angle=30}},
+            {{powerId='Meteor',angle=math.huge},{powerId='Firework',angle=30}},
+            {{powerId='Meteor',angle=35},{powerId='Firework',angle='30'}}
+        })do
+            Harness.battleSend(a,'configure',{settings=settings});Harness.advance(0.06)
+            local s=Harness.battleLatest(a)
+            assert(s.roundId==initial.roundId and s.phase=='Configure')
+            assert(s.settings[1].powerId=='Meteor' and s.settings[2].powerId=='Firework')
+        end
+        Harness.battleSend(a,'configure',{settings={{powerId='Firework',angle=-500,armor=999},{powerId='Meteor',angle=500}},winner=1})
+        Harness.advance(0.1)
+        local configured=Harness.battleLatest(a)
+        assert(configured.settings[1].angle==10 and configured.settings[2].angle==55)
+        assert(configured.settings[1].armor==nil and configured.simulation.fighters[1].armor==3)
+        Harness.battleSend(a,'launch');Harness.advance(0.1)
+        for _,phase in ipairs({'Countdown','Fight'})do
+            if phase=='Fight'then Harness.advance(2.1)end
+            assert(Harness.battleLatest(a).phase==phase)
+            Harness.battleSend(a,'configure',{settings={{powerId='Meteor',angle=35},{powerId='Firework',angle=30}}})
+            Harness.advance(0.1)
+            Harness.battleSend(a,'restart',{edit=true});Harness.advance(0.1)
+            local s=Harness.battleLatest(a)
+            assert(s.phase==phase and s.roundId==configured.roundId)
+            assert(s.settings[1].powerId=='Firework' and s.settings[2].powerId=='Meteor')
+            assert(s.settings[1].angle==10 and s.settings[2].angle==55)
+        end
+    ''',
+    "Battle Lab retries reset combat and exit or disconnect cleans independent sessions": r'''
+        local a,b=Harness.add(101),Harness.add(102)
+        Harness.battleSend(a,'enter');Harness.battleSend(b,'enter');Harness.advance(0.1)
+        Harness.battleSend(a,'launch');Harness.advance(38)
+        local ended=Harness.battleLatest(a)
+        assert(ended.phase=='Results' and ended.simulation.finished)
+        assert(Harness.battleLatest(b).phase=='Configure')
+        Harness.battleSend(a,'restart');Harness.advance(0.1)
+        local retry=Harness.battleLatest(a)
+        assert(retry.phase=='Countdown' and retry.roundId~=ended.roundId)
+        assert(retry.simulation.elapsed==0 and not retry.simulation.finished and retry.simulation.winner==nil)
+        assert(#retry.simulation.projectiles==0)
+        for _,fighter in ipairs(retry.simulation.fighters)do
+            assert(fighter.armor==3 and fighter.attacks==0 and fighter.hits==0 and fighter.invulnerable==0)
+        end
+        assert(retry.settings[1].powerId==ended.settings[1].powerId)
+        Harness.advance(37)
+        Harness.battleSend(a,'restart',{edit=true});Harness.advance(0.1)
+        assert(Harness.battleLatest(a).phase=='Configure')
+        Harness.battleSend(a,'launch');Harness.battleSend(b,'launch');Harness.advance(2.3)
+        assert(Harness.battleLatest(a).phase=='Fight' and Harness.battleLatest(b).phase=='Fight')
+        Harness.battleSend(a,'exit');Harness.advance(0.1)
+        assert(not Harness.battleLatest(a).active and not a.Character.HumanoidRootPart.Anchored)
+        Harness.battleSend(a,'launch');Harness.advance(0.1)
+        assert(not Harness.battleLatest(a).active)
+        Harness.send(a,'practice');Harness.advance(0.1)
+        assert(Harness.latest(a).phase=='Voting')
+        assert(Harness.battleLatest(b).phase=='Fight','Exiting one lab disturbed the other')
+        Harness.remove(b);Harness.advance(0.1)
+        local replacement=Harness.add(102)
+        Harness.battleSend(replacement,'request');Harness.advance(0.1)
+        assert(not Harness.battleLatest(replacement).active)
+        Harness.battleSend(replacement,'enter');Harness.advance(0.1)
+        assert(Harness.battleLatest(replacement).phase=='Configure')
+        assert(Harness.battleLatest(replacement).simulation.elapsed==0)
+        assert(Harness.latest(a).phase=='Voting','Battle Lab cleanup disturbed another flight')
+    ''',
     "two practice flights unlock a cosmetic and explicit equip reaches the next flight": r'''
         local a=Harness.add(101)
         local fresh=Harness.latest(a)

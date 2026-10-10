@@ -1,3 +1,118 @@
+# Meteor charge and ground crash — October 9, 2026
+
+This revision intentionally changes Meteor preparation to create visible travel before a committed strike. Meteor spends 0.6 seconds arcing toward open space, then 0.4 seconds aiming. Ordinary approach/recovery, Firework attack rules, one damage per successful hit and three-hit armor remain unchanged. Earlier movement-preservation records below apply to their own revisions.
+
+## Native checks
+
+- **27 combat/catalog, 21 audio and six native crash tests** pass in actual Studio Luau. Crash coverage includes actual aircraft/floor contact, double knockout, timeout survivors, retry/destroy during a fall, and near-floor knockouts at heights 8, 10 and 14 with contact and sound cue in the same update. The server harness also passes **36 scenarios**, 30 player-stat checks and nine cosmetic checks.
+- Actual Studio clicks entered the lab, launched the default Meteor 35° / Firework 30° matchup with No Effect, retried, changed setup and exited. Captured the charge with real separation and the armed comet during travel. The first charge starts at **2.5667s**, releases at **3.5667s**, and hits at **3.8833s**. That is **0.3167 seconds of actual armed travel**. The default round ends at **27.25s**, Meteor winning with two armor. A fresh local Lupa replay matches this result.
+- Observed the defeated Firework falling and resting on the visible floor. The final live replay left its lowest contact point within **0.000002 studs** of the floor. The audio event count advanced once from finish to ground crash and remained there in Results. All 16 pooled voices loaded; subjective sound quality remains a playtest question.
+- Full desktop rendering and centered **390×730 Results / 390×440 setup** regions were inspected. No reported text overflow; the wreck and floor remain visible. These are desktop constrained-region checks, not physical-phone or device-emulation evidence.
+- Retry clears the wreck and restores three armor segments. Exit removes the arena, stops battle voices, restores the normal camera and restores unanchored walking. Studio client/server initialized without game-script errors.
+
+- Rebuilt `Skybound.rbxlx` and verified all **29 packaged scripts** against disk and the running Studio sources. The final live round again ended at 27.25s, landed the wreck and recorded the crash cue. Studio is left in full-size Configure with default powers, No Effect, sound on and optional angles closed.
+
+## Reproducible simulation sample
+
+`build/testenv/bin/python scripts/sample_battle.py --samples 10 --mirrors --modifier-sample --json` covers 180 No Effect cross-power rounds: **88 Meteor wins, 71 Firework wins, 21 draws; 150 knockouts and 30 timeouts**. Median duration is **27.167s** in both power orders. Of 593 Meteor dives, 319 lasted at least 0.3 seconds and 41 lasted under 0.05 seconds; their endings included 399 hits, 148 interruptions and 45 misses. The 320 modifier rounds exercise 147 bumper blocks, 75 wake hits and 496 boost activations; peak simultaneous wakes is 10.
+
+A scoped comparison against the local pre-edit backup (`--samples 3 --modifier-sample --baseline build/battle-lab-v3/BattleSimulation.luau --baseline-scope meteor-charge --json`) matches every original gameplay field for **75 complete Firework mirror rounds and 150 prefixes before the first Meteor windup**, totaling **101,562 ticks**. This does not claim identical trajectories or outcomes after the changed Meteor charge. The ignored backup and JSON reports are local evidence; the sampler is tracked.
+
+## Scope and remaining tuning
+
+The longer Meteor windup changes matchup outcomes. Some dives are still cut short by contact or an opposing attack; no minimum flight, guaranteed hit, teleport or protective immunity is added. Ground crashes are local presentation after the authoritative result and cannot change the winner. Timeout survivors do not crash. Three armor segments remain the damage model.
+
+The next player check is whether the full charge, committed dive and impact are satisfying while ordinary flight still feels natural. Competitive balance, unfamiliar-player comprehension, physical-phone performance and published networking remain unproven.
+
+---
+
+# Signature presentation validation — October 9, 2026
+
+This pass strengthens Meteor and Firework presentation while retaining combat behavior. Aircraft silhouettes, charge/release/impact effects, arena trim, armor bars and sound envelopes changed. A dedicated Meteor `dive` event preserves attack commitment when an attack begins, hits and recovers between 20 Hz snapshots.
+
+## Source and simulation checks
+
+- **24 combat/catalog checks** pass, including the immediate dive/hit/recovery case. Against the pre-edit local simulation, **100 rounds / 149,995 fixed ticks** match for every original physics and gameplay field. The comparison excludes only the presentation event stream, its serial counter and newly added metadata. This covers 36 no-effect angle-grid rounds and 64 rounds across every ordered modifier pair and both cross-power orders.
+- The modifier sample retains exactly the previous outcomes and pacing: median 23.95 seconds, 60 knockouts, four timeouts, 39 Firework wins, 24 Meteor wins and one draw. No movement, attack timing, armor, collision or damage tuning was applied.
+- **13 audio checks** pass. A mocked-constructor stress run processed 240 voice plays while retaining 16 Sound instances and at most 16 stored tweens. A real-simulation event replay at 20 Hz routed two Meteor dives, three Firework launches, five hits and one finish once each. These are mechanical routing/lifecycle checks, not a listening assessment.
+- **36 server scenarios**, 30 player-stat checks and nine cosmetic checks pass. Short-screen header score/button overlap was removed, and unmodified fights reclaim the empty effect footer's space.
+
+Reproduction: `build/testenv/bin/python scripts/sample_battle.py --samples 2 --modifier-sample --baseline build/battle-lab-v2/BattleSimulation.luau --json`. The baseline is an ignored local pre-edit copy. Existing physical-device, published-network, subjective sound and unfamiliar-player gates still apply.
+
+## Native Studio checks
+
+- Actual Luau passed all **24 combat/catalog and 13 audio checks**. The final client/server initialized without script errors. Native clicks entered the lab, launched fights, retried, edited settings, swapped powers, exited and re-entered.
+- Observed Meteor's charged nose, vent glow, targeting marker and an actual dive-hit burst with matching armor-bar flash. The default unmodified matchup finished at **29.0667 seconds**, Firework winning with one armor. A retry reproduced the fight and the first dive hit at 3.2167 seconds.
+- A second unmodified matchup, Firework 50° versus Meteor 45° with seed 731, showed the striped rocket and sputtering exhaust during actual flight at approximately 29.68 seconds. Its projectile existed from 29.4667–30.0333 seconds. A temporary runtime monitor observed visible rockets on 65 sampled frames, impact flashes on 16, and at most 532 scene descendants in that round. This is one local sample, not a frame-rate or mobile-performance benchmark; the monitor was removed afterward.
+- All 16 battle sounds loaded and the runtime advanced its played-event counter. Subjective loudness and timbre were not assessed. Source-specific sound routing is covered by the audio checks.
+- Full desktop rendering was inspected at 2075×856. Centered 390×440 setup, 390×730 combat and 705×430 setup/angle regions had no reported text overflow; both planes and the arena remained visible. These are desktop constrained-region checks, not device emulation or physical-phone evidence.
+- Returning to setup left no visible transient charge, muzzle, comet, impact or celebration pieces. Switching a plane's signature twice restored the original 10-piece Meteor signature and the same combat descendant count. Exit removed the scene and stopped battle voices, restoring the normal camera and walking controls. The final session is full-size Configure, Meteor/Firework with No Effect and optional angles closed.
+- Regenerated place and native source parity were checked for all 28 packaged scripts.
+
+**Presentation limit:** Meteor commonly commits and hits within one simulation tick; the new event preserves that moment between snapshots. In a seed-731 search of all UI angle pairs and both power orders, the longest unmodified armed interval was 0.10 seconds. This pass does not establish a sustained visible comet flight. A longer anticipation-to-contact interval is a future attack-spacing experiment; the movement and timing were deliberately retained here.
+
+---
+
+# Battle Lab effects and feedback — October 9, 2026
+
+The second combat iteration preserves the natural no-effect fighting movement and adds one optional effect per plane: Afterburner, Spring Bumper or Fizzy Fuel. Setup still defaults to No Effect; opening angles are behind an optional control. The earlier records below describe their own revisions.
+
+## Confirmed in this pass
+
+- **Movement preservation:** compared the previous Battle Lab simulation against this revision for 36 no-effect rounds and **50,606 fixed ticks**. Every pre-existing state value matched exactly, including positions, headings, phases, armor, projectiles and original event fields. Only new modifier fields and event timestamps were excluded from comparison.
+- **23 combat/catalog checks and 10 audio checks pass in actual Studio Luau.** Coverage includes modifier validation, a single spent bumper, brief recovery boosts, visible wake lifetime and ownership, swept wake hits, invulnerability, reset state, audio event deduplication, mute, stale-event suppression and bounded voice pools. The server harness passes **36 scenarios**, plus 30 player-stat and nine cosmetic checks. Its two new scenarios cover modifier locks/reset and launching the visible settings after a throttled configuration burst. Service doubles do not establish published networking behavior.
+- Actual Studio button clicks selected effects, launched rounds, reached results, retried and exited. Meteor + Fizzy Fuel at 35° versus Firework + No Effect at 30° ended at **19.3167 seconds** with a recorded `wake_hit` removing the final opposing armor pip. The winner retained two pips. Wakes were visible during recovery; the result showed the winner halo, disabled opposing aircraft and 3–1 landed-hit count. An earlier Afterburner/Spring Bumper round showed boost activation and the spent bumper state.
+- **Run it again** retained the selected experiment while advancing the round ID and restoring three armor per plane, zero elapsed time, no wakes/projectiles and zero active boosts. Exiting removed the battle scene, stopped all battle voices, restored the normal camera, unanchored the avatar and restored walking speed. Re-entering returned to the default Meteor/Firework setup with No Effect on both sides.
+- All **16 pooled battle sounds loaded** in Studio; the completed wake round recorded 20 played events. The sound toggle shared the hangar mute state and silenced both audio groups. These are runtime/load checks; subjective listening quality remains to be playtested.
+- Inspected full desktop rendering and centered **390×730, 705×430 and 390×440** UI regions. Power/effect descriptions and optional angle controls had no reported text overflow. Fixed the short-height setup layout so angle controls leave visible arena space. These are constrained-region checks in a desktop viewport, not physical-phone or device-emulation evidence.
+- The hangar now names the entrances **PLAY PLANE BATTLES / BATTLE LAB** and **DISTANCE FLIGHT · SOLO**. Combat cues distinguish windup, ordinary bumps, damaging hits, blocked hits and the finish. Studio reported client/server readiness with no game-script errors.
+- The regenerated `Skybound.rbxlx` contains **28 packaged scripts**, each verified against its source. Studio is left in full-size Battle Lab setup with default powers, No Effect and sound on.
+
+## Effect sample and limitations
+
+`build/testenv/bin/python scripts/sample_battle.py --samples 2 --modifier-sample --json` samples all 16 ordered effect pairs, both Meteor/Firework orders and two deterministic seeds at 32°: **64 rounds**, median **23.95 seconds**, P90 **30.283**, maximum **35**. Results were 60 knockouts and four timeouts, with 59 boost activations, 32 bumper blocks and 18 wake hits. Peak simultaneous wakes were five; simulation and rendering are capped at 12.
+
+The no-effect comparison additionally used `--baseline build/battle-lab-v1/BattleSimulation.luau` against the local pre-edit copy. That ignored build backup is local evidence, not a tracked test fixture.
+
+This small simulation sample establishes functioning interactions and bounded pacing, not competitive balance or retention. The user's positive movement feedback is one player's qualitative observation. Firework mirrors, unfamiliar-player comprehension/retry behavior, physical phone usability, final sound mix and real human/published-network tests remain open. Random offers, multi-round rivalry and combat progression are still future work.
+
+---
+
+# Battle Lab validation — October 9, 2026
+
+Local prototype work on `codex/skybound-battle-lab`. Product scope and future gates are in [the Clash design](docs/SKYBOUND-CLASH-DESIGN.md). The records below the divider describe earlier flight revisions; their dates and limitations still apply.
+
+## Confirmed in this pass
+
+- The pure combat simulation passes 14 checks in both Lupa and Roblox Studio's actual Luau runtime: deterministic replay, fixed ticks, invalid time/input guards, bounded flight, frontal armed strikes, moving projectile sweeps and ownership, impact protection, simultaneous knockouts, visible pressure and time-cap results.
+- The real server sources pass **34 scenarios** with mocked Roblox services, including five Battle Lab integration scenarios. These cover ordered command bursts after network delay, rejecting entry from every flight phase or a queue, keeping lab combat isolated from pads/flight commands/rewards, malformed settings, frozen countdown/fight settings, fresh retries, independent sessions, exit and disconnect cleanup. The same run passes 30 player-stat and nine cosmetic checks. This is service-double evidence, not a published network test.
+- In the existing `Skybound.rbxlx` Studio session, actual button clicks entered the lab, changed an angle, launched combat, reached results, returned to setup, and exited to the hangar. The client and server initialized without script errors. Combat showed both colored aircraft, rockets, attack cues, armor updates and results against a labelled simulated opponent.
+- Three rapid angle-button taps followed immediately by Launch arrived as the intended **50°** server setting. A final real round ended at **29.30 seconds**; clicking **Run it again** advanced the round ID, restored both planes to three armor pips, zero elapsed time and zero projectiles.
+- Exit removed the local battle scene, restored `CameraType.Custom`, unanchored the avatar, re-enabled movement and restored the existing flight/shop GUI. A subsequent legacy practice flight entered `Flight`, advanced its authoritative distance, and rendered with the lab inactive. That smoke test did not complete a new full two-human race.
+- Desktop layout was observed at a 2075×856 Studio viewport. Centered **390×730** and **705×280** UI regions were inspected in that same viewport for responsive controls and arena fit. These are constrained-region rendering checks, **not device emulation or physical-phone touch/performance evidence**. Compact setup sacrifices preview size; actual phone readability remains a playtest gate.
+- The setup camera was corrected to keep its viewing distance close enough for low-detail rendering; the full arena now remains visible during configuration. The legacy shop GUI is suppressed while the lab owns the screen. Setup input preserves pending edits across periodic snapshots and queues commands before launch.
+
+- The regenerated `Skybound.rbxlx` was parsed and every packaged script was verified against its current source. Studio was left in the full-size Battle Lab setup view with the default Meteor/Firework choices.
+
+## Reproducible pacing sample
+
+`build/testenv/bin/python scripts/sample_battle.py --samples 20 --mirrors` runs 20 deterministic seeds × nine angle pairings × four ordered signature matchups: **720 rounds**. The angles are 10°, 32° and 55°. These sample seeds differ from the lab's fixed seed 731.
+
+| Matchup | Rounds | Median seconds | Maximum seconds | Results |
+| --- | ---: | ---: | ---: | --- |
+| Meteor / Firework | 180 | 23.733 | 30.367 | Firework 93, Meteor 83, draw 4 |
+| Firework / Meteor | 180 | 23.633 | 30.450 | Firework 101, Meteor 79 |
+| Meteor / Meteor | 180 | 19.250 | 30.417 | 164 decisive, 16 draws |
+| Firework / Firework | 180 | 17.567 | 17.717 | 180 simultaneous-knockout draws |
+
+All sampled rounds ended through knockout. Timeout and pressure rules are separately covered by focused simulation checks. The timings establish a useful first tuning range; they do not establish competitive balance, enjoyment, retention, or optimized strategy. Firework mirrors remain a known limitation to address before expanding into a human rivalry mode.
+
+## Remaining gates
+
+Observe unfamiliar players explaining why hits/misses happened, voluntarily retrying after a loss, and making intentional setup changes. Check physical phones, touch/gamepad use, varied real network conditions and published performance. Add combat-specific sound/impact polish after the movement reads clearly. The first-to-two human rivalry, random offers, modifiers, progression and monetization are not part of this implementation.
+
+---
+
 # Prototype validation — walkable 1v1 revision
 
 Validated locally in Roblox Studio on October 8, 2026.
@@ -251,3 +366,13 @@ Checked in a Studio Server & Clients session with two players (each client viewp
 Preview: [two pilots](previews/hangar-redesign-two-pilots.jpg).
 
 Still to validate: portrait phones and the mobile jump-button clearance; gamepad navigation of the new buttons; reduced-motion mode; more than four other pilots (only four wall bays exist, so later arrivals are not shown).
+
+## Battle Lab on the redesigned hangar — October 9, 2026
+
+Integration of the Battle Lab work (as it stood in the working tree at 23:18) onto the hangar redesign. Conflicts were in the README, `build.py`, `Hud.luau`, `Main.client.luau` and `Main.server.luau`. The hangar's PLAY stack is kept; the Battle Lab entry button now sits directly above the plane selector instead of over it. A pilot searching through PLAY cannot enter the lab, a pilot in the lab shows as "Flying now" in other pilots' wall bays, and the hangar's local visuals are cleared while the lab is open.
+
+- `scripts/test_server.py`: 40 scenarios pass (33 hangar, 7 Battle Lab). `scripts/sample_battle.py --tests-only`: 27 pass.
+- Single-client Studio Play: no script errors. Entered the lab from the hangar, launched a Meteor vs Firework battle, returned with the Hangar button, then PLAY showed the rival search and Cancel returned to the hub.
+
+Not checked: Battle Lab results screens after this merge, and two clients with one in the lab.
+
