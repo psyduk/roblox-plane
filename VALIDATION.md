@@ -224,3 +224,30 @@ The final settings are a first balancing pass. Real-player tension, repeated pla
 - Completed two authoritative practice flights in one Studio session (diagnostics skipped setup waits; flight simulation and rewards were unchanged), including a real rematch button click. Awards advanced the bank 0 → 25 → 50; results and hangar switched from 15 more coins to ready to buy. Native UI purchase of Sky Blue debited 40 coins, ownership appeared with 10 remaining, and a separate Equip click set the equipped trail to Sky Blue. Studio session data resets when Play stops.
 - Temporary client-only module checks verified no payout replay on repeated snapshots, immediate reduced-motion final values, intermediate-width lobby title fit, and wallet/purchase-label bounds at 320/401/600/750/2075px widths including the maximum supported balance. A tied practice result exposed an existing misleading victory heading; it now shows DEAD HEAT, verified against a tied diagnostic snapshot. Temporary modules and GUIs were destroyed.
 - The final fresh Play logged client/server ready without runtime errors. One earlier inspection command used a wrong reward-frame name; that was an AssistantCommand diagnostic error, corrected during inspection, not a game script failure. `git diff --check` passed. Existing automated checks passed: 30 player-stats tests, 9 cosmetic-catalog tests, and 29 server scenarios. Published persistence and real-device input/performance were not revalidated by this UI pass.
+
+## Hangar redesign — October 9, 2026
+
+This pass rebuilt the hangar layout, added the PLAY quick match, the personal bay, the unlock stand, other pilots' bays, the flight board and runway departures, and made Fly Again skip the course vote. Preview: [hangar](previews/hangar-redesign.jpg).
+
+Checked in a single-client Studio Play session on desktop:
+
+- The place loads and plays with no script errors in the Output window, across two builds.
+- The spawn camera frames the parked plane, the unlock stand, both gates and the flight board.
+- The plane arrows and paint swatch change the parked plane (Cruiser to Skyhopper, coral to cyan).
+- PLAY shows the search status with a countdown, Cancel returns to the hub, and after six seconds alone it starts a practice flight against the ghost.
+- Fly Again after a practice flight opens directly on the power choice with the same course type.
+- Returning with 50 coins sent coins from the plane to the stand, which turned green with "Ready - claim it!". Pressing E at the stand bought and equipped Sky Blue, left 10 coins, recolored the plane's ribbons and advanced the stand to Afterburner.
+- The flight board showed the club best after the first landing, and a departure was visible on the runway.
+
+Also checked outside Studio: `scripts/test_server.py` passes 33 scenarios with mocked Roblox services. Four are new (PLAY pairing two pilots, the ghost fallback and in-place cancel, PLAY joining a pad waiter, the flight board), and two rematch scenarios now expect the Configure phase.
+
+Checked in a Studio Server & Clients session with two players (each client viewport about 494x228, a short landscape size):
+
+- Player2 pressed PLAY alone and, after the fallback, flew the ghost. Player1's hangar showed Player2's wall bay as "Flying now" and the flight board read "Now flying Player2 vs Practice · Skipper".
+- Both players pressed PLAY within the search window and entered the same human duel immediately; the flight HUD labelled the opponent as Rival, and results paid the 50-coin draw reward to each.
+- After both returned, Player1 saw Player2's plane parked in a wall bay labelled "In the hangar", showing the Skyhopper Player2 had just switched to.
+- The hub stack, coin pill and results layout fit the short landscape viewport. Player1's Output showed no script errors. Player2's Output showed one Roblox CoreScript chat error (`ChatScript: SetCore CoreGuiChatConnections has not been registered`), which is Studio's own script, not Skybound's.
+
+Preview: [two pilots](previews/hangar-redesign-two-pilots.jpg).
+
+Still to validate: portrait phones and the mobile jump-button clearance; gamepad navigation of the new buttons; reduced-motion mode; more than four other pilots (only four wall bays exist, so later arrivals are not shown).

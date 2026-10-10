@@ -55,7 +55,8 @@ def make_runtime(studio=True, published=False):
     function snapshots:FireClient(player,data)Harness.sent[player.UserId]=data end
     function snapshots:FireAllClients(data)for _,p in ipairs(players.players)do Harness.sent[p.UserId]=data end end
     workspace=obj('Workspace');function workspace:GetServerTimeNow()return Harness.time end
-    local world={LOBBY_SPAWN=Vector3.new(0,7,0),DUEL_STATIONS={},buildLobby=function()end,updateLobbyQueues=function(counts)Harness.queueCounts=counts end}
+    local world={LOBBY_SPAWN=Vector3.new(0,7,0),DUEL_STATIONS={},buildLobby=function()end,updateLobbyQueues=function(counts)Harness.queueCounts=counts end,
+     LINEUP_BAYS={1,2,3,4},updateLobbyBoard=function(flying,best)Harness.board={flying=flying,best=best}end}
     for index,x in ipairs({-81,-27,27,81})do table.insert(world.DUEL_STATIONS,{id='duel'..index,name='DUEL '..index,seats={Vector3.new(x-8,4.3,-47),Vector3.new(x+8,4.3,-47)}})end
     shared.World={module=world}
     shared.Simulation={}
@@ -500,7 +501,9 @@ SCENARIOS = {
         assert(Harness.latest(a).phase=='Results')
         Harness.send(b,'rematch');Harness.advance(0.2)
         local nextRound=Harness.latest(a)
-        assert(nextRound.phase=='Voting' and nextRound.matchId==old.matchId and nextRound.roundId==old.roundId+1)
+        assert(nextRound.phase=='Configure' and nextRound.matchId==old.matchId and nextRound.roundId==old.roundId+1)
+        assert(nextRound.courseName==old.courseName and nextRound.courseSeed~=old.courseSeed)
+        for _,count in pairs(nextRound.votes)do assert(count==0)end
         assert(#nextRound.results==0 and nextRound.elapsed==0)
         for _,entry in ipairs(nextRound.players)do assert(not entry.flight and not entry.ready and not entry.rematchReady)end
         Harness.send(a,'rematch');Harness.advance(0.2)
@@ -517,6 +520,60 @@ SCENARIOS = {
         assert(Harness.latest(a).phase=='Lobby' and not a.Character.HumanoidRootPart.Anchored)
         assert(Harness.shared:GetAttribute('ActiveDuels')==0)
     ''',
+    "PLAY pairs two searching pilots without pads": r'''
+        local a,b,c=Harness.add(101),Harness.add(102),Harness.add(103)
+        Harness.send(a,'play');Harness.advance(0.3)
+        local waiting=Harness.latest(a)
+        assert(waiting.phase=='Queued' and waiting.queue.quick and waiting.matchId==0)
+        assert(not waiting.economy.canShop)
+        Harness.send(b,'play');Harness.advance(0.3)
+        local sa,sb=Harness.latest(a),Harness.latest(b)
+        assert(sa.phase=='Voting' and sa.matchId~=0 and sa.matchId==sb.matchId)
+        assert(#sa.players==2 and not sa.players[1].bot and not sa.players[2].bot)
+        assert(Harness.latest(c).phase=='Lobby')
+        Harness.advance(7)
+        assert(Harness.latest(a).matchId==sa.matchId and #Harness.latest(a).players==2)
+    ''',
+    "PLAY falls back to one labelled ghost and can be cancelled in place": r'''
+        local a=Harness.add(101)
+        a.Character:PivotTo(CFrame.new(12,7,20))
+        Harness.send(a,'play');Harness.advance(0.3)
+        assert(Harness.latest(a).phase=='Queued')
+        Harness.send(a,'leaveQueue');Harness.advance(0.3)
+        assert(Harness.latest(a).phase=='Lobby' and Harness.latest(a).economy.canShop)
+        assert(a.Character.HumanoidRootPart.Position.X==12)
+        Harness.advance(7)
+        assert(Harness.latest(a).phase=='Lobby')
+        Harness.send(a,'play');Harness.advance(5)
+        assert(Harness.latest(a).phase=='Queued')
+        Harness.send(a,'play');Harness.advance(1.5)
+        local s=Harness.latest(a)
+        assert(s.phase=='Voting' and #s.players==2 and s.players[2].bot)
+        Harness.debug('launch',{userId=a.UserId});Harness.advance(46)
+        assert(Harness.latest(a).stats.practiceFlights==1)
+    ''',
+    "PLAY joins a pilot already waiting on a pad and a leaver frees the search": r'''
+        local a,b,c=Harness.add(101),Harness.add(102),Harness.add(103)
+        Harness.move(a,1,1);Harness.advance(0.3)
+        assert(Harness.latest(a).phase=='Queued' and not Harness.latest(a).queue.quick)
+        Harness.send(b,'play');Harness.advance(0.3)
+        local sa,sb=Harness.latest(a),Harness.latest(b)
+        assert(sa.phase=='Voting' and sa.matchId==sb.matchId and sa.matchId~=0)
+        assert(Harness.queueCounts.duel1==0)
+        Harness.send(c,'play');Harness.advance(0.3);Harness.remove(c);Harness.advance(0.3)
+        local d=Harness.add(104)
+        Harness.send(d,'play');Harness.advance(0.3)
+        assert(Harness.latest(d).phase=='Queued')
+        assert(d:GetAttribute('SkyboundPlane')=='cruiser' and d:GetAttribute('SkyboundBay')>0)
+        assert(a:GetAttribute('SkyboundFlying')==true and d:GetAttribute('SkyboundFlying')==false)
+    ''',
+    "flight board names the active duel and keeps the club best": r'''
+        local a=Harness.add(101)
+        Harness.send(a,'practice');Harness.debug('launch',{userId=a.UserId});Harness.advance(1)
+        assert(string.find(Harness.board.flying,'Pilot101',1,true))
+        Harness.advance(46)
+        assert(Harness.board.flying==nil and Harness.board.best.distance>0)
+    ''',
     "practice has exactly one ghost and supports a one-human rematch": r'''
         local a,b=Harness.add(101),Harness.add(102)
         Harness.send(a,'practice');Harness.advance(0.2)
@@ -526,7 +583,7 @@ SCENARIOS = {
         Harness.debug('launch',{userId=a.UserId});Harness.advance(46)
         assert(Harness.latest(a).phase=='Results')
         Harness.send(a,'rematch');Harness.advance(0.2)
-        assert(Harness.latest(a).phase=='Voting' and Harness.latest(a).roundId==2)
+        assert(Harness.latest(a).phase=='Configure' and Harness.latest(a).roundId==2)
     ''',
     "unready human duel follows phase deadlines and returns both to hub": r'''
         local a,b=Harness.add(101),Harness.add(102)

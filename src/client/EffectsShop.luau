@@ -87,22 +87,8 @@ function Shop.new(send)
     self.wallet.TextScaled=true
     create("UITextSizeConstraint",{MinTextSize=14,MaxTextSize=42},self.wallet)
     self.walletCaption=text(self.openButton,"CoinLabel","COINS",12,C.muted)
-    self.nextPreview,self.nextWorld,self.nextCamera=viewport(self.openButton,"NextEffectPreview")
-    self.nextCaption=text(self.openButton,"NextCaption","NEXT FLIGHT EFFECT",11,C.muted)
-    self.nextName=display(self.openButton,"NextName","SKY BLUE",23,C.white); self.nextName.TextWrapped=true
-    self.nextName.TextScaled=true
-    self.nextNameSize=create("UITextSizeConstraint",{MinTextSize=12,MaxTextSize=23},self.nextName)
-    self.goal=text(self.openButton,"NextUnlock","40 more coins",14,C.ink)
-    self.progress=box(self.openButton,"RewardProgress",C.tile); round(self.progress,8); stroke(self.progress,C.ink,1.5)
-    self.progressFill=box(self.progress,"Fill",C.gold); round(self.progressFill,8)
-    self.progressFill.Size=UDim2.fromScale(0,1)
-    self.progressLabel=text(self.progress,"ProgressLabel","0 / 40",13,C.ink)
-    self.progressLabel.Size=UDim2.fromScale(1,1); self.progressLabel.TextXAlignment=Enum.TextXAlignment.Center
-    self.rewardHint=text(self.openButton,"RewardHint","Finish flights. Collect your favorite trail.",11,C.muted)
-    self.rewardCTA=box(self.openButton,"BrowseAction",C.gold); round(self.rewardCTA,10); stroke(self.rewardCTA)
-    self.rewardCTALabel=text(self.rewardCTA,"Label","BROWSE FLIGHT EFFECTS",18,C.ink)
-    self.rewardCTALabel.Font=Enum.Font.FredokaOne
-    self.rewardCTALabel.Size=UDim2.fromScale(1,1); self.rewardCTALabel.TextXAlignment=Enum.TextXAlignment.Center
+    self.browseLabel=text(self.openButton,"Browse","EFFECTS",15,C.ink)
+    self.browseLabel.Font=Enum.Font.FredokaOne; self.browseLabel.TextXAlignment=Enum.TextXAlignment.Right
     self.overlay=box(self.gui,"ShopOverlay",C.ink)
     self.overlay.Size=UDim2.fromScale(1,1); self.overlay.BackgroundTransparency=0.18
     self.overlay.Visible=false; self.overlay.Active=true
@@ -138,11 +124,7 @@ function Shop.new(send)
     self.action=button(self.card,"PurchaseOrEquip","EQUIPPED",C.teal); self.action.TextColor3=C.ink
     self.action.TextWrapped=true
     self.saveLabel=text(self.card,"SaveStatus","",11,C.muted)
-    table.insert(self.connections,self.openButton.Activated:Connect(function()
-        self.selected=self.nextItemId or (self.economy and self.economy.equippedTrail) or Catalog.DEFAULT_ID
-        self.onlyOwned=false
-        self:open()
-    end))
+    table.insert(self.connections,self.openButton.Activated:Connect(function() self:openAt(self.nextItemId) end))
     table.insert(self.connections,self.closeButton.Activated:Connect(function() self:close() end))
     table.insert(self.connections,self.filter.Activated:Connect(function()
         self.onlyOwned=not self.onlyOwned
@@ -179,58 +161,20 @@ function Shop:_layout()
     self.lastSize=size
     local portrait=size.X<600
     local short=not portrait and size.Y<500
-    local rw=short and 252 or (portrait and math.min(286,size.X-24) or 318)
-    local smallPortrait=portrait and size.Y<540
-    local rh=short and 176 or (smallPortrait and 140 or (portrait and 246 or 258))
+    -- The wallet is a compact pill; the next unlock lives on its stand in the hangar.
+    local rw=portrait and size.X-24 or (short and 190 or 214)
+    local rh=short and 44 or 46
     self.openButton.AnchorPoint=portrait and Vector2.zero or Vector2.new(1,0)
-    self.openButton.Position=portrait and UDim2.fromOffset(12,242) or UDim2.new(1,short and -12 or -18,0,short and 76 or 84)
+    self.openButton.Position=portrait and UDim2.fromOffset(12,64) or UDim2.new(1,-16,0,short and 6 or 10)
     self.openButton.Size=UDim2.fromOffset(rw,rh)
-    local coinSize=short and 34 or 44
-    place(self.coin,14,12,coinSize,coinSize)
-    self.coinMark.TextSize=short and 24 or 30
-    place(self.wallet,coinSize+24,short and 6 or 5,rw-coinSize-38,short and 35 or 48)
-    self.wallet.TextSize=short and 31 or 42
-    place(self.walletCaption,coinSize+26,short and 38 or 48,rw-coinSize-38,14)
-    self.walletCaption.TextSize=short and 10 or 12
-    local rewardY=short and 56 or 76
-    local previewWidth=short and 86 or 112
-    local previewHeight=short and 46 or (portrait and 60 or 72)
-    place(self.nextPreview,12,rewardY,previewWidth,previewHeight)
-    self.nextCamera.FieldOfView=short and 40 or 38
-    local tx=previewWidth+22
-    local tw=rw-tx-12
-    place(self.nextCaption,tx,rewardY-3,tw,14)
-    self.nextCaption.TextSize=short and 9 or 10
-    place(self.nextName,tx,rewardY+11,tw,short and 22 or 36)
-    self.nextName.TextSize=short and 17 or 21
-    self.nextNameSize.MaxTextSize=short and 17 or 21
-    place(self.goal,tx,rewardY+(short and 34 or 49),tw,short and 16 or 19)
-    self.goal.TextSize=short and 11 or 12
-    self.goal.TextWrapped=true
-    local barY=short and 110 or (portrait and 151 or 160)
-    place(self.progress,14,barY,rw-28,short and 20 or 24)
-    self.progressLabel.TextSize=short and 12 or 14
-    place(self.rewardHint,14,barY+27,rw-28,17)
-    self.rewardHint.Visible=not short
-    self.rewardHint.TextSize=portrait and 10 or 11
-    place(self.rewardCTA,12,rh-(short and 38 or 50),rw-24,short and 30 or 38)
-    self.rewardCTALabel.TextSize=short and 15 or 18
-    self.nextPreview.Visible=not smallPortrait
-    self.nextCaption.Visible=not smallPortrait
-    if smallPortrait then
-        -- Keep the wallet usable below the lobby controls even in a short portrait window.
-        place(self.coin,12,10,32,32); self.coinMark.TextSize=23
-        place(self.wallet,54,4,80,34); self.wallet.TextSize=29
-        place(self.walletCaption,56,35,80,14); self.walletCaption.TextSize=10
-        place(self.nextName,136,8,rw-148,28); self.nextName.TextSize=16
-        self.nextNameSize.MaxTextSize=16
-        place(self.goal,136,36,rw-148,20); self.goal.TextSize=11
-        place(self.progress,12,64,rw-24,22)
-        self.rewardHint.Visible=false
-        place(self.rewardCTA,12,99,rw-24,30); self.rewardCTALabel.TextSize=15
-        local available=math.max(80,size.Y-254)
-        self.rewardBaseScale=math.min(1,available/rh)
-    else self.rewardBaseScale=1 end
+    local coinSize=rh-14
+    place(self.coin,10,7,coinSize,coinSize)
+    self.coinMark.TextSize=22
+    place(self.wallet,coinSize+18,2,rw-coinSize-108,rh-16)
+    place(self.walletCaption,coinSize+19,rh-16,60,12)
+    self.walletCaption.TextSize=9
+    place(self.browseLabel,rw-96,0,84,rh)
+    self.rewardBaseScale=1
     if not self.rewardTween or self.rewardTween.PlaybackState~=Enum.PlaybackState.Playing then
         self.rewardScale.Scale=self.rewardBaseScale
     end
@@ -318,6 +262,13 @@ function Shop:open()
     if UserInputService.GamepadEnabled then GuiService.SelectedObject=self.cards[self.selected].button end
 end
 
+-- Open on a particular effect, defaulting to the trail currently equipped.
+function Shop:openAt(itemId)
+    self.selected=Catalog.get(itemId) and itemId or (self.economy and self.economy.equippedTrail) or Catalog.DEFAULT_ID
+    self.onlyOwned=false
+    self:open()
+end
+
 function Shop:close()
     self.overlay.Visible=false
     if GuiService.SelectedObject and GuiService.SelectedObject:IsDescendantOf(self.overlay) then GuiService.SelectedObject=nil end
@@ -347,40 +298,20 @@ function Shop:_refresh()
     self.collection.Text=tostring(count).." / "..#Catalog.ORDER.." OWNED"
     self.filter.Text=self.onlyOwned and "MY COLLECTION" or "ALL EFFECTS"
     self.nextItemId=nextItem and nextItem.id or nil
-    local target=nextItem or Catalog.get(economy.equippedTrail) or Catalog.get(Catalog.DEFAULT_ID)
-    local settings=self.settings or {}
-    local previewKey=target.id..":"..tostring(settings.color)..":"..tostring(settings.planeId)
-    if previewKey~=self.nextPreviewKey then
-        self.nextPreviewKey=previewKey
-        previewPlane(self.nextWorld,target,settings)
-    end
     local canAfford=nextItem and credits>=nextItem.price
     if self.lastNextId~=self.nextItemId then self.pendingRewardPulse=nil end
     if self.lastNextId==self.nextItemId and self.lastAffordable==false and canAfford then
         self.pendingRewardPulse=self.nextItemId
     end
     self.lastNextId=self.nextItemId; self.lastAffordable=canAfford==true
-    self.nextCaption.Text=nextItem and "NEXT FLIGHT EFFECT" or "YOUR COLLECTION"
-    self.nextName.Text=string.upper(target.name)
-    self.goal.Text=nextItem and (canAfford and "Ready to buy!" or ((nextItem.price-credits).." more coins")) or "All effects owned!"
-    self.progressFill.Size=UDim2.fromScale(nextItem and nextItem.price>0 and math.clamp(credits/nextItem.price,0,1) or 1,1)
-    self.progressFill.BackgroundColor3=canAfford and C.green or C.gold
-    self.progressLabel.Text=nextItem and (math.min(credits,nextItem.price).." / "..nextItem.price.." COINS") or "COMPLETE COLLECTION"
-    self.rewardHint.Text=nextItem and (canAfford and "Choose your new look in the shop."
-        or (nextItem.price-credits<=Catalog.PRACTICE_REWARD and "One more finished flight to afford it!" or "Every finished flight brings it closer."))
-        or "Fly your signature trail."
-    self.rewardCTALabel.Text=canAfford and "VIEW NEW FLIGHT EFFECT" or "BROWSE FLIGHT EFFECTS"
-    self.rewardCTA.BackgroundColor3=canAfford and C.green or C.gold
-    if not self.economy then
-        self.goal.Text="Loading collection…"; self.rewardHint.Text="Your flight effects will appear here."
-        self.progressLabel.Text="LOADING…"
-    end
+    self.browseLabel.Text=canAfford and "NEW!" or "EFFECTS"
+    self.openButton.BackgroundColor3=canAfford and C.gold or C.panel
     if self.pendingRewardPulse==self.nextItemId and canAfford and self.openButton.Visible and not self.overlay.Visible then
         self.pendingRewardPulse=false
         if not self.reducedMotion then
             if self.rewardTween then self.rewardTween:Cancel() end
             self.rewardScale.Scale=self.rewardBaseScale or 1
-            self.rewardTween=TweenService:Create(self.rewardScale,TweenInfo.new(0.24,Enum.EasingStyle.Back,Enum.EasingDirection.Out,0,true),{Scale=(self.rewardBaseScale or 1)*1.035})
+            self.rewardTween=TweenService:Create(self.rewardScale,TweenInfo.new(0.24,Enum.EasingStyle.Back,Enum.EasingDirection.Out,0,true),{Scale=(self.rewardBaseScale or 1)*1.06})
             self.rewardTween:Play()
         end
     end

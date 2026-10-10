@@ -14,6 +14,7 @@ local Hud = require(script.Parent:WaitForChild("Hud"))
 local EffectsShop = require(script.Parent:WaitForChild("EffectsShop"))
 local FlightAudio = require(script.Parent:WaitForChild("FlightAudio"))
 local PilotAvatar = require(script.Parent:WaitForChild("PilotAvatar"))
+local HangarBay = require(script.Parent:WaitForChild("HangarBay"))
 local audio = FlightAudio.new()
 local command = shared:WaitForChild("Command")
 local snapshots = shared:WaitForChild("Snapshot")
@@ -58,23 +59,35 @@ local function send(kind, values)
     command:FireServer(payload)
 end
 local effectsShop=EffectsShop.new(send)
-game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt,player)
-    if player and player~=localPlayer then return end
-    if prompt.Name=="EffectsShopPrompt" then effectsShop:open()
-    elseif prompt.Name=="PracticePrompt" and latest and latest.phase=="Lobby" and not effectsShop:isOpen() then send("practice")
-    elseif prompt.Name=="FleetPrompt" and latest and latest.phase=="Lobby" and not effectsShop:isOpen() then
-        local plane=PlaneCatalog.get(prompt:GetAttribute("PlaneId"))
-        if plane then
-            for _,entry in ipairs(latest.players) do
-                if entry.userId==localPlayer.UserId then
-                    local settings=table.clone(entry.settings)
-                    settings.planeId=plane.id; settings.angle=plane.defaultAngle; settings.speed=nil
-                    send("configure",{settings=settings})
-                    break
-                end
-            end
+local hangarBay=HangarBay.new({send=send,openShop=function(itemId) effectsShop:openAt(itemId) end})
+-- The plane in the pilot's bay is changed in place, from the HUD or the bay console.
+local function changeLook(change)
+    if not latest or latest.phase~="Lobby" or effectsShop:isOpen() then return end
+    for _,entry in ipairs(latest.players) do
+        if entry.userId==localPlayer.UserId then
+            local settings=table.clone(entry.settings)
+            change(settings); settings.speed=nil
+            send("configure",{settings=settings})
+            break
         end
     end
+end
+local function cyclePlane(delta)
+    changeLook(function(settings)
+        local index=table.find(PlaneCatalog.ORDER,settings.planeId) or 1
+        local plane=PlaneCatalog.get(PlaneCatalog.ORDER[(index-1+delta)%#PlaneCatalog.ORDER+1])
+        settings.planeId=plane.id; settings.angle=plane.defaultAngle
+    end)
+end
+local function cyclePaint()
+    changeLook(function(settings) settings.color=(settings.color or 1)%4+1 end)
+end
+game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt,player)
+    if player and player~=localPlayer then return end
+    if effectsShop:isOpen() then return end
+    if prompt.Name=="EffectsShopPrompt" then effectsShop:openAt(nil)
+    elseif prompt.Name=="UnlockStandPrompt" then hangarBay:activateStand()
+    elseif prompt.Name=="HeroBayPrompt" then cyclePlane(1) end
 end)
 local function cycleSpectate(delta)
     if not latest then return end
@@ -93,6 +106,9 @@ hud=Hud.new({
     ready=function(ready) send("ready",{ready=ready,settings=hud:getLocalSettings()}) end,
     spectate=cycleSpectate,
     practice=function() send("practice") end,
+    play=function() send("play") end,
+    cyclePlane=cyclePlane,
+    cyclePaint=cyclePaint,
     leaveQueue=function() send("leaveQueue") end,
     returnLobby=function() send("returnLobby") end,
     rematch=function() send("rematch") end,
@@ -341,7 +357,8 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
             local focus=character.HumanoidRootPart.Position+Vector3.new(0,2,0)
             localPlayer.CameraMinZoomDistance=32
             localPlayer.CameraMaxZoomDistance=70
-            camera.CFrame=CFrame.lookAt(focus+Vector3.new(8,10,29),focus)
+            -- Behind the pilot, looking over their plane toward the open doors.
+            camera.CFrame=CFrame.lookAt(focus+Vector3.new(7,10,29),focus)
             camera.Focus=CFrame.new(focus)
             lobbyCameraReset=false; restoreZoomAt=os.clock()+0.2
         elseif restoreZoomAt>0 and os.clock()>=restoreZoomAt then
@@ -454,6 +471,7 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
     if hud.setLobbyView then hud:setLobbyView(lobbyView) end
     hud:update(latest,localPlayer.UserId,watchedUserId)
     effectsShop:update(latest,own and own.settings)
+    hangarBay:update(latest,own and own.settings,lobbyView,dt)
     if (phase=="Aim" or phase=="Countdown") and previewPlane then
         local origin,visible=camera:WorldToViewportPoint(previewPlane:GetPivot().Position)
         local points=table.create(#aimTrajectory)

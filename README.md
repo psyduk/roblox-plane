@@ -8,11 +8,11 @@ The observed BALL vs BALL lobby references and the scope chosen for this pass ar
 
 ## Play locally
 
-Open `Skybound.rbxlx` in Roblox Studio and press **Play**. The hangar builds automatically. Spawning does not start a match. Parked planes and fleet selection are to the left, the **Flight Effects** counter is to the right, and the four 1v1 departure gates are ahead. The open hangar doors frame an apron and runway; a solo dispatch desk also starts practice.
+Open `Skybound.rbxlx` in Roblox Studio and press **Play**. The hangar builds automatically. You spawn beside your own bay, where your selected plane is parked with its propeller turning and your equipped trail streaming behind it. Spawning does not start a match. The **next unlock** stand is beside the bay, other pilots' planes line the left wall, the **Flight Effects** counter is in the right corner, and two 1v1 gates are ahead. The open doors frame the apron and runway, and a flight board above them shows the duel in the air and the club's best landing.
 
-For a human duel, start a local server with at least two player clients using Studio's multiplayer test controls. Walk one player onto each of the two pads at the same duel station. Standing on a single pad waits for an opponent; walking off or pressing **Leave Queue** cancels that queue. Different stations can host separate matches concurrently.
+Press **PLAY** to fly. It pairs you with another pilot who pressed PLAY or who is waiting on a pad; if nobody is available after six seconds it starts a flight against one labelled practice ghost. **Cancel** stops the search without moving you. To challenge a specific pilot, each of you walks onto one of the two pads at the same gate; walking off cancels. For a human duel in Studio, start a local server with at least two player clients.
 
-To test alone, press **Practice vs Ghost**. This explicitly starts a duel against one labelled practice pilot. Ghosts are not added to human duels.
+**Solo** starts a practice flight against the ghost immediately. Ghosts are never added to human duels.
 
 1. **Pair up:** two occupied pads create an independent 1v1 match and move both players into its match view.
 2. **Vote:** choose Coast, Skyline, or Storm. The vote lasts eight seconds; both pilots receive the same generated course conditions.
@@ -20,14 +20,14 @@ To test alone, press **Practice vs Ghost**. This explicitly starts a duel agains
 4. **Aim your jet:** on the wider runway view, click or touch ahead of the jet to point it toward your chosen direction, or hold and drag to adjust within **15–60°**. Trajectory dots help line up the shot, keeping the jet clear of angle labels and a crosshair. The dotted guide previews the first three seconds without predicting future course contacts. Release sets the angle; **Ready to Launch** confirms it. Both pilots confirming, or the separate 20-second aiming timer expiring, starts the shared three-second countdown.
 5. **Watch:** the planes fly automatically through staggered clusters of numbers and missiles. Fuel marked **+5 / +10 / +20** adds momentum. Missiles reduce speed and push the plane down unless Missile Muncher eats them. Power speed bursts fade while retaining the distance already earned. Meteor stays committed to its dive through fuel contacts; its own pull-up creates the recovery. After **18 seconds**, the shared **Headwind** builds over ten seconds, increasing downward pull and reducing fuel lift for both pilots. The HUD counts down to it. Floating feedback shows actual pickups, hits, shield saves and fully cleared near misses; near misses award no extra distance or boost.
 6. **Touch down:** final ground contact locks that plane's horizontal distance; Pinball spends its three bounces first. The other plane continues until its own touchdown or the 45-second flight limit.
-7. **Choose what is next:** results offer **Rematch** or **Return to Lobby**. A human rematch requires both pilots; practice requires only the human's request. Results expire back to the lobby after 90 seconds, without automatically starting another match.
+7. **Choose what is next:** results offer **Fly Again** or **Back to Hangar**. Fly Again keeps the same course type with a new seed and skips the vote, opening straight on the power choice. A human rematch requires both pilots; practice requires only the human's request. Results expire back to the hangar after 90 seconds, without automatically starting another match.
 
 ## Controls and scoring
 
 | Context | Controls |
 | --- | --- |
 | Hub and queue | Normal Roblox movement and camera; walk onto or off a paired pad |
-| Hangar stations | Use the nearby prompt (**E** on keyboard) to select a free fleet plane, browse effects or start solo practice |
+| Hangar | **PLAY**, **Solo**, the plane arrows and the paint swatch are on screen; **E** at the bay console swaps planes, at the unlock stand views or claims the next effect, and at the counter opens the shop |
 | Effects shop | **Flight Effects** also opens the shop anywhere in the hub; select an effect, buy with coins, then **Equip**; **X**, **Escape** or gamepad **B** closes it |
 | Selection | Choose a power, plane and color; **Lock In Power** or **R** confirms the choices |
 | Aiming | Click/tap ahead or hold and drag to aim; release sets the angle; **A / D** adjust by 1°; **Ready to Launch** or **R** marks ready |
@@ -82,9 +82,9 @@ The starter analytics module uses native Roblox custom events for session durati
 
 ### Presentation
 
-The interface uses bold cartoon lettering, larger primary controls, and a clear focus for each phase. The hangar wallet shows a coin balance, the next unowned trail preview, and progress toward its price. Results count up the server-confirmed coin award once per round and show the next purchase goal; reduced-motion mode displays the final values immediately. Race distance, lead, power charges, and pilot markers are enlarged, with camera framing derived from the space between the flight controls. Portrait layouts stack choices; short landscape layouts keep results and their actions together.
+The interface uses bold cartoon lettering, larger primary controls, and a clear focus for each phase. The hangar HUD is one bottom stack (plane selector, PLAY, Solo) plus a coin pill that opens the shop. Progress toward the next unowned trail is shown on the stand in the hangar: a ring of lights fills as coins arrive, and coins earned in a flight fly from your plane to the stand when you return. When the trail is affordable the stand turns green and claiming it there buys and equips it. Results count up the server-confirmed coin award once per round and show the next purchase goal; reduced-motion mode displays the final values immediately. Race distance, lead, power charges, and pilot markers are enlarged, with camera framing derived from the space between the flight controls. Portrait layouts stack choices; short landscape layouts keep results and their actions together.
 
-The hangar has metal walls, roof trusses and skylights, work lights, concrete floors, taxiway markings, parked aircraft with landing gear, maintenance carts and labelled departure gates. The fleet bays select free planes; the effects counter opens the working shop. Three parked effect displays show trail colors and prices, and the solo dispatch corner offers practice.
+The hangar has metal walls, roof trusses and skylights, warm late-afternoon light, a taxi line from your bay to the doors, maintenance carts and two labelled departure gates. Each area has one color: cyan for your bay, violet for flight effects, amber for duels. A pilot who is in a duel has an empty bay marked **Flying now**. Planes take off from the runway outside on a timer and whenever a duel starts. Reduced-motion mode keeps the ribbons, stand and coins static and skips departures.
 
 Coast has warm grass, coral bluffs, palms and lighthouses. Skyline has an elevated runway among sunset towers and skybridges. Storm has purple basalt, neon crystals, pylons and distant lightning. All three retain ground contact at y=0 and the existing simulation rules. Arena lighting is local to the duel and resets on returning to the hub.
 
@@ -94,7 +94,7 @@ Flight sounds mix events from both pilots, including the practice ghost, with re
 
 ## Current scope
 
-- Walkable procedural aircraft hangar, selectable fleet bays, four paired duel gates, queue occupancy displays and optional practice.
+- Walkable procedural aircraft hangar with a personal plane bay, an unlock stand, other pilots' bays, a live flight board, two paired duel gates and a PLAY quick match with a ghost fallback.
 - Earned coin rewards, five purchasable cosmetic trails, collection filtering, preview and separate equip actions.
 - Server-controlled cosmetic ownership and equipped trails, with Studio session storage and a published persistence implementation awaiting live verification.
 - Independent match state, votes, settings and results for each pair.
@@ -122,11 +122,12 @@ This regenerates `Skybound.rbxlx` from the source files. Stop any running playte
 | `src/shared/PowerCatalog.luau` | Free round powers, descriptions, launch hints and display colors |
 | `src/shared/CosmeticCatalog.luau` | Earned trail IDs, prices, appearance and completed-flight reward amounts |
 | `src/shared/Simulation.luau` | Deterministic flight physics, automatic powers, aim preview, fuel, missiles and course generation |
-| `src/shared/World.luau` | Procedural hangar, fleet and effects stations, paired pads, course scenery and cosmetic plane rendering |
+| `src/shared/World.luau` | Procedural hangar, bays, flight board and effects counter, paired pads, course scenery and cosmetic plane rendering |
 | `src/server/Main.server.luau` | Queues, independent duels, command validation, rematches, forfeits and rankings |
 | `src/client/Main.client.luau` | Hub/match camera, interpolation, avatar controls, input and snapshots |
 | `src/client/Hud.luau` | Hub guidance, voting, launch setup, duel readout and results |
 | `src/client/EffectsShop.luau` | Responsive effects catalog, collection filtering, plane/color preview, buy/equip actions and save feedback |
+| `src/client/HangarBay.luau` | Per-pilot hangar visuals: your parked plane and trail ribbons, the next-unlock stand and claim, coin flight, other pilots' bays and runway departures |
 | `src/client/PilotAvatar.luau` | Cosmetic seated player avatars and neutral ghost pilots |
 | `src/client/FlightAudio.luau` | Pooled two-pilot flight sounds, independent event cursors and mute |
 | `src/server/PlayerStats.luau` | Fenced statistics and cosmetic economy, credit rewards, validated purchases/equipment and session-only fallback |
