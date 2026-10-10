@@ -6,11 +6,11 @@ local PowerCatalog = {}
 PowerCatalog.DEFAULT_ID = "Pinball"
 local order = { "Pinball", "Muncher", "Meteor" }
 local powers = {
-	Pinball = { id = "Pinball", name = "Pinball", description = "Bounce off the ground three times. Every bounce kicks you forward!",
+	Pinball = { id = "Pinball", name = "Pinball", description = "Three quick ground bounces. Each skips lower and bursts forward!",
 		aimHint = "Aim low. Turn the ground into a launchpad.", color = { r = 255, g = 218, b = 70 } },
-	Muncher = { id = "Muncher", name = "Missile Muncher", description = "Eat three missiles. Each bite gives a bigger speed boost!",
+	Muncher = { id = "Muncher", name = "Missile Muncher", description = "Eat three missiles. Each bite gives a bigger burst of speed!",
 		aimHint = "Aim into missiles. Three bites, then watch out.", color = { r = 147, g = 255, b = 70 } },
-	Meteor = { id = "Meteor", name = "Meteor Dive", description = "Dive from your peak, then blast forward just above the ground!",
+	Meteor = { id = "Meteor", name = "Meteor Dive", description = "Dive from your peak, then skim low with a huge burst of speed!",
 		aimHint = "Aim high. More height means a bigger blast.", color = { r = 255, g = 98, b = 63 } },
 }
 

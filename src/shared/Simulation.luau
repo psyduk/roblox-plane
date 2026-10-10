@@ -13,9 +13,21 @@ Simulation.GRAVITY = 3.8
 Simulation.THIN_AIR_HEIGHT = 135
 Simulation.NEAR_MISS_MARGIN = 12
 Simulation.EVENT_HISTORY_LIMIT = 12
+-- Power kicks are brief surges, separate from earned fuel/launch momentum.
+-- About 90% fades in three seconds; distance already gained is never removed.
+Simulation.POWER_BURST_DECAY = 0.8
+Simulation.METEOR_BURST_DECAY = 0.3
+Simulation.PRESSURE_START = 18
+Simulation.PRESSURE_RAMP = 10
 
 local function clamp(value, low, high)
 	return math.max(low, math.min(high, value))
+end
+
+-- Both pilots launch together, so elapsed flight time gives them the same
+-- headwind. Position, lead and remaining power charges never affect pressure.
+function Simulation.flightPressure(elapsed)
+	return clamp((elapsed - Simulation.PRESSURE_START) / Simulation.PRESSURE_RAMP, 0, 1)
 end
 
 local function finite(value)
@@ -122,6 +134,7 @@ function Simulation.newFlight(settings, course)
 		x = 0,
 		y = 18,
 		vx = math.cos(radians) * speed,
+		burstVx = 0,
 		vy = math.sin(radians) * speed,
 		alive = true,
 		distance = 0,
@@ -195,6 +208,12 @@ local function consumePower(state)
 	if state.powerCharges == 0 then state.powerPhase = "spent" end
 end
 
+local function powerBurst(state, amount)
+	local nextSpeed = math.min(forwardLimit(state), state.vx + amount)
+	state.burstVx = math.min(state.burstVx or 0, math.max(0, state.vx - 18)) + math.max(0, nextSpeed - state.vx)
+	state.vx = nextSpeed
+end
+
 local function sweptGap(ax, ay, bx, by, radius)
 	local dx, dy = bx - ax, by - ay
 	local lengthSquared = dx * dx + dy * dy
@@ -213,10 +232,14 @@ function Simulation.step(state, course, dt)
 	local oldX, oldY, oldTime = state.x, state.y, state.elapsed
 	state.elapsed = state.elapsed + dt
 	local beforeDeadline = state.elapsed < Simulation.MAX_FLIGHT_TIME
+	local pressure = state.powerId and Simulation.flightPressure(state.elapsed) or 0
 	state.powerPeak = math.max(state.powerPeak or oldY, oldY)
-	state.vx = math.max(18, state.vx * (1 - 0.015 * dt))
+	local burst = math.min(state.burstVx or 0, math.max(0, state.vx - 18))
+	local burstDecay = state.powerId == "Meteor" and Simulation.METEOR_BURST_DECAY or Simulation.POWER_BURST_DECAY
+	state.burstVx = burst * math.exp(-burstDecay * dt)
+	state.vx = math.max(18, (state.vx - burst) * (1 - 0.015 * dt)) + state.burstVx
 	local meteorDiving = state.powerId == "Meteor" and state.powerPhase == "diving"
-	state.vy = math.max(meteorDiving and -64 or -22, state.vy - Simulation.GRAVITY * (meteorDiving and 3.2 or 1) * dt)
+	state.vy = math.max(meteorDiving and -64 or -22, state.vy - Simulation.GRAVITY * (1 + 2 * pressure) * (meteorDiving and 3.2 or 1) * dt)
 	-- Upward thrust fades in thin air, keeping high launches near the stronger
 	-- pickups. This only damps ascent; it never slams a plane down from a ceiling.
 	if state.y > Simulation.THIN_AIR_HEIGHT and state.vy > 0 then
@@ -234,8 +257,8 @@ function Simulation.step(state, course, dt)
 	-- sweep; the turn begins at most one step above the pull-up height.
 	if beforeDeadline and state.powerId == "Meteor" and state.powerPhase == "diving" and oldY > 0 and oldY + state.vy * dt <= 18 then
 		local charge = clamp((state.powerPeak - 18) / 140, 0, 1)
-		state.vx = math.min(forwardLimit(state), state.vx + 35 + 45 * charge)
-		state.vy = 25 + 10 * charge
+		powerBurst(state, 35 + 85 * charge)
+		state.vy = 22 + 10 * charge
 		consumePower(state)
 		event(state, "meteorBoost", "METEOR BLAST!", nil, state.powerPeak)
 	end
@@ -276,18 +299,23 @@ function Simulation.step(state, course, dt)
 			state.used[item.id] = true
 			if item.kind == "fuel" then
 				state.pickups = state.pickups + 1
-				state.vx = math.min(forwardLimit(state), state.vx + 1 + item.value * 0.3)
+				-- Fuel earns lasting momentum even while a temporary burst fills
+				-- the speed cap. Replace excess burst rather than losing the fuel.
+				local limit = forwardLimit(state)
+				local momentum = math.min(limit, state.vx - state.burstVx + 1 + item.value * 0.3)
+				state.burstVx = math.min(state.burstVx, limit - momentum)
+				state.vx = momentum + state.burstVx
 				-- Fuel first steadies a dive, so even a late pickup visibly saves
 				-- altitude. Stronger numbered cans then supply a larger lift.
 				-- Meteor remains committed to its dive; fuel still adds speed but
 				-- cannot cancel the promised automatic pull-up and blast.
 				if state.powerPhase ~= "diving" then
-					state.vy = math.min(62, math.max(state.vy, -8) + item.value * 0.65)
+					state.vy = math.min(62, math.max(state.vy, -8) + item.value * 0.65 * (1 - 0.35 * pressure))
 				end
 				event(state, "fuel", "+" .. tostring(item.value) .. " FUEL!", item)
 			elseif beforeDeadline and state.powerId == "Muncher" and state.powerCharges > 0 then
 				consumePower(state)
-				state.vx = math.min(forwardLimit(state), state.vx + 8 + 4 * state.powerUses)
+				powerBurst(state, 8 + 4 * state.powerUses)
 				state.vy = math.min(56, math.max(state.vy, -8) + 1 + 3 * state.powerUses)
 				event(state, "munch", "CHOMP! " .. tostring(state.powerUses) .. "/3", item, state.powerUses)
 			else
@@ -297,6 +325,7 @@ function Simulation.step(state, course, dt)
 					event(state, "shield", "SHIELD SAVE!", item)
 				else
 					state.vx = math.max(18, state.vx * 0.92)
+					state.burstVx = math.min(state.burstVx * 0.92, math.max(0, state.vx - 18))
 					state.vy = math.max(state.powerPhase == "diving" and -64 or -22, state.vy - 10)
 					event(state, "missile", "MISSILE HIT! Find fuel!", item)
 				end
@@ -329,8 +358,8 @@ function Simulation.step(state, course, dt)
 		state.distance = math.max(state.distance, state.x)
 		if beforeDeadline and oldY > 0 and state.powerId == "Pinball" and state.powerCharges > 0 then
 			consumePower(state)
-			state.vx = math.min(forwardLimit(state), state.vx + 18)
-			state.vy = 17 - state.powerUses
+			powerBurst(state, 18)
+			state.vy = 14 - 2 * state.powerUses
 			event(state, "pinball", "BOING! " .. tostring(state.powerUses) .. "/3", nil, state.powerUses)
 		else
 			state.alive = false

@@ -6,6 +6,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local PlaneCatalog = require(ReplicatedStorage:WaitForChild("FlightGame"):WaitForChild("PlaneCatalog"))
 local PowerCatalog = require(ReplicatedStorage:WaitForChild("FlightGame"):WaitForChild("PowerCatalog"))
+local CosmeticCatalog = require(ReplicatedStorage:WaitForChild("FlightGame"):WaitForChild("CosmeticCatalog"))
+local Simulation = require(ReplicatedStorage:WaitForChild("FlightGame"):WaitForChild("Simulation"))
 
 local Hud = {}
 Hud.__index = Hud
@@ -21,11 +23,12 @@ local COLORS = {
 	coral = Color3.fromRGB(242, 79, 106),
 	line = Color3.fromRGB(156, 191, 221),
 	gold = Color3.fromRGB(255, 217, 65),
+	amber = Color3.fromRGB(153, 79, 12),
 }
 local DISPLAY_TEXT = {
 	Brand = true, Title = true, Timer = true, Name = true, Votes = true,
 	Distance = true, OpponentDistance = true, YourDistance = true, BestDistance = true,
-	Lead = true, Rank = true,
+	Lead = true, Rank = true, RewardAmount = true, RewardGoal = true,
 }
 local PAINTS = {
 	Color3.fromRGB(255, 104, 102),
@@ -127,7 +130,7 @@ local function button(parent, name, text, x, y, width, height, color)
 		TextStrokeColor3 = COLORS.ink,
 		TextStrokeTransparency = 0,
 		Font = Enum.Font.FredokaOne,
-		TextSize = 16,
+		TextSize = 20,
 		AutoButtonColor = true,
 		Selectable = true,
 	}, parent)
@@ -568,6 +571,7 @@ function Hud.new(callbacks)
 	self.rematchRequested = false
 	self.rematchPendingUntil = 0
 	self.canRematch = false
+	self.rewardSeen, self.rewardOrder = {}, {}
 
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 	local previous = playerGui:FindFirstChild("SkyboundHUD")
@@ -598,7 +602,7 @@ function Hud.new(callbacks)
 	self.timer = label(self.header, "Timer", "--", 0, 10, 58, 44, 28, COLORS.white, true)
 	self.timer.Position = UDim2.new(1, -68, 0, 10)
 	self.timer.TextXAlignment = Enum.TextXAlignment.Center
-    self.footer = label(self.gui, "Prototype", "FLY · EARN CREDITS · COLLECT FLIGHT EFFECTS", 0, 0, 500, 16, 10, COLORS.white, true)
+    self.footer = label(self.gui, "Prototype", "FLY · EARN COINS · COLLECT FLIGHT EFFECTS", 0, 0, 600, 18, 12, COLORS.white, true)
 	self.footer.AnchorPoint = Vector2.new(0.5, 1)
 	self.footer.Position = UDim2.new(0.5, 0, 1, -5)
 	self.footer.TextXAlignment = Enum.TextXAlignment.Center
@@ -609,6 +613,8 @@ function Hud.new(callbacks)
 	stroke(self.hubCard, COLORS.ink, 3)
 	gloss(self.hubCard)
 	self.hubTitle = label(self.hubCard, "Title", "SKYBOUND / FLIGHT CLUB", 14, 9, 292, 22, 17, COLORS.white, true)
+	self.hubTitle.TextScaled = true
+	create("UITextSizeConstraint", { MinTextSize = 16, MaxTextSize = 27 }, self.hubTitle)
 	self.hubInstruction = label(self.hubCard, "Instruction", "Walk onto a 1v1 pad with an opponent.", 14, 34, 292, 31, 12, COLORS.white)
 	self.hubInstruction.TextWrapped = true
 	self.hubAction = button(self.gui, "HubAction", "PRACTICE VS GHOST", 0, 0, 198, 48, COLORS.cyan)
@@ -847,6 +853,11 @@ function Hud.new(callbacks)
 	self.powerFlightText = label(self.powerFlightBadge, "PowerState", "PINBALL · 3 BOUNCES", 9, 3, 282, 25, 13, COLORS.ink, true)
 	self.powerFlightText.Font = Enum.Font.FredokaOne
 	self.powerFlightText.TextXAlignment = Enum.TextXAlignment.Center
+	self.opponentPowerText = label(self.powerFlightBadge, "OpponentPowerState", "", 159, 3, 132, 25, 13, COLORS.cyan, true)
+	self.opponentPowerText.Font = Enum.Font.FredokaOne
+	self.opponentPowerText.TextXAlignment = Enum.TextXAlignment.Center
+	self.powerFlightDivider = frame(self.powerFlightBadge, "Divider", 149, 6, 1, 19, COLORS.muted)
+	self.powerFlightBadge.BackgroundColor3 = COLORS.ink
 	self.powerBurst = frame(self.gui, "PowerLocked", 0, 0, 520, 112, COLORS.gold)
 	self.powerBurst.AnchorPoint = Vector2.new(0.5, 0.5)
 	self.powerBurst.Visible = false
@@ -925,6 +936,23 @@ function Hud.new(callbacks)
 	self.bestDistance = label(personal, "BestDistance", "0 m", 223, 33, 183, 28, 23, COLORS.white, true)
 	self.nextRoundLabel = label(self.resultsPanel, "NextRound", "Request a rematch or return to the club.", 24, 434, 422, 16, 12, COLORS.muted)
 	self.nextRoundLabel.TextXAlignment = Enum.TextXAlignment.Center
+	self.rewardPanel = frame(self.resultsPanel, "FlightReward", 24, 292, 422, 158, COLORS.ink)
+	corner(self.rewardPanel, 16)
+	stroke(self.rewardPanel, COLORS.gold, 3)
+	self.rewardAmount = label(self.rewardPanel, "RewardAmount", "+0 COINS", 16, 8, 390, 44, 38, COLORS.gold, true)
+	self.rewardAmount.TextColor3 = COLORS.gold
+	self.rewardAmount.TextXAlignment = Enum.TextXAlignment.Center
+	self.rewardBalance = label(self.rewardPanel, "Balance", "", 16, 53, 390, 20, 14, COLORS.white, true)
+	self.rewardBalance.TextXAlignment = Enum.TextXAlignment.Center
+	self.rewardGoal = label(self.rewardPanel, "RewardGoal", "NEXT: SKY BLUE", 16, 79, 390, 24, 21, COLORS.white, true)
+	self.rewardGoal.TextXAlignment = Enum.TextXAlignment.Center
+	create("UITextSizeConstraint", { MinTextSize = 14, MaxTextSize = 24 }, self.rewardGoal)
+	self.rewardTrack = frame(self.rewardPanel, "ProgressTrack", 16, 110, 390, 14, COLORS.muted)
+	corner(self.rewardTrack, 7)
+	self.rewardFill = frame(self.rewardTrack, "ProgressFill", 0, 0, 0, 14, COLORS.cyan)
+	corner(self.rewardFill, 7)
+	self.rewardHint = label(self.rewardPanel, "ProgressHint", "", 16, 132, 390, 20, 14, COLORS.white, true)
+	self.rewardHint.TextXAlignment = Enum.TextXAlignment.Center
 	self.resultActions = frame(self.gui, "ResultActions", 0, 0, 470, 64)
 	self.resultActions.AnchorPoint = Vector2.new(0.5, 0)
 	self.resultActions.Visible = false
@@ -991,158 +1019,183 @@ function Hud:_makePersonalHud()
 end
 
 function Hud:_layoutPersonal(viewport, height)
-	local width = math.min(470, viewport.X - 24)
-	local cardHeight = math.min(338, height - 16)
+	local width = math.min(620, viewport.X - 24)
+	local short = height < 430
+	local cardHeight = math.min(short and 304 or 420, height - 16)
 	self.statsCard.Size = UDim2.fromOffset(width, cardHeight)
-	self.statsCard.Title.TextSize = width < 400 and 18 or 24
-	self.statsCard.Title.Size = UDim2.fromOffset(width - 80, 30)
-	self.statsClose.Position = UDim2.fromOffset(width - 52, 8)
+	self.statsCard.Title.TextSize = width < 400 and 22 or 30
+	self.statsCard.Title.Size = UDim2.fromOffset(width - 80, 36)
+	self.statsClose.Position = UDim2.fromOffset(width - 54, 10)
 	local cellWidth = (width - 44) / 2
-	local cellHeight = (cardHeight - 126) / 3
+	local cellHeight = (cardHeight - 138) / 3
 	for index, cell in ipairs(self.statsCells) do
-		cell.Position = UDim2.fromOffset(16 + ((index - 1) % 2) * (cellWidth + 12), 59 + math.floor((index - 1) / 2) * (cellHeight + 7))
+		cell.Position = UDim2.fromOffset(16 + ((index - 1) % 2) * (cellWidth + 12), 61 + math.floor((index - 1) / 2) * (cellHeight + 8))
 		cell.Size = UDim2.fromOffset(cellWidth, cellHeight)
-		cell.Caption.Size = UDim2.fromOffset(cellWidth - 24, 15)
-		cell.Distance.Position = UDim2.fromOffset(12, 21)
-		cell.Distance.Size = UDim2.fromOffset(cellWidth - 24, math.max(20, cellHeight - 23))
-		cell.Distance.TextSize = cardHeight < 310 and 20 or 24
+		cell.Caption.Position = UDim2.fromOffset(10, 5)
+		cell.Caption.Size = UDim2.fromOffset(cellWidth - 20, 18)
+		cell.Caption.TextSize = width < 400 and 11 or 13
+		cell.Distance.Position = UDim2.fromOffset(10, 23)
+		cell.Distance.Size = UDim2.fromOffset(cellWidth - 20, math.max(22, cellHeight - 25))
+		cell.Distance.TextSize = short and 25 or (width < 400 and 29 or 36)
 	end
-	self.statsRecord.Position = UDim2.fromOffset(18, cardHeight - 48)
-	self.statsRecord.Size = UDim2.fromOffset(width - 36, 18)
-	self.statsSave.Position = UDim2.fromOffset(18, cardHeight - 28)
-	self.statsSave.Size = UDim2.fromOffset(width - 36, 22)
+	self.statsRecord.Position = UDim2.fromOffset(18, cardHeight - 54)
+	self.statsRecord.Size = UDim2.fromOffset(width - 36, 20)
+	self.statsRecord.TextSize = width < 400 and 13 or 15
+	self.statsSave.Position = UDim2.fromOffset(18, cardHeight - 32)
+	self.statsSave.Size = UDim2.fromOffset(width - 36, 28)
+	self.statsSave.TextSize = 12
 end
 
 function Hud:_layoutDuel(viewport, height)
 	local function place(item, x, y, width, sizeY)
-		item.Position = UDim2.fromOffset(x, y)
-		item.Size = UDim2.fromOffset(width, sizeY)
+		item.Position, item.Size = UDim2.fromOffset(x, y), UDim2.fromOffset(width, sizeY)
 	end
-	local hubWidth = math.min(320, viewport.X - 32)
-	self.hubCard.Size = UDim2.fromOffset(hubWidth, 76)
-	self.hubTitle.Size = UDim2.fromOffset(hubWidth - 28, 22)
-	self.hubInstruction.Size = UDim2.fromOffset(hubWidth - 28, 31)
+	local portrait = viewport.X < 600
+	local short = not portrait and height < 430
+	local actionWidth = short and 260 or 280
+	local rewardWidth = short and 252 or 318
+	local hubWidth = portrait and viewport.X - 24 or math.min(short and 340 or 420, viewport.X - math.max(actionWidth, rewardWidth) - 48)
+	local hubHeight = short and 82 or 100
+	place(self.hubCard, portrait and 12 or 16, short and 6 or 10, hubWidth, hubHeight)
+	place(self.hubTitle, 16, 9, hubWidth - 32, 31)
+	self.hubTitle.TextSize = portrait and 22 or (hubWidth < 350 and 20 or 27)
+	place(self.hubInstruction, 16, short and 39 or 44, hubWidth - 32, short and 34 or 43)
+	self.hubInstruction.TextSize = hubWidth < 350 and 13 or 15
 	self.hubAction.AnchorPoint = Vector2.new(1, 0)
-	self.hubAction.Position = UDim2.new(1, -16, 0, viewport.X >= 560 and 10 or 94)
-	-- The flight bar replaces the normal header; the course keeps the center.
-	local flightWidth = math.min(690, viewport.X - 24)
+	self.hubAction.Position = UDim2.new(1, portrait and -12 or -16, 0, portrait and 122 or (short and 8 or 10))
+	self.hubAction.Size = UDim2.fromOffset(portrait and viewport.X - 24 or (short and 260 or 280), portrait and 52 or (short and 50 or 58))
+	self.hubAction.TextSize = portrait and 21 or 23
+	local utilityY = portrait and 184 or (short and 100 or 122)
+	local utilityWidth = portrait and (viewport.X - 36) / 2 or math.min(short and 142 or 166, (hubWidth - 12) / 2)
+	place(self.statsButton, portrait and 12 or 16, utilityY, utilityWidth, short and 44 or 46)
+	self.statsButton.TextSize = short and 17 or 19
+	self.hubSoundPosition = UDim2.fromOffset((portrait and 12 or 16) + utilityWidth + 12, utilityY)
+	self.hubSoundSize = UDim2.fromOffset(utilityWidth, short and 44 or 46)
+	-- Distances lead the scoreboard; two slim rows retain the shared race view.
+	local flightWidth = math.min(900, viewport.X - 24)
+	local flightHeight = short and 72 or (portrait and 82 or 94)
 	local column = (flightWidth - 32) / 3
 	self.flightPanel.Position = UDim2.new(0.5, 0, 0, 6)
-	self.flightPanel.Size = UDim2.fromOffset(flightWidth, 64)
-	self.flightPanel.CanvasSize = UDim2.fromOffset(0, 64)
+	self.flightPanel.Size = UDim2.fromOffset(flightWidth, flightHeight)
+	self.flightPanel.CanvasSize = UDim2.fromOffset(0, flightHeight)
 	self.flightPanel.Rule.Visible = false
-	place(self.ownPilot, 14, 3, column, 15)
-	place(self.flightDistance, 14, 19, column, 29)
-	self.flightDistance.TextSize = 26
-	place(self.opponentPilot, flightWidth - column - 14, 3, column, 15)
-	place(self.opponentDistance, flightWidth - column - 14, 19, column, 29)
-	self.opponentDistance.TextSize = 26
-	place(self.leadLabel, 16 + column, 6, column, 23)
-	self.leadLabel.TextSize = flightWidth < 430 and 12 or 18
-	place(self.flightStatus, 16 + column, 29, column, 17)
+	local numberY, numberHeight = short and 18 or 24, short and 32 or 40
+	place(self.ownPilot, 12, 4, column, 18)
+	place(self.opponentPilot, flightWidth - column - 12, 4, column, 18)
+	self.ownPilot.TextSize, self.opponentPilot.TextSize = portrait and 12 or 14, portrait and 12 or 14
+	self.ownPilot.TextTruncate, self.opponentPilot.TextTruncate = Enum.TextTruncate.AtEnd, Enum.TextTruncate.AtEnd
+	place(self.flightDistance, 12, numberY, column, numberHeight)
+	place(self.opponentDistance, flightWidth - column - 12, numberY, column, numberHeight)
+	self.flightDistance.TextSize, self.opponentDistance.TextSize = portrait and 30 or (short and 31 or 42), portrait and 30 or (short and 31 or 42)
+	place(self.leadLabel, 16 + column, short and 8 or 12, column, portrait and 35 or 29)
+	self.leadLabel.TextSize = portrait and 16 or (short and 21 or 25)
+	self.leadLabel.TextWrapped = true
+	place(self.flightStatus, 16 + column, short and 38 or 47, column, 21)
 	self.flightStatus.TextXAlignment = Enum.TextXAlignment.Center
-	self.flightStatus.TextSize = flightWidth < 430 and 10 or 12
-	place(self.watchedLabel, 14, 47, flightWidth / 2 - 18, 15)
-	self.watchedLabel.TextSize = 10
-	place(self.flightStats, flightWidth / 2, 47, flightWidth / 2 - 14, 15)
-	self.flightStats.TextSize = 10
+	self.flightStatus.TextSize = portrait and 11 or (short and 12 or 14)
+	place(self.watchedLabel, 12, flightHeight - 21, flightWidth / 2 - 18, 18)
+	self.watchedLabel.TextSize = portrait and 11 or 13
+	place(self.flightStats, flightWidth / 2, flightHeight - 21, flightWidth / 2 - 12, 18)
+	self.flightStats.TextSize = portrait and 11 or 13
 	self.flightStats.TextXAlignment = Enum.TextXAlignment.Right
 	self.flightStats.TextTruncate = Enum.TextTruncate.AtEnd
 	self.flightControls.AnchorPoint = Vector2.new(1, 1)
 	self.flightControls.Position = UDim2.new(1, -12, 1, -26)
-	self.flightControls.Size = UDim2.fromOffset(326, 52)
-	self.flightControls.CanvasSize = UDim2.fromOffset(0, 52)
-	place(self.flightControls.PreviousPilot, 4, 4, 44, 44)
-	place(self.spectateLabel, 52, 4, 58, 44)
-	self.spectateLabel.Visible = true
+	local controlsWidth = portrait and 274 or (short and 286 or 410)
+	local controlsHeight = short and 48 or 58
+	self.flightControls.Size = UDim2.fromOffset(controlsWidth, controlsHeight)
+	self.flightControls.CanvasSize = UDim2.fromOffset(0, controlsHeight)
+	local controlY = short and 2 or 5
+	place(self.flightControls.PreviousPilot, 5, controlY, 46, 44)
+	self.spectateLabel.Visible = not portrait and not short
 	self.spectateLabel.Text = "CAMERA"
-	self.spectateLabel.TextSize = 10
-	place(self.flightControls.NextPilot, 114, 4, 44, 44)
-	place(self.lobbyButton, 166, 4, 156, 44)
-	self.lobbyButton.TextSize = 13
-	if viewport.X > viewport.Y and viewport.Y < 400 then
-		self.flightPanel.Size = UDim2.fromOffset(flightWidth, 52)
-		self.flightPanel.CanvasSize = UDim2.fromOffset(0, 52)
-		place(self.ownPilot, 14, 2, column, 13)
-		place(self.opponentPilot, flightWidth - column - 14, 2, column, 13)
-		self.ownPilot.TextSize, self.opponentPilot.TextSize = 10, 10
-		place(self.flightDistance, 14, 15, column, 23)
-		place(self.opponentDistance, flightWidth - column - 14, 15, column, 23)
-		self.flightDistance.TextSize, self.opponentDistance.TextSize = 22, 22
-		place(self.leadLabel, 16 + column, 4, column, 20)
-		self.leadLabel.TextSize = flightWidth < 430 and 12 or 16
-		place(self.flightStatus, 16 + column, 24, column, 14)
-		self.flightStatus.TextSize = 10
-		place(self.watchedLabel, 14, 38, flightWidth / 2 - 18, 13)
-		place(self.flightStats, flightWidth / 2, 38, flightWidth / 2 - 14, 13)
-		self.flightControls.Size = UDim2.fromOffset(230, 44)
-		self.flightControls.CanvasSize = UDim2.fromOffset(0, 44)
-		place(self.flightControls.PreviousPilot, 4, 0, 44, 44)
-		place(self.flightControls.NextPilot, 52, 0, 44, 44)
-		place(self.lobbyButton, 100, 0, 126, 44)
-		self.lobbyButton.TextSize = 12
-		self.spectateLabel.Visible = false
-	else
-		self.ownPilot.TextSize, self.opponentPilot.TextSize = 11, 11
+	self.spectateLabel.TextSize = 15
+	place(self.spectateLabel, 57, controlY, 82, 44)
+	local nextX = self.spectateLabel.Visible and 145 or 57
+	place(self.flightControls.NextPilot, nextX, controlY, 46, 44)
+	place(self.lobbyButton, nextX + 54, controlY, controlsWidth - nextX - 59, 44)
+	self.lobbyButton.TextSize = portrait and 15 or 17
+	self:_layoutResults(viewport, height)
+end
+
+function Hud:_layoutResults(viewport, height)
+	local function place(item, x, y, width, sizeY)
+		item.Position, item.Size = UDim2.fromOffset(x, y), UDim2.fromOffset(width, sizeY)
 	end
-	local width = math.min(470, viewport.X - 24)
-	local inner = width - 48
-	local landscape = viewport.X >= 680 and height < 470
-	local personal = self.resultsPanel.PersonalResult
-	self.resultsPanel.Eyebrow.Visible = not landscape
-	self.nextRoundLabel.Visible = not landscape
+	local landscape = viewport.X >= 600 and height < 470
+	local width = math.min(landscape and 960 or 620, viewport.X - 24)
+	local inner = width - 32
+	local top = self.header.Position.Y.Offset + self.header.Size.Y.Offset + 10
+	local actionsHeight = landscape and 60 or 72
+	local available = math.max(118, height - top - actionsHeight - 18)
+	local contentHeight = landscape and 172 or 536
+	local visible = math.min(contentHeight, available)
 	self.resultsPanel.AnchorPoint = Vector2.new(0.5, 0)
-	if landscape then
-		width = math.min(760, viewport.X - 32)
-		local half = width / 2
-		local rowWidth = half - 24
-		local top = height < 330 and 54 or 65
-		self.resultsPanel.Position = UDim2.new(0.5, 0, 0, top)
-		self.resultsPanel.Size = UDim2.fromOffset(width, 134)
-		self.resultsPanel.CanvasSize = UDim2.fromOffset(0, 134)
-		place(self.resultsPanel.Title, 16, 3, width - 32, 27)
-		self.resultsPanel.Title.TextSize = 21
-		place(self.resultMessage, 16, 31, width - 32, 18)
-		for index, row in ipairs(self.resultRows) do
-			place(row.frame, 16, 54 + (index - 1) * 42, rowWidth, 34)
-			place(row.rank, 10, 0, 26, 34)
-			place(row.name, 41, 0, rowWidth - 145, 34)
-			place(row.distance, rowWidth - 99, 0, 90, 34)
-			row.name.TextSize = 12
-			row.distance.TextSize = 15
-		end
-		place(personal, half + 8, 55, rowWidth, 75)
-		local recordHalf = rowWidth / 2
-		place(personal.YourLabel, 12, 10, recordHalf - 12, 16)
-		place(personal.BestLabel, recordHalf + 4, 10, recordHalf - 12, 16)
-		place(self.yourDistance, 12, 32, recordHalf - 12, 28)
-		place(self.bestDistance, recordHalf + 4, 32, recordHalf - 12, 28)
-		self.yourDistance.TextSize, self.bestDistance.TextSize = 21, 21
-		self.resultActions.Position = UDim2.new(0.5, 0, 0, top + 140)
-	else
-		local available = math.max(110, height - 185)
-		local visible = math.min(328, available)
-		self.resultsPanel.Position = UDim2.new(0.5, 0, 0, 87)
-		self.resultsPanel.Size = UDim2.fromOffset(width, visible)
-		self.resultsPanel.CanvasSize = UDim2.fromOffset(0, 328)
-		place(self.resultsPanel.Title, 24, 43, inner, 34)
-		place(self.resultMessage, 24, 80, inner, 20)
-		for index, row in ipairs(self.resultRows) do
-			place(row.frame, 24, 112 + (index - 1) * 44, inner, 37)
-			place(row.rank, 12, 0, 30, 37)
-			place(row.name, 44, 0, inner - 151, 37)
-			place(row.distance, inner - 110, 0, 98, 37)
-		end
-		place(personal, 24, 211, inner, 75)
-		place(self.nextRoundLabel, 24, 300, inner, 18)
-		self.resultActions.Position = UDim2.new(0.5, 0, 0, 87 + visible + 8)
+	self.resultsPanel.Position = UDim2.new(0.5, 0, 0, top)
+	self.resultsPanel.Size = UDim2.fromOffset(width, visible)
+	self.resultsPanel.CanvasSize = UDim2.fromOffset(0, contentHeight)
+	self.resultsPanel.Eyebrow.Visible = not landscape
+	place(self.resultsPanel.Eyebrow, 20, 12, inner - 8, 18)
+	self.resultsPanel.Eyebrow.TextSize = 12
+	place(self.resultsPanel.Title, 16, landscape and 7 or 34, inner, landscape and 30 or 43)
+	self.resultsPanel.Title.TextSize = landscape and 28 or (width < 430 and 29 or 39)
+	place(self.resultMessage, 18, landscape and 42 or 78, inner - 4, 22)
+	self.resultMessage.TextSize = width < 430 and 13 or 15
+	self.resultMessage.TextTruncate = Enum.TextTruncate.AtEnd
+	self.resultMessage.Visible = not landscape
+	local scoreWidth = landscape and (inner - 16) / 2 or inner
+	local rowY = landscape and 43 or 113
+	local rowHeight = landscape and 38 or 49
+	for index, row in ipairs(self.resultRows) do
+		place(row.frame, 16, rowY + (index - 1) * (rowHeight + (landscape and 6 or 8)), scoreWidth, rowHeight)
+		place(row.rank, 9, 0, 28, rowHeight)
+		place(row.name, 42, 0, scoreWidth - 162, rowHeight)
+		place(row.distance, scoreWidth - 116, 0, 105, rowHeight)
+		row.rank.TextSize = 22
+		row.name.TextSize = width < 430 and 14 or 17
+		row.distance.TextSize = 23
 	end
-	self.resultActions.Size = UDim2.fromOffset(width, 64)
+	local personal = self.resultsPanel.PersonalResult
+	place(personal, 16, landscape and 133 or 232, scoreWidth, landscape and 30 or 75)
+	local half = scoreWidth / 2
+	place(personal.YourLabel, 12, 5, half - 16, 18)
+	place(personal.BestLabel, half + 4, 5, half - 16, 18)
+	personal.YourLabel.TextSize, personal.BestLabel.TextSize = 11, 11
+	place(self.yourDistance, 12, landscape and 24 or 29, half - 16, landscape and 29 or 36)
+	place(self.bestDistance, half + 4, landscape and 24 or 29, half - 16, landscape and 29 or 36)
+	self.yourDistance.TextSize, self.bestDistance.TextSize = landscape and 26 or 30, landscape and 26 or 30
+	personal.YourLabel.Visible, self.yourDistance.Visible = not landscape, not landscape
+	if landscape then
+		place(personal.BestLabel, 10, 5, half - 8, 20)
+		place(self.bestDistance, half, 1, half - 12, 28)
+	end
+	local rewardWidth = landscape and scoreWidth or inner
+	local rewardHeight = landscape and 122 or 175
+	place(self.rewardPanel, landscape and 32 + scoreWidth or 16, landscape and 43 or 322, rewardWidth, rewardHeight)
+	local rewardInner = rewardWidth - 24
+	place(self.rewardAmount, 12, landscape and 1 or 5, rewardInner, landscape and 39 or 45)
+	self.rewardAmount.TextSize = landscape and 34 or (width < 430 and 35 or 43)
+	self.rewardTextSize = self.rewardAmount.TextSize
+	place(self.rewardBalance, 12, landscape and 37 or 51, rewardInner, landscape and 18 or 21)
+	self.rewardBalance.TextSize = 14
+	place(self.rewardGoal, 12, landscape and 58 or 78, rewardInner, landscape and 24 or 27)
+	self.rewardGoal.TextSize = width < 430 and 21 or 24
+	self.rewardGoal.TextScaled = landscape
+	place(self.rewardTrack, 14, landscape and 87 or 115, rewardWidth - 28, landscape and 10 or 14)
+	place(self.rewardHint, 12, landscape and 102 or 137, rewardInner, landscape and 18 or 23)
+	self.rewardHint.TextSize = landscape and 13 or 14
+	self.nextRoundLabel.Visible = not landscape
+	place(self.nextRoundLabel, 16, 507, inner, 20)
+	self.nextRoundLabel.TextSize = 12
+	self.resultActions.Position = UDim2.new(0.5, 0, 0, top + visible + 8)
+	self.resultActions.Size = UDim2.fromOffset(width, actionsHeight)
 	local actionWidth = (width - 24) / 2
-	place(self.rematchButton, 8, 8, actionWidth, 48)
-	place(self.returnButton, 16 + actionWidth, 8, actionWidth, 48)
-	self.rematchButton.TextSize = width < 430 and 11 or 14
-	self.returnButton.TextSize = width < 430 and 11 or 14
+	place(self.rematchButton, 8, 8, actionWidth, actionsHeight - 16)
+	place(self.returnButton, 16 + actionWidth, 8, actionWidth, actionsHeight - 16)
+	self.rematchButton.TextSize = width < 430 and 15 or 21
+	self.returnButton.TextSize = width < 430 and 15 or 21
+	self.rematchButton.TextWrapped, self.returnButton.TextWrapped = true, true
+	self.returnButton.Text = "BACK TO HANGAR"
 end
 
 function Hud:_layoutPowerChoices(viewport, height)
@@ -1154,17 +1207,17 @@ function Hud:_layoutPowerChoices(viewport, height)
 	self.compactPowerActions = portrait or short
 	local width = math.min(1000, math.max(260, viewport.X - 24))
 	local top = self.header.Position.Y.Offset + self.header.Size.Y.Offset + 9
-	local actionHeight = portrait and 111 or (short and 60 or 82)
+	local actionHeight = portrait and 124 or (short and 72 or 92)
 	local availableBody = math.max(130, height - top - actionHeight - 26)
 	local headingHeight = portrait and 66 or (short and 34 or 88)
-	local cardHeight = portrait and math.clamp((availableBody - headingHeight - 12) / 3 - 10, 104, 142)
+	local cardHeight = portrait and math.clamp((availableBody - headingHeight - 12) / 3 - 10, 116, 150)
 		or (short and math.clamp(availableBody - headingHeight - 10, 94, 126) or 274)
 	local gap = portrait and 12 or (short and 14 or 22)
 	local cardWidth = portrait and width - 32 or (width - 36 - gap * 2) / 3
 	local cardTop = headingHeight + (short and 2 or 7)
 	local cardsBottom = cardTop + (portrait and (cardHeight * 3 + gap * 2) or cardHeight)
 	local drawerTop = cardsBottom + (short and 12 or 18)
-	local drawerHeight = short and 124 or 182
+	local drawerHeight = short and 132 or 190
 	local contentHeight = self.compactPowerActions and (self.customizeOpen and drawerTop + drawerHeight + 12 or cardsBottom + 12)
 		or (drawerTop + 48 + (self.customizeOpen and 194 or 0) + 12)
 	local bodyHeight = math.min(contentHeight, availableBody)
@@ -1176,7 +1229,7 @@ function Hud:_layoutPowerChoices(viewport, height)
 	self.powerHeadline.TextSize = short and 24 or (portrait and (width < 350 and 22 or 25) or 38)
 	self.powerSubhead.Visible = not short
 	place(self.powerSubhead, 12, portrait and 43 or 57, width - 24, 19)
-	self.powerSubhead.TextSize = portrait and 10 or 13
+	self.powerSubhead.TextSize = portrait and 12 or 16
 	for index, id in ipairs(POWER_IDS) do
 		local card = self.powerCards[id]
 		local x = portrait and width / 2 or 18 + cardWidth / 2 + (index - 1) * (cardWidth + gap)
@@ -1190,49 +1243,50 @@ function Hud:_layoutPowerChoices(viewport, height)
 			local textWidth = cardWidth - textLeft - 10
 			card.art.frame.Position = UDim2.fromOffset(artWidth / 2 + 5, cardHeight / 2 + 5)
 			card.art.scale.Scale = cardWidth < 320 and 0.59 or 0.68
-			place(card.chosen, textLeft, 9, textWidth, 18)
+			place(card.chosen, textLeft, 8, textWidth, 21)
+			card.chosen.TextSize = 12
 			place(card.title, textLeft, 32, textWidth, 27)
-			card.title.TextSize = cardWidth < 320 and 19 or 22
+			card.title.TextSize = cardWidth < 320 and 21 or 25
 			card.title.TextXAlignment = Enum.TextXAlignment.Left
-			card.promise.Visible = cardHeight >= 124
+			card.promise.Visible = cardHeight >= 144
 			place(card.promise, textLeft, 61, textWidth, 32)
-			card.promise.TextSize = 11
+			card.promise.TextSize = 12
 			card.promise.TextXAlignment = Enum.TextXAlignment.Left
 			place(card.plan, textLeft, cardHeight - 37, textWidth, 28)
-			card.plan.TextSize = 10
+			card.plan.TextSize = 12
 			card.plan.TextXAlignment = Enum.TextXAlignment.Left
 		elseif short then
-			card.art.frame.Position = UDim2.fromOffset(cardWidth / 2, cardHeight < 110 and 27 or 33)
-			card.art.scale.Scale = cardHeight < 110 and 0.34 or 0.44
-			place(card.chosen, 7, 5, 89, 16)
-			card.chosen.TextSize = 8
-			place(card.title, 5, cardHeight - 63, cardWidth - 10, 26)
-			card.title.TextSize = cardWidth < 205 and 16 or 19
+			card.art.frame.Position = UDim2.fromOffset(32, 49)
+			card.art.scale.Scale = 0.34
+			place(card.chosen, 7, 5, cardWidth - 14, 18)
+			card.chosen.TextSize = 11
+			place(card.title, 63, 27, cardWidth - 71, 44)
+			card.title.TextSize = cardWidth < 205 and 18 or 21
 			card.title.TextXAlignment = Enum.TextXAlignment.Center
 			card.promise.Visible = false
 			place(card.plan, 9, cardHeight - 33, cardWidth - 18, 27)
-			card.plan.TextSize = 10
+			card.plan.TextSize = 12
 			card.plan.TextXAlignment = Enum.TextXAlignment.Center
 		else
 			card.art.frame.Position = UDim2.fromOffset(cardWidth / 2, 83)
 			card.art.scale.Scale = math.min(1.08, cardWidth / 240)
 			place(card.chosen, 12, 10, cardWidth - 24, 21)
-			card.chosen.TextSize = 10
+			card.chosen.TextSize = 13
 			place(card.title, 10, 142, cardWidth - 20, 59)
 			card.title.TextSize = cardWidth < 240 and 25 or 30
 			card.title.TextXAlignment = Enum.TextXAlignment.Center
 			card.promise.Visible = true
 			place(card.promise, 12, 201, cardWidth - 24, 31)
-			card.promise.TextSize = 13
+			card.promise.TextSize = 16
 			card.promise.TextXAlignment = Enum.TextXAlignment.Center
 			place(card.plan, 9, 238, cardWidth - 18, 26)
-			card.plan.TextSize = cardWidth < 250 and 10 or 12
+			card.plan.TextSize = cardWidth < 250 and 12 or 14
 			card.plan.TextXAlignment = Enum.TextXAlignment.Center
 		end
 	end
 	self.customizeButton.Parent = self.compactPowerActions and self.configActions or self.configPanel
 	if not self.compactPowerActions then place(self.customizeButton, 16, drawerTop, width - 32, 44) end
-	self.customizeButton.TextSize = self.compactPowerActions and 11 or 14
+	self.customizeButton.TextSize = self.compactPowerActions and 14 or 19
 	self.customizePanel.Visible = self.customizeOpen
 	place(self.customizePanel, 16, drawerTop + (self.compactPowerActions and 0 or 52), width - 32, drawerHeight)
 	local drawerWidth = width - 56
@@ -1240,35 +1294,37 @@ function Hud:_layoutPowerChoices(viewport, height)
 	local planeWidth = (planeAreaWidth - 16) / 3
 	for index, id in ipairs(PlaneCatalog.ORDER) do
 		place(self.planeButtons[id], 12 + (index - 1) * (planeWidth + 8), 10, planeWidth, 44)
-		self.planeButtons[id].TextSize = self.compactPowerActions and 12 or 15
+		self.planeButtons[id].TextSize = self.compactPowerActions and 14 or 20
 	end
 	place(self.planeSpeed, 12, 61, planeAreaWidth, 20)
+	self.planeSpeed.TextSize = self.compactPowerActions and 13 or 16
 	place(self.planeStrategy, 12, 85, planeAreaWidth, 20)
-	self.planeStrategy.TextSize = self.compactPowerActions and 10 or 12
+	self.planeStrategy.TextSize = self.compactPowerActions and 12 or 15
 	local paintLeft = short and (drawerWidth / 2 + 22) or 12
 	place(self.paintName, paintLeft, short and 12 or 111, short and drawerWidth / 2 - 20 or drawerWidth, 18)
+	self.paintName.TextSize = 13
 	for index, control in ipairs(self.colorButtons) do place(control, paintLeft + (index - 1) * 56, short and 43 or 132, 46, 44) end
 	self.configActions.Position = UDim2.new(0.5, 0, 0, top + bodyHeight + 8)
 	self.configActions.Size = UDim2.fromOffset(width, actionHeight)
 	if portrait then
 		place(self.powerSummary, 12, 6, width - 24, 35)
-		self.powerSummary.TextSize = 11
-		place(self.customizeButton, 10, 45, 100, 44)
-		place(self.readyButton, 118, 45, width - 128, 44)
+		self.powerSummary.TextSize = 13
+		place(self.customizeButton, 10, 48, 100, 48)
+		place(self.readyButton, 118, 48, width - 128, 48)
 		self.readyButton.TextSize = 20
-		place(self.readyStatus, 10, 92, width - 20, 14)
-		self.readyStatus.TextSize = 9
+		place(self.readyStatus, 10, 101, width - 20, 18)
+		self.readyStatus.TextSize = 11
 		self.readyStatus.TextXAlignment = Enum.TextXAlignment.Center
 	else
 		local buttonWidth = short and 226 or 286
 		local summaryLeft = short and 122 or 14
 		if short then place(self.customizeButton, 10, 8, 100, 44) end
 		place(self.powerSummary, summaryLeft, short and 6 or 8, width - buttonWidth - summaryLeft - 30, short and 31 or 43)
-		self.powerSummary.TextSize = short and 10 or 13
+		self.powerSummary.TextSize = short and 12 or 16
 		place(self.readyButton, width - buttonWidth - 10, short and 8 or 12, buttonWidth, short and 44 or 54)
 		self.readyButton.TextSize = short and 18 or 22
-		place(self.readyStatus, summaryLeft, short and 39 or 55, width - buttonWidth - summaryLeft - 30, 16)
-		self.readyStatus.TextSize = short and 9 or 11
+		place(self.readyStatus, summaryLeft, short and 46 or 66, width - buttonWidth - summaryLeft - 30, 19)
+		self.readyStatus.TextSize = short and 11 or 13
 		self.readyStatus.TextXAlignment = Enum.TextXAlignment.Left
 	end
 	local eventWidth = math.min(520, viewport.X - 32)
@@ -1277,38 +1333,43 @@ function Hud:_layoutPowerChoices(viewport, height)
 	place(self.powerBurstTitle, 10, 5, eventWidth - 20, short and 44 or 76)
 	self.powerBurstTitle.TextSize = short and 35 or (portrait and 39 or 60)
 	place(self.powerBurstDetail, 10, short and 50 or 82, eventWidth - 20, 21)
-	self.powerBurstDetail.TextSize = short and 11 or 13
+	self.powerBurstDetail.TextSize = short and 12 or 15
 	self.countdownText.Size = UDim2.fromOffset(math.min(400, viewport.X - 24), short and 120 or 190)
 	self.countdownText.TextSize = short and 100 or 158
 	local scoreBottom = self.flightPanel.Position.Y.Offset + self.flightPanel.Size.Y.Offset
-	local badgeWidth = math.min(330, viewport.X - 28)
-	self.powerFlightBadge.Size = UDim2.fromOffset(badgeWidth, short and 27 or 31)
+	local badgeWidth = math.min(700, viewport.X - 28)
+	local badgeHeight = short and 38 or 46
+	self.powerFlightBadge.Size = UDim2.fromOffset(badgeWidth, badgeHeight)
 	self.powerFlightBadge.Position = UDim2.new(0.5, 0, 0, scoreBottom + 8)
-	place(self.powerFlightText, 9, 2, badgeWidth - 18, short and 23 or 27)
-	self.powerFlightText.TextSize = short and 12 or 13
+	place(self.powerFlightText, 6, 2, badgeWidth / 2 - 12, badgeHeight - 4)
+	place(self.opponentPowerText, badgeWidth / 2 + 6, 2, badgeWidth / 2 - 12, badgeHeight - 4)
+	place(self.powerFlightDivider, badgeWidth / 2, 6, 1, badgeHeight - 12)
+	self.powerFlightText.TextSize = short and 12 or (portrait and 12 or 16)
+	self.opponentPowerText.TextSize = self.powerFlightText.TextSize
 	self.toast.Size = UDim2.fromOffset(eventWidth, short and 40 or 54)
 	self.toast.CanvasSize = UDim2.fromOffset(0, short and 40 or 54)
-	self.toast.Position = UDim2.new(0.5, 0, 0, scoreBottom + (short and 44 or 51))
+	self.toast.Position = UDim2.new(0.5, 0, 0, scoreBottom + badgeHeight + 16)
 	place(self.toastText, 8, 3, eventWidth - 16, short and 34 or 48)
 	self.toastText.TextSize = short and 25 or (portrait and 27 or 33)
 end
 
 function Hud:_layoutPlaneChoices(viewport, height)
-	local aimWidth = math.min(690, viewport.X - 24)
+	local aimWidth = math.min(900, viewport.X - 24)
 	local portrait = viewport.X < 560
-	local actionHeight = portrait and 98 or 64
+	local actionHeight = portrait and 112 or 82
 	self.aimActions.Size = UDim2.fromOffset(aimWidth, actionHeight)
 	local textWidth = portrait and aimWidth - 28 or aimWidth - 282
-	self.aimHint.Position, self.aimHint.Size = UDim2.fromOffset(14, 5), UDim2.fromOffset(textWidth, 17)
-	self.aimHint.TextSize = portrait and 11 or 12
-	self.fixedStats.Position, self.fixedStats.Size = UDim2.fromOffset(14, 25), UDim2.fromOffset(textWidth, 19)
-	self.fixedStats.TextSize = portrait and 11 or 12
-	self.aimStatus.Position, self.aimStatus.Size = UDim2.fromOffset(portrait and aimWidth / 2 or 14, portrait and 7 or 46), UDim2.fromOffset(portrait and aimWidth / 2 - 14 or textWidth, 14)
+	self.aimHint.Position, self.aimHint.Size = UDim2.fromOffset(14, 7), UDim2.fromOffset(textWidth, 23)
+	self.aimHint.TextSize = portrait and 15 or 19
+	self.fixedStats.Position, self.fixedStats.Size = UDim2.fromOffset(14, 33), UDim2.fromOffset(textWidth, 22)
+	self.fixedStats.TextSize = portrait and 13 or 16
+	self.aimStatus.Position, self.aimStatus.Size = UDim2.fromOffset(portrait and aimWidth / 2 or 14, portrait and 7 or 59), UDim2.fromOffset(portrait and aimWidth / 2 - 14 or textWidth, 14)
 	self.aimStatus.TextXAlignment = portrait and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+	self.aimStatus.TextSize = 12
 	self.aimStatus.Visible = not portrait
-	self.aimReadyButton.Position = UDim2.fromOffset(portrait and 10 or aimWidth - 258, portrait and 47 or 8)
-	self.aimReadyButton.Size = UDim2.fromOffset(portrait and aimWidth - 20 or 246, 44)
-	self.aimReadyButton.TextSize = portrait and 16 or 17
+	self.aimReadyButton.Position = UDim2.fromOffset(portrait and 10 or aimWidth - 258, portrait and 61 or 12)
+	self.aimReadyButton.Size = UDim2.fromOffset(portrait and aimWidth - 20 or 246, portrait and 44 or 58)
+	self.aimReadyButton.TextSize = portrait and 20 or 22
 	local fieldTop = self.header.Position.Y.Offset + self.header.Size.Y.Offset + 6
 	self.aimPad.Position = UDim2.fromOffset(0, fieldTop)
 	self.aimPad.Size = UDim2.fromOffset(viewport.X, math.max(20, height - 28 - actionHeight - 10 - fieldTop))
@@ -1323,172 +1384,200 @@ function Hud:_resize()
 	local topInset, bottomInset = GuiService:GetGuiInset()
 	local height = math.max(180, viewport.Y - topInset.Y - bottomInset.Y)
 	self.layoutHeight = height
-	local landscape = viewport.X >= 600 and height < 470
-	self:_layoutPersonal(viewport, height)
-	local width = math.min(470, math.max(260, viewport.X - 24))
-	local inner = width - 48
-	local narrowCard = width < 430
-	local available = math.max(90, height - 112)
-	local configHeight = narrowCard and 448 or 414
-	local function place(item, x, y, w, h)
-		item.Position = UDim2.fromOffset(x, y)
-		item.Size = UDim2.fromOffset(w, h)
+	local portrait = viewport.X < 600
+	local short = not portrait and height < 470
+	local function place(item, x, y, width, sizeY)
+		item.Position, item.Size = UDim2.fromOffset(x, y), UDim2.fromOffset(width, sizeY)
 	end
+	self.header.Position = UDim2.fromOffset(12, short and 6 or 10)
+	self.header.Size = UDim2.new(1, -24, 0, short and 54 or 76)
+	self.header.Brand.Visible, self.brandSub.Visible = not portrait, not portrait
+	place(self.header.Brand, 18, short and 2 or 8, 225, 36)
+	self.header.Brand.TextSize = short and 27 or 33
+	place(self.brandSub, 20, short and 33 or 46, 235, 18)
+	self.brandSub.TextSize = 12
+	local phaseWidth = portrait and viewport.X - 108 or math.min(430, viewport.X - 350)
+	self.phaseLabel.Position = UDim2.new(1, -phaseWidth - 78, 0, short and 1 or 8)
+	self.phaseLabel.Size = UDim2.fromOffset(phaseWidth, short and 29 or 32)
+	self.phaseLabel.TextXAlignment = portrait and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right
+	self.phaseLabel.Font = Enum.Font.FredokaOne
+	self.phaseLabel.TextSize = portrait and 19 or (short and 20 or 23)
+	self.courseLabel.Position = UDim2.new(1, -phaseWidth - 78, 0, short and 31 or 44)
+	self.courseLabel.Size = UDim2.fromOffset(phaseWidth, 21)
+	self.courseLabel.TextXAlignment = self.phaseLabel.TextXAlignment
+	self.courseLabel.TextSize = portrait and 14 or 15
+	self.timer.Position = UDim2.new(1, -70, 0, short and 1 or 8)
+	self.timer.Size = UDim2.fromOffset(58, short and 48 or 57)
+	self.timer.TextSize = short and 36 or 44
+	self.footer.TextSize = portrait and 10 or 12
+	self.footer.Size = UDim2.fromOffset(viewport.X - 24, 18)
+	local top = self.header.Position.Y.Offset + self.header.Size.Y.Offset + 12
+	local width = math.min(620, viewport.X - 24)
+	local inner = width - 40
+	local available = math.max(100, height - top - 24)
 	for _, entry in ipairs(self.scaledPanels) do
-		local isFlight = entry.panel == self.flightPanel or entry.panel == self.toast or entry.panel == self.flightControls
+		local flight = entry.panel == self.flightPanel or entry.panel == self.toast or entry.panel == self.flightControls
 		entry.scale.Scale = 1
-		entry.panel.ScrollBarThickness = isFlight and 0 or 5
-		entry.panel.ScrollingEnabled = not isFlight
-		if not isFlight then
-			local contentHeight = entry.panel == self.configPanel and configHeight or entry.height
-			local maxHeight = entry.panel == self.configPanel and math.max(75, available - 98) or available
-			local visibleHeight = math.min(contentHeight, maxHeight)
-			local totalHeight = visibleHeight + (entry.panel == self.configPanel and 98 or 0)
-			entry.panel.AnchorPoint = Vector2.new(0.5, 0)
-			entry.panel.Position = UDim2.new(0.5, 0, 0, 87 + math.max(0, (available - totalHeight) / 2))
-			entry.panel.Size = UDim2.fromOffset(width, visibleHeight)
-			entry.panel.CanvasSize = UDim2.fromOffset(0, contentHeight)
-		end
+		entry.panel.ScrollBarThickness = flight and 0 or 5
+		entry.panel.ScrollingEnabled = not flight
 	end
-	for _, panel in ipairs({ self.waitingPanel, self.votePanel, self.configPanel, self.resultsPanel }) do
-		for _, child in ipairs(panel:GetChildren()) do
-			if child:IsA("TextLabel") and child.Position.X.Offset == 24 then
-				child.Size = UDim2.new(0, inner, 0, child.Size.Y.Offset)
-			end
-		end
-	end
-	self.waitingPanel.Title.TextSize = narrowCard and 19 or 24
-	self.waitingPanel.Copy.TextSize = narrowCard and 16 or 18
-	self.waitingPanel.Status.TextWrapped = true
-	self.votePanel.Title.TextSize = narrowCard and 24 or 27
-	self.votePanel.Eyebrow.Visible = true
-	place(self.votePanel.Title, 24, 42, inner, 34)
-	place(self.votePanel.VoteHint, 24, 371, inner, 20)
-	self.votePanel.VoteHint.TextSize = narrowCard and 11 or 12
+	self.waitingPanel.AnchorPoint = Vector2.new(0.5, 0)
+	self.waitingPanel.Position = UDim2.new(0.5, 0, 0, top + math.max(0, (available - 234) / 2))
+	self.waitingPanel.Size = UDim2.fromOffset(width, math.min(234, available))
+	self.waitingPanel.CanvasSize = UDim2.fromOffset(0, 234)
+	place(self.waitingPanel.Title, 20, 22, inner, 70)
+	self.waitingPanel.Title.TextSize = portrait and 29 or 34
+	self.waitingPanel.Title.TextWrapped = true
+	place(self.waitingPanel.Copy, 20, 97, inner, 67)
+	self.waitingPanel.Copy.TextSize = portrait and 18 or 21
+	place(self.waitingMessage, 20, 185, inner, 32)
+	self.waitingMessage.TextSize, self.waitingMessage.TextWrapped = 15, true
+	self.votePanel.AnchorPoint = Vector2.new(0.5, 0)
+	self.votePanel.Position = UDim2.new(0.5, 0, 0, top)
+	self.votePanel.Size = UDim2.fromOffset(width, math.min(454, available))
+	self.votePanel.CanvasSize = UDim2.fromOffset(0, 454)
+	self.votePanel.Eyebrow.Visible = not short
+	place(self.votePanel.Eyebrow, 20, 15, inner, 18)
+	self.votePanel.Eyebrow.TextSize = 13
+	place(self.votePanel.Title, 20, 40, inner, 44)
+	self.votePanel.Title.TextSize = portrait and 31 or 39
+	place(self.votePanel.VoteHint, 20, 416, inner, 23)
+	self.votePanel.VoteHint.TextSize = portrait and 12 or 15
 	for index, name in ipairs({ "Coast", "Skyline", "Storm" }) do
 		local control = self.voteButtons[name]
-		control.Position = UDim2.fromOffset(24, 91 + (index - 1) * 90)
-		control.Size = UDim2.fromOffset(inner, 78)
-		place(control.Badge, 11, 12, 49, 54)
-		place(control.Badge.Number, 0, 0, 49, 54)
-		control.Badge.Number.TextSize = 20
-		local courseTitle = control:FindFirstChild("Name")
-		place(courseTitle, 73, 13, inner - 127, 24)
-		courseTitle.TextSize = narrowCard and 16 or 20
-		place(control.Detail, 73, 39, inner - 123, 30)
-		control.Detail.TextWrapped = true
-		place(control.Votes, inner - 51, 19, 42, 26)
-		place(control.VotesLabel, inner - 54, 47, 47, 14)
+		place(control, 20, 100 + (index - 1) * 103, inner, 89)
+		place(control.Badge, 12, 16, 54, 56)
+		local title = control:FindFirstChild("Name")
+		place(title, 80, 11, inner - 143, 31)
+		title.TextSize = portrait and 23 or 29
+		place(control.Detail, 80, 44, inner - 143, 36)
+		control.Detail.TextSize, control.Detail.TextWrapped = portrait and 12 or 15, true
+		place(control.Votes, inner - 53, 13, 42, 36)
+		control.Votes.TextSize = 31
+		place(control.VotesLabel, inner - 57, 54, 49, 18)
+		control.VotesLabel.TextSize = 11
 	end
-	if viewport.X >= 560 and height < 560 then
-		local wide = math.min(760, viewport.X - 32)
+	if short then
+		local wide = math.min(960, viewport.X - 24)
 		local cardWidth = (wide - 56) / 3
-		self.votePanel.Position = UDim2.new(0.5, 0, 0, 87)
-		self.votePanel.Size = UDim2.fromOffset(wide, math.min(206, available))
-		self.votePanel.CanvasSize = UDim2.fromOffset(0, 206)
-		self.votePanel.CanvasPosition = Vector2.zero
-		self.votePanel.Eyebrow.Visible = false
-		place(self.votePanel.Title, 16, 9, wide - 32, 31)
-		self.votePanel.Title.TextSize = 24
+		self.votePanel.Size = UDim2.fromOffset(wide, math.min(226, available))
+		self.votePanel.CanvasSize = UDim2.fromOffset(0, 226)
+		place(self.votePanel.Title, 16, 6, wide - 32, 37)
+		self.votePanel.Title.TextSize = 30
 		for index, name in ipairs({ "Coast", "Skyline", "Storm" }) do
 			local control = self.voteButtons[name]
-			place(control, 16 + (index - 1) * (cardWidth + 12), 50, cardWidth, 119)
-			place(control.Badge, 10, 10, 34, 34)
-			place(control.Badge.Number, 0, 0, 34, 34)
-			control.Badge.Number.TextSize = 15
-			local courseTitle = control:FindFirstChild("Name")
-			place(courseTitle, 54, 13, cardWidth - 64, 24)
-			courseTitle.TextSize = 16
-			place(control.Detail, 10, 53, cardWidth - 20, 32)
-			place(control.Votes, cardWidth - 49, 86, 37, 26)
-			place(control.VotesLabel, 10, 94, cardWidth - 67, 14)
+			place(control, 16 + (index - 1) * (cardWidth + 12), 53, cardWidth, 134)
+			place(control.Badge, 10, 12, 37, 37)
+			local title = control:FindFirstChild("Name")
+			place(title, 55, 12, cardWidth - 65, 30)
+			title.TextSize = 22
+			place(control.Detail, 10, 57, cardWidth - 20, 37)
+			control.Detail.TextSize = 13
+			place(control.Votes, cardWidth - 51, 96, 39, 30)
+			place(control.VotesLabel, 12, 108, cardWidth - 70, 16)
 		end
-		place(self.votePanel.VoteHint, 16, 181, wide - 32, 18)
-		self.votePanel.VoteHint.TextSize = 11
+		place(self.votePanel.VoteHint, 16, 200, wide - 32, 20)
+		self.votePanel.VoteHint.TextSize = 13
 	end
-	self.resultsPanel.Title.TextSize = narrowCard and 24 or 27
-	self.resultMessage.TextSize = narrowCard and 11 or 12
-	self.resultMessage.TextTruncate = Enum.TextTruncate.AtEnd
-	for _, row in ipairs(self.resultRows) do
-		row.frame.Size = UDim2.fromOffset(inner, 37)
-		place(row.name, 44, 0, inner - 151, 37)
-		row.name.TextSize = narrowCard and 12 or 15
-		place(row.distance, inner - 110, 0, 98, 37)
-		row.distance.TextSize = narrowCard and 15 or 17
-	end
-	local personal = self.resultsPanel.PersonalResult
-	personal.Size = UDim2.fromOffset(inner, 75)
-	local half = inner / 2
-	place(personal.YourLabel, 15, 11, half - 15, 16)
-	place(personal.BestLabel, half + 8, 11, half - 20, 16)
-	place(self.yourDistance, 15, 33, half - 15, 28)
-	place(self.bestDistance, half + 8, 33, half - 20, 28)
-	self.yourDistance.TextSize = narrowCard and 21 or 23
-	self.bestDistance.TextSize = narrowCard and 21 or 23
-	self.nextRoundLabel.TextSize = narrowCard and 10 or 12
-	self.compactFlight = height < 430
-	local flightHeight = self.compactFlight and 103 or 126
-	self.flightPanel.Size = UDim2.fromOffset(width, flightHeight)
-	self.flightPanel.CanvasSize = UDim2.fromOffset(0, flightHeight)
-	place(self.watchedLabel, 20, self.compactFlight and 8 or 13, width - 40, 19)
-	place(self.flightDistance, 20, self.compactFlight and 28 or 33, width - 163, self.compactFlight and 38 or 46)
-	self.flightDistance.TextSize = self.compactFlight and 32 or 39
-	place(self.flightStatus, width - 137, self.compactFlight and 39 or 46, 116, 25)
-	self.flightStatus.TextSize = narrowCard and 12 or 15
-	place(self.flightPanel.Rule, 20, self.compactFlight and 73 or 88, width - 40, 1)
-	place(self.flightStats, 20, self.compactFlight and 82 or 98, width - 40, 17)
-	self.flightStats.TextSize = narrowCard and 10 or 12
-	self.toast.Size = UDim2.fromOffset(width, 47)
-	self.toast.Position = UDim2.new(0.5, 0, 0, 87 + flightHeight + 12)
-	place(self.toastText, 16, 9, width - 32, 28)
-	self.toastText.TextSize = narrowCard and 14 or 17
-	self.flightControls.Size = UDim2.fromOffset(width, 67)
-	local spectateWidth = width - 171
-	place(self.flightControls.PreviousPilot, 8, 10, 48, 47)
-	place(self.spectateLabel, 61, 11, math.max(20, spectateWidth - 109), 45)
-	self.spectateLabel.Text = narrowCard and "PILOTS" or "WATCH PILOTS"
-	self.spectateLabel.TextSize = narrowCard and 10 or 12
-	place(self.flightControls.NextPilot, spectateWidth - 43, 10, 48, 47)
-	place(self.lobbyButton, spectateWidth + 13, 10, 148, 47)
-	self.lobbyButton.TextSize = narrowCard and 14 or 16
-	self.flightPanel.Position = UDim2.new(0.5, 0, 0, 87)
-	local narrow = viewport.X < 600
-	self.header.Position = UDim2.fromOffset(narrow and 8 or 16, 10)
-	self.header.Size = UDim2.new(1, narrow and -16 or -32, 0, 65)
-	self.header.Brand.TextSize = narrow and 18 or 23
-	self.header.Brand.Size = UDim2.fromOffset(narrow and 135 or 175, 24)
-	self.brandSub.TextSize = narrow and 8 or 10
-	self.phaseLabel.TextSize = narrow and 9 or 13
-	self.phaseLabel.Size = UDim2.fromOffset(narrow and 136 or 310, 23)
-	self.phaseLabel.Position = UDim2.new(1, narrow and -190 or -390, 0, 13)
-	self.courseLabel.TextSize = narrow and 9 or 11
-	self.courseLabel.Size = UDim2.fromOffset(narrow and 136 or 310, 17)
-	self.courseLabel.Position = UDim2.new(1, narrow and -190 or -390, 0, 37)
-	self.timer.TextSize = narrow and 23 or 28
-	self.timer.Position = UDim2.new(1, narrow and -53 or -68, 0, 10)
-	self.timer.Size = UDim2.fromOffset(narrow and 46 or 58, 44)
-	self.footer.TextSize = viewport.X < 390 and 8 or 10
-	if landscape then
-		self.header.Position = UDim2.fromOffset(12, 6)
-		self.header.Size = UDim2.new(1, -24, 0, height < 330 and 42 or 50)
-		self.header.Brand.Position = UDim2.fromOffset(18, 0)
-		self.brandSub.Position = UDim2.fromOffset(19, 23)
-		self.phaseLabel.Position = UDim2.new(1, -390, 0, 0)
-		self.courseLabel.Position = UDim2.new(1, -390, 0, 23)
-		self.timer.Position = UDim2.new(1, -68, 0, 3)
-		self.timer.Size = UDim2.fromOffset(58, 36)
-		self.timer.TextSize = 25
-		if height < 330 then
-			self.votePanel.Position = UDim2.new(0.5, 0, 0, 54)
-			self.votePanel.Size = UDim2.fromOffset(math.min(760, viewport.X - 32), 206)
-		end
-	else
-		self.header.Brand.Position = UDim2.fromOffset(18, 10)
-		self.brandSub.Position = UDim2.fromOffset(19, 35)
-	end
+	self:_layoutPersonal(viewport, height)
 	self:_layoutPlaneChoices(viewport, height)
 	self:_layoutDuel(viewport, height)
 	self:_layoutPowerChoices(viewport, height)
+end
+
+-- Viewport coordinates, including Roblox's top inset. The camera and edge
+-- markers share this clear area so neither drifts underneath the duel controls.
+function Hud:getFlightViewport()
+	self:_resize()
+	local topInset, bottomInset = GuiService:GetGuiInset()
+	local viewport = self.lastViewport
+	local top = topInset.Y + self.powerFlightBadge.Position.Y.Offset + self.powerFlightBadge.Size.Y.Offset + 12
+	local controlTop = self.flightControls.Position.Y.Offset - self.flightControls.Size.Y.Offset
+	if viewport.X < 480 then controlTop = math.min(controlTop, -130) end
+	local bottom = viewport.Y - bottomInset.Y + controlTop - 14
+	return { left = 18, right = viewport.X - 18, top = top, bottom = math.max(top + 40, bottom) }
+end
+
+function Hud:getAimViewport()
+	self:_resize()
+	local topInset = GuiService:GetGuiInset()
+	local top = topInset.Y + self.aimPad.Position.Y.Offset
+	return { left = 0, right = self.lastViewport.X, top = top, bottom = top + self.aimPad.Size.Y.Offset }
+end
+
+-- Animate presentation once for an authoritative award, never a refresh or purchase.
+-- The final balance remains the server's value; no currency is granted here.
+function Hud:_refreshReward(snapshot, yourResult, now)
+	local economy = snapshot.economy
+	local earned = math.max(0, tonumber(yourResult and yourResult.creditsEarned) or 0)
+	local balance = math.max(0, tonumber(economy and economy.credits) or 0)
+	local key = tostring(snapshot.matchId) .. ":" .. tostring(snapshot.roundId)
+	local animation = self.rewardAnimation
+	if economy and yourResult and earned > 0 and not self.rewardSeen[key] then
+		self.rewardSeen[key] = true
+		table.insert(self.rewardOrder, key)
+		if #self.rewardOrder > 32 then self.rewardSeen[table.remove(self.rewardOrder, 1)] = nil end
+		animation = { key = key, started = now, before = math.max(0, balance - earned), after = balance, earned = earned }
+		self.rewardAnimation = animation
+	end
+	local progress = 1
+	if animation and animation.key == key and not self.reducedMotion then
+		progress = math.clamp((now - animation.started) / 0.85, 0, 1)
+		progress = 1 - (1 - progress) ^ 3
+	end
+	local shownEarned = math.floor(earned * progress + 0.5)
+	local shownBalance = balance
+	if animation and animation.key == key and animation.after == balance then
+		shownBalance = math.floor(animation.before + (balance - animation.before) * progress + 0.5)
+	end
+	self.rewardAmount.Text = earned > 0 and ("+" .. tostring(shownEarned) .. " COINS") or "FLIGHT COMPLETE"
+	self.rewardAmount.TextSize = earned > 0 and (self.rewardTextSize or 35) or math.floor((self.rewardTextSize or 35) * 0.75)
+	self.rewardBalance.Text = economy and (tostring(shownBalance) .. " COINS IN YOUR BANK") or "Loading your coin balance…"
+	local nextItem
+	if economy then
+		for _, id in ipairs(CosmeticCatalog.ORDER) do
+			local item = CosmeticCatalog.get(id)
+			if item.price > 0 and not (economy.owned and economy.owned[id]) then nextItem = item; break end
+		end
+	end
+	self.rewardTrack.Visible = nextItem ~= nil
+	if nextItem then
+		local color = nextItem.color
+		self.rewardFill.BackgroundColor3 = Color3.fromRGB(color.r, color.g, color.b)
+		self.rewardFill.Size = UDim2.new(math.clamp(shownBalance / nextItem.price, 0, 1), 0, 1, 0)
+		self.rewardGoal.Text = "NEXT: " .. string.upper(nextItem.name)
+		if balance >= nextItem.price then
+			self.rewardHint.Text = "READY TO BUY · " .. nextItem.price .. " COINS IN HANGAR"
+			self.rewardHint.TextColor3 = COLORS.gold
+		else
+			self.rewardHint.Text = tostring(balance) .. " / " .. nextItem.price .. " · " .. (nextItem.price - balance) .. " MORE COINS"
+			self.rewardHint.TextColor3 = COLORS.white
+		end
+	elseif economy then
+		self.rewardGoal.Text = "COLLECTION COMPLETE!"
+		self.rewardHint.Text = "Try a different trail in the hangar."
+		self.rewardHint.TextColor3 = COLORS.white
+	else
+		self.rewardGoal.Text = "YOUR NEXT FLIGHT EFFECT"
+		self.rewardHint.Text = "Your collection will appear when loaded."
+		self.rewardHint.TextColor3 = COLORS.white
+	end
+end
+
+local function duelPowerState(player, role)
+	local flight = player and player.flight
+	if not flight then return role .. "\nREADY", COLORS.white end
+	local id = flight.powerId or (player.settings and player.settings.powerId) or PowerCatalog.DEFAULT_ID
+	local name = id == "Muncher" and "MUNCHER" or string.upper(id)
+	if not flight.alive then return role .. " · LANDED\n" .. distance(flight.distance or flight.x), COLORS.white end
+	local charges = math.max(0, flight.powerCharges or 0)
+	local status
+	if id == "Meteor" then
+		status = flight.powerPhase == "diving" and "DIVING!" or (charges > 0 and "BLAST READY" or "POWER SPENT")
+	else
+		status = tostring(charges) .. (id == "Pinball" and " BOUNCES LEFT" or " BITES LEFT")
+	end
+	return role .. " · " .. name .. "\n" .. status, powerColor(id)
 end
 
 function Hud:update(snapshot, localUserId, watchedUserId)
@@ -1572,11 +1661,12 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	local inHub = phase == "Lobby" or phase == "Queued"
 	self.statsButton.Visible = inHub
 	if not inHub then self.statsOverlay.Visible = false end
-	self.statsButton.Position = UDim2.fromOffset(16, self.lastViewport.X < 560 and 150 or 100)
 	self.soundButton.Visible = inHub or phase == "Flight"
 	self.soundButton.AnchorPoint = inHub and Vector2.zero or Vector2.new(0, 1)
-	self.soundButton.Position = inHub and UDim2.fromOffset(152, self.lastViewport.X < 560 and 150 or 100)
+	self.soundButton.Position = inHub and self.hubSoundPosition
 		or UDim2.new(0, 12, 1, self.lastViewport.X < 480 and -86 or -26)
+	self.soundButton.Size = inHub and self.hubSoundSize or UDim2.fromOffset(118, 44)
+	self.soundButton.TextSize = inHub and 18 or 14
 	local stats = snapshot.stats or {}
 	for key, value in pairs(self.statsValues) do
 		value.Text = key == "bestDistance" and distance(stats[key] or 0, true) or tostring(stats[key] or 0)
@@ -1622,7 +1712,8 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	self.waitingMessage.Text = snapshot.message or "Getting the runway ready…"
 	if phase == "Lobby" then
         self.hubTitle.Text = "SKYBOUND / THE HANGAR"
-        self.hubInstruction.Text = PlaneCatalog.get(self.settings.planeId).name.." selected · Duel gates ahead.\nFleet left. Flight effects right."
+		self.hubInstruction.Text = self.hubCard.Size.X.Offset < 350 and "Duel gates ahead.\nFleet left · Flight effects right."
+			or (PlaneCatalog.get(self.settings.planeId).name.." selected · Duel gates ahead.\nFleet left. Flight effects right.")
 		self.hubAction.Text = "PRACTICE VS GHOST"
 		self.hubAction.Visible = self.callbacks.practice ~= nil
 	elseif phase == "Queued" then
@@ -1654,6 +1745,8 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		local ownDistance = ownFlight and (ownFlight.distance or ownFlight.x) or 0
 		local rivalDistance = rivalFlight and (rivalFlight.distance or rivalFlight.x) or 0
 		local gap = ownDistance - rivalDistance
+		self.powerFlightText.Text, self.powerFlightText.TextColor3 = duelPowerState(localPlayer, "YOU")
+		self.opponentPowerText.Text, self.opponentPowerText.TextColor3 = duelPowerState(opponent, opponent and opponent.bot and "GHOST" or "RIVAL")
 		self.ownPilot.Text = "YOU" .. (localPlayer and " · " .. string.upper(localPlayer.name) or "")
 		self.opponentPilot.Text = opponent and string.upper(opponent.name) or "OPPONENT"
 		self.flightDistance.Text = distance(ownDistance)
@@ -1662,11 +1755,18 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		elseif gap > 0 then self.leadLabel.Text = "LEAD +" .. distance(gap)
 		else self.leadLabel.Text = "TRAIL " .. distance(-gap) end
 		self.leadLabel.TextColor3 = gap < -0.5 and COLORS.coral or COLORS.green
-		self.watchedLabel.Text = watchedPlayer and ("CAMERA: " .. string.upper(watchedPlayer.name)) or "CAMERA: TAKEOFF"
-		self.watchedLabel.TextTruncate = Enum.TextTruncate.AtEnd
 		local altitude = flight and math.max(0, flight.y or 0) or 0
-		self.flightStatus.Text = flight and flight.alive and ("GROUND " .. distance(altitude)) or "DISTANCE LOCKED"
-		self.flightStatus.TextColor3 = flight and flight.alive and altitude < 28 and COLORS.coral or COLORS.muted
+		local watchRole = watchedPlayer and (watchedPlayer.userId == localUserId and "YOU" or (watchedPlayer.bot and "GHOST" or "RIVAL")) or "TAKEOFF"
+		self.watchedLabel.Text = "CAMERA: " .. watchRole .. (flight and flight.alive and (" · GROUND " .. distance(altitude)) or " · LANDED")
+		self.watchedLabel.TextTruncate = Enum.TextTruncate.AtEnd
+		self.watchedLabel.TextColor3 = flight and flight.alive and altitude < 28 and COLORS.coral or COLORS.muted
+		local elapsed = snapshot.elapsed or 0
+		local pressure = Simulation.flightPressure(elapsed)
+		self.flightStatus.Text = elapsed < Simulation.PRESSURE_START
+			and ("HEADWIND IN " .. tostring(math.ceil(Simulation.PRESSURE_START - elapsed)) .. "s")
+			or (pressure >= 1 and "STRONG HEADWIND" or "HEADWIND ↑")
+		self.flightStatus.TextColor3 = elapsed >= Simulation.PRESSURE_START and COLORS.amber or COLORS.muted
+		self.flightStatus:SetAttribute("HeadwindPressure", pressure)
 		self.flightStats.Text = "Waiting for takeoff"
 		self.flightStats.TextColor3 = COLORS.muted
 		if flight then
@@ -1674,12 +1774,6 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 				or (watchedPlayer.settings and watchedPlayer.settings.powerId) or PowerCatalog.DEFAULT_ID
 			local power = PowerCatalog.get(powerId) or PowerCatalog.get(PowerCatalog.DEFAULT_ID)
 			powerId = power.id
-			local charges = math.max(0, flight.powerCharges or 0)
-			local powerStatus = powerId == "Meteor" and (flight.powerPhase == "diving" and "DIVING!"
-				or (charges > 0 and "CLIMB TO CHARGE" or "BLAST RELEASED"))
-				or (tostring(charges) .. (powerId == "Pinball" and " BOUNCES LEFT" or " BITES LEFT"))
-			self.powerFlightText.Text = string.upper(power.name) .. " · " .. powerStatus
-			self.powerFlightBadge.BackgroundColor3 = powerColor(powerId)
 			self.flightStats.Text = "FUEL " .. tostring(flight.pickups or 0)
 				.. "  /  HITS " .. tostring(flight.hits or 0)
 				.. ((flight.shield == true or (type(flight.shield) == "number" and flight.shield > 0)) and "  /  SHIELD" or "")
@@ -1731,15 +1825,15 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		self.bestDistance.Text = distance(stats.bestDistance or (localPlayer and localPlayer.best) or 0, true)
 		self.resultsPanel.PersonalResult.BestLabel.Text = snapshot.saveStatus == "session_only" and "BEST THIS SESSION" or "PERSONAL BEST"
 		self.resultMessage.Text = snapshot.message or "Change your setup. Chase a little farther."
-		self.resultsPanel.Title.Text = yourResult and yourResult.rank == 1
-			and (hasForfeit and "YOU WIN THE DUEL." or "YOU WENT FURTHEST.") or "ONE MORE FLIGHT?"
+		local firstPlaces = 0
+		for _, result in ipairs(snapshot.results or {}) do
+			if result.rank == 1 then firstPlaces += 1 end
+		end
+		self.resultsPanel.Title.Text = firstPlaces > 1 and "DEAD HEAT!"
+			or (yourResult and yourResult.rank == 1
+			and (hasForfeit and "YOU WIN THE DUEL." or "YOU WENT FURTHEST.") or "ONE MORE FLIGHT?")
         self.nextRoundLabel.Text = (snapshot.endsAt or 0) > 0 and ("Return to lobby in " .. remaining .. "s") or "Request a rematch or head back to the club."
-        if yourResult and (yourResult.creditsEarned or 0)>0 then
-            self.nextRoundLabel.Text = "+"..yourResult.creditsEarned.." CREDITS  ·  "..tostring(snapshot.economy and snapshot.economy.credits or 0).." TOTAL  ·  SHOP IN HANGAR"
-            if not self.nextRoundLabel.Visible then
-                self.resultMessage.Text = "+"..yourResult.creditsEarned.." CREDITS  ·  "..self.resultMessage.Text
-            end
-        end
+		self:_refreshReward(snapshot, yourResult, now)
 		self.canRematch = snapshot.canRematch == true
 		self.rematchRequested = localPlayer ~= nil and localPlayer.rematchReady == true
 		if not self.canRematch then

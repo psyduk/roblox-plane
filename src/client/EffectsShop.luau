@@ -2,13 +2,15 @@
 local Players = game:GetService("Players")
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local shared = game:GetService("ReplicatedStorage"):WaitForChild("FlightGame")
 local Catalog = require(shared:WaitForChild("CosmeticCatalog"))
 local World = require(shared:WaitForChild("World"))
 local Shop = {}
 Shop.__index = Shop
-local C = { ink=Color3.fromRGB(19,32,49), panel=Color3.fromRGB(29,46,63), tile=Color3.fromRGB(42,62,79),
-    white=Color3.fromRGB(242,246,238), muted=Color3.fromRGB(180,199,204), gold=Color3.fromRGB(255,207,94), teal=Color3.fromRGB(86,224,205) }
+local C = { ink=Color3.fromRGB(23,39,77), panel=Color3.fromRGB(255,254,247), tile=Color3.fromRGB(214,236,253),
+    white=Color3.fromRGB(255,254,247), muted=Color3.fromRGB(67,87,117), gold=Color3.fromRGB(255,217,65),
+    teal=Color3.fromRGB(64,224,248), green=Color3.fromRGB(105,226,66), amber=Color3.fromRGB(153,79,12) }
 local function create(kind, props, parent)
     local object=Instance.new(kind)
     for key,value in pairs(props) do object[key]=value end
@@ -21,73 +23,126 @@ end
 local function round(parent,radius)
     create("UICorner",{CornerRadius=UDim.new(0,radius or 10)},parent)
 end
+local function stroke(parent,tint,thickness)
+    return create("UIStroke",{Name="Border",ApplyStrokeMode=Enum.ApplyStrokeMode.Border,Color=tint or C.ink,Thickness=thickness or 2},parent)
+end
 local function text(parent,name,value,size,color)
     return create("TextLabel",{Name=name,Text=value,BackgroundTransparency=1,TextSize=size or 14,
-        TextColor3=color or C.white,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,
+        TextColor3=color or C.ink,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,
         TextYAlignment=Enum.TextYAlignment.Center},parent)
 end
+local function display(parent,name,value,size,tint)
+    local label=text(parent,name,value,size,tint or C.white)
+    label.Font=Enum.Font.FredokaOne
+    create("UIStroke",{Name="LetterOutline",ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual,Color=C.ink,Thickness=2},label)
+    return label
+end
 local function button(parent,name,value,color)
-    local object=create("TextButton",{Name=name,Text=value,TextSize=14,Font=Enum.Font.GothamBold,
-        TextColor3=C.white,BackgroundColor3=color or C.tile,BorderSizePixel=0,Selectable=true,AutoButtonColor=true},parent)
-    round(object)
+    local object=create("TextButton",{Name=name,Text=value,TextSize=20,Font=Enum.Font.FredokaOne,
+        TextColor3=C.ink,BackgroundColor3=color or C.tile,BorderSizePixel=0,Selectable=true,AutoButtonColor=true},parent)
+    round(object,14); stroke(object)
     return object
 end
 local function place(object,x,y,w,h)
     object.Position=UDim2.fromOffset(x,y); object.Size=UDim2.fromOffset(w,h)
 end
 local function color(rgb) return Color3.fromRGB(rgb.r,rgb.g,rgb.b) end
+local function viewport(parent,name)
+    local view=create("ViewportFrame",{Name=name,BackgroundColor3=C.tile,BorderSizePixel=0,
+        Ambient=Color3.fromRGB(200,220,235),LightColor=Color3.new(1,1,1),LightDirection=Vector3.new(-1,-1,-1)},parent)
+    round(view,12)
+    local world=create("WorldModel",{},view)
+    local camera=create("Camera",{FieldOfView=38,CFrame=CFrame.lookAt(Vector3.new(13,17,35),Vector3.new(-7,0,0))},view)
+    view.CurrentCamera=camera
+    return view,world,camera
+end
+local function previewPlane(world,item,settings)
+    world:ClearAllChildren()
+    local plane=World.createPlane(world,"EffectPreviewPlane",settings.color or 2,settings.planeId,item.id)
+    plane:ScaleTo(1.4); plane:PivotTo(CFrame.new(3,0,0))
+    -- ViewportFrame does not render Trails. This taper uses the actual trail's catalog colors.
+    for index=1,18 do
+        local t=(index-1)/17
+        create("Part",{Name="TrailColorSample",Anchored=true,CanCollide=false,CastShadow=false,
+            Material=Enum.Material.Neon,Color=color(item.color):Lerp(color(item.secondaryColor),t),
+            Size=Vector3.new(1.05,math.max(0.1,item.width*(1-t*0.8)),0.35),
+            CFrame=CFrame.new(-3-index,math.sin(t*4)*0.35,0),Transparency=t*0.7},world)
+    end
+end
 
 function Shop.new(send)
     local self=setmetatable({send=send,selected=Catalog.DEFAULT_ID,phase="Lobby",pendingUntil=0,cards={},connections={},onlyOwned=false},Shop)
     self.gui=create("ScreenGui",{Name="SkyboundEffects",ResetOnSpawn=false,IgnoreGuiInset=false,
         DisplayOrder=30,ZIndexBehavior=Enum.ZIndexBehavior.Sibling},Players.LocalPlayer:WaitForChild("PlayerGui"))
-    self.openButton=button(self.gui,"OpenEffects","FLIGHT EFFECTS  /  0 C",C.ink)
-    self.openButton.AnchorPoint=Vector2.new(0,1)
-    self.openButton.Position=UDim2.new(0,16,1,-88); self.openButton.Size=UDim2.fromOffset(228,48)
-    self.goal=text(self.gui,"NextUnlock","Complete flights to earn your first trail.",11,C.white)
-    self.goal.AnchorPoint=Vector2.new(0,1); self.goal.Position=UDim2.new(0,20,1,-140)
-    self.goal.Size=UDim2.fromOffset(300,32); self.goal.TextWrapped=true
-    self.goal.TextStrokeColor3=C.ink; self.goal.TextStrokeTransparency=0.15
+    self.reducedMotion=false
+    pcall(function() self.reducedMotion=GuiService.ReducedMotionEnabled end)
+    self.openButton=button(self.gui,"OpenEffects","",C.panel)
+    self.rewardScale=create("UIScale",{Scale=1},self.openButton)
+    self.coin=box(self.openButton,"Coin",C.gold); round(self.coin,50); stroke(self.coin,C.amber,3)
+    self.coinInner=box(self.coin,"Inset",C.gold); round(self.coinInner,50); stroke(self.coinInner,C.amber,1.5)
+    self.coinInner.Position=UDim2.fromScale(0.17,0.17); self.coinInner.Size=UDim2.fromScale(0.66,0.66)
+    self.coinMark=text(self.coin,"Mark","S",28,C.amber); self.coinMark.Font=Enum.Font.FredokaOne
+    self.coinMark.Size=UDim2.fromScale(1,1); self.coinMark.TextXAlignment=Enum.TextXAlignment.Center
+    self.wallet=display(self.openButton,"CoinBalance","0",42,C.gold)
+    self.wallet.TextScaled=true
+    create("UITextSizeConstraint",{MinTextSize=14,MaxTextSize=42},self.wallet)
+    self.walletCaption=text(self.openButton,"CoinLabel","COINS",12,C.muted)
+    self.nextPreview,self.nextWorld,self.nextCamera=viewport(self.openButton,"NextEffectPreview")
+    self.nextCaption=text(self.openButton,"NextCaption","NEXT FLIGHT EFFECT",11,C.muted)
+    self.nextName=display(self.openButton,"NextName","SKY BLUE",23,C.white); self.nextName.TextWrapped=true
+    self.nextName.TextScaled=true
+    self.nextNameSize=create("UITextSizeConstraint",{MinTextSize=12,MaxTextSize=23},self.nextName)
+    self.goal=text(self.openButton,"NextUnlock","40 more coins",14,C.ink)
+    self.progress=box(self.openButton,"RewardProgress",C.tile); round(self.progress,8); stroke(self.progress,C.ink,1.5)
+    self.progressFill=box(self.progress,"Fill",C.gold); round(self.progressFill,8)
+    self.progressFill.Size=UDim2.fromScale(0,1)
+    self.progressLabel=text(self.progress,"ProgressLabel","0 / 40",13,C.ink)
+    self.progressLabel.Size=UDim2.fromScale(1,1); self.progressLabel.TextXAlignment=Enum.TextXAlignment.Center
+    self.rewardHint=text(self.openButton,"RewardHint","Finish flights. Collect your favorite trail.",11,C.muted)
+    self.rewardCTA=box(self.openButton,"BrowseAction",C.gold); round(self.rewardCTA,10); stroke(self.rewardCTA)
+    self.rewardCTALabel=text(self.rewardCTA,"Label","BROWSE FLIGHT EFFECTS",18,C.ink)
+    self.rewardCTALabel.Font=Enum.Font.FredokaOne
+    self.rewardCTALabel.Size=UDim2.fromScale(1,1); self.rewardCTALabel.TextXAlignment=Enum.TextXAlignment.Center
     self.overlay=box(self.gui,"ShopOverlay",C.ink)
     self.overlay.Size=UDim2.fromScale(1,1); self.overlay.BackgroundTransparency=0.18
     self.overlay.Visible=false; self.overlay.Active=true
-    self.card=box(self.overlay,"EffectsShop",C.panel); round(self.card,16)
+    self.card=box(self.overlay,"EffectsShop",C.panel); round(self.card,20); stroke(self.card,C.ink,3)
     self.card.AnchorPoint=Vector2.new(0.5,0.5); self.card.Position=UDim2.fromScale(0.5,0.5)
-    self.title=text(self.card,"Title","FLIGHT EFFECTS",24)
-    self.balance=text(self.card,"Balance","0 CREDITS",13,C.gold)
+    self.title=display(self.card,"Title","FLIGHT EFFECTS",34)
+    self.balance=display(self.card,"Balance","0 COINS",25,C.gold)
     self.closeButton=button(self.card,"Close","X")
     self.body=create("ScrollingFrame",{Name="Browse",BackgroundTransparency=1,BorderSizePixel=0,
-        ScrollBarThickness=4,ScrollBarImageColor3=C.teal,CanvasSize=UDim2.fromOffset(0,400)},self.card)
+        ScrollBarThickness=5,ScrollBarImageColor3=C.ink,CanvasSize=UDim2.fromOffset(0,400)},self.card)
     self.filter=button(self.body,"CollectionFilter","ALL EFFECTS")
-    self.collection=text(self.body,"CollectionCount","1 / 6 OWNED",11,C.muted)
-    self.preview=create("ViewportFrame",{Name="PlanePreview",BackgroundColor3=C.ink,BorderSizePixel=0,
-        Ambient=Color3.fromRGB(200,220,235),LightColor=Color3.new(1,1,1),LightDirection=Vector3.new(-1,-1,-1)},self.body)
-    round(self.preview,12)
-    self.previewWorld=create("WorldModel",{},self.preview)
-    self.previewCamera=create("Camera",{FieldOfView=38,CFrame=CFrame.lookAt(Vector3.new(13,17,35),Vector3.new(-7,0,0))},self.preview)
-    self.preview.CurrentCamera=self.previewCamera
-    self.previewName=text(self.body,"SelectedName","CLASSIC",20)
-    self.previewDetail=text(self.body,"SelectedDescription","",12,C.muted); self.previewDetail.TextWrapped=true
-    self.previewNote=text(self.body,"PreviewNote","TRAIL COLOR PREVIEW  /  COSMETIC ONLY",10,C.muted)
+    self.collection=text(self.body,"CollectionCount","1 / 6 OWNED",13,C.muted)
+    self.preview,self.previewWorld,self.previewCamera=viewport(self.body,"PlanePreview")
+    self.previewName=display(self.body,"SelectedName","CLASSIC",27)
+    self.previewDetail=text(self.body,"SelectedDescription","",15,C.muted); self.previewDetail.TextWrapped=true
+    self.previewNote=text(self.body,"PreviewNote","FLIGHT EFFECT · COSMETIC ONLY",12,C.muted)
     for _,item in ipairs(Catalog.all()) do
         local control=button(self.body,item.id,"",C.tile)
         local swatch=box(control,"Swatch",color(item.color)); round(swatch,5)
         create("UIGradient",{Color=ColorSequence.new(color(item.color),color(item.secondaryColor))},swatch)
-        local name=text(control,"ItemName",item.name,13)
+        local name=text(control,"ItemName",item.name,17); name.Font=Enum.Font.FredokaOne
         name.TextTruncate=Enum.TextTruncate.AtEnd
-        local price=text(control,"Price",tostring(item.price).." C",11,C.gold)
-        local border=create("UIStroke",{Color=C.teal,Thickness=2,Enabled=false},control)
+        local price=text(control,"Price",tostring(item.price).." COINS",13,C.ink)
+        local border=control:FindFirstChild("Border")
         self.cards[item.id]={button=control,swatch=swatch,name=name,price=price,border=border}
         table.insert(self.connections,control.Activated:Connect(function()
             self.selected=item.id; self:_preview(); self:_refresh()
-            if self.card.AbsoluteSize.X<560 then self.body.CanvasPosition=Vector2.zero end
+            if self.card.AbsoluteSize.X<600 then self.body.CanvasPosition=Vector2.zero end
         end))
     end
-    self.status=text(self.card,"Feedback","Finish flights. Earn credits. Make your plane yours.",12,C.muted)
+    self.status=text(self.card,"Feedback","Finish flights. Earn coins. Make your plane yours.",14,C.muted)
     self.status.TextWrapped=true
     self.action=button(self.card,"PurchaseOrEquip","EQUIPPED",C.teal); self.action.TextColor3=C.ink
-    self.saveLabel=text(self.card,"SaveStatus","",10,C.muted)
-    table.insert(self.connections,self.openButton.Activated:Connect(function() self:open() end))
+    self.action.TextWrapped=true
+    self.saveLabel=text(self.card,"SaveStatus","",11,C.muted)
+    table.insert(self.connections,self.openButton.Activated:Connect(function()
+        self.selected=self.nextItemId or (self.economy and self.economy.equippedTrail) or Catalog.DEFAULT_ID
+        self.onlyOwned=false
+        self:open()
+    end))
     table.insert(self.connections,self.closeButton.Activated:Connect(function() self:close() end))
     table.insert(self.connections,self.filter.Activated:Connect(function()
         self.onlyOwned=not self.onlyOwned
@@ -112,20 +167,8 @@ function Shop.new(send)
 end
 
 function Shop:_preview()
-    self.previewWorld:ClearAllChildren()
     local item=Catalog.get(self.selected)
-    local settings=self.settings or {}
-    local plane=World.createPlane(self.previewWorld,"EffectPreviewPlane",settings.color or 2,settings.planeId,item.id)
-    plane:ScaleTo(1.4)
-    plane:PivotTo(CFrame.new(3,0,0))
-    -- ViewportFrame does not render Trails. A taper shows the same catalog colors.
-    for index=1,18 do
-        local t=(index-1)/17
-        create("Part",{Name="TrailColorSample",Anchored=true,CanCollide=false,CastShadow=false,
-            Material=Enum.Material.Neon,Color=color(item.color):Lerp(color(item.secondaryColor),t),
-            Size=Vector3.new(1.05,math.max(0.1,item.width*(1-t*0.8)),0.35),
-            CFrame=CFrame.new(-3-index,math.sin(t*4)*0.35,0),Transparency=t*0.7},self.previewWorld)
-    end
+    previewPlane(self.previewWorld,item,self.settings or {})
     self.previewName.Text=string.upper(item.name)
     self.previewDetail.Text=item.description
 end
@@ -134,31 +177,94 @@ function Shop:_layout()
     local size=self.gui.AbsoluteSize
     if size.X<1 then size=Vector2.new(960,660) end
     self.lastSize=size
-    local w=math.min(790,size.X-20)
-    local h=math.min(526,size.Y-16)
+    local portrait=size.X<600
+    local short=not portrait and size.Y<500
+    local rw=short and 252 or (portrait and math.min(286,size.X-24) or 318)
+    local smallPortrait=portrait and size.Y<540
+    local rh=short and 176 or (smallPortrait and 140 or (portrait and 246 or 258))
+    self.openButton.AnchorPoint=portrait and Vector2.zero or Vector2.new(1,0)
+    self.openButton.Position=portrait and UDim2.fromOffset(12,242) or UDim2.new(1,short and -12 or -18,0,short and 76 or 84)
+    self.openButton.Size=UDim2.fromOffset(rw,rh)
+    local coinSize=short and 34 or 44
+    place(self.coin,14,12,coinSize,coinSize)
+    self.coinMark.TextSize=short and 24 or 30
+    place(self.wallet,coinSize+24,short and 6 or 5,rw-coinSize-38,short and 35 or 48)
+    self.wallet.TextSize=short and 31 or 42
+    place(self.walletCaption,coinSize+26,short and 38 or 48,rw-coinSize-38,14)
+    self.walletCaption.TextSize=short and 10 or 12
+    local rewardY=short and 56 or 76
+    local previewWidth=short and 86 or 112
+    local previewHeight=short and 46 or (portrait and 60 or 72)
+    place(self.nextPreview,12,rewardY,previewWidth,previewHeight)
+    self.nextCamera.FieldOfView=short and 40 or 38
+    local tx=previewWidth+22
+    local tw=rw-tx-12
+    place(self.nextCaption,tx,rewardY-3,tw,14)
+    self.nextCaption.TextSize=short and 9 or 10
+    place(self.nextName,tx,rewardY+11,tw,short and 22 or 36)
+    self.nextName.TextSize=short and 17 or 21
+    self.nextNameSize.MaxTextSize=short and 17 or 21
+    place(self.goal,tx,rewardY+(short and 34 or 49),tw,short and 16 or 19)
+    self.goal.TextSize=short and 11 or 12
+    self.goal.TextWrapped=true
+    local barY=short and 110 or (portrait and 151 or 160)
+    place(self.progress,14,barY,rw-28,short and 20 or 24)
+    self.progressLabel.TextSize=short and 12 or 14
+    place(self.rewardHint,14,barY+27,rw-28,17)
+    self.rewardHint.Visible=not short
+    self.rewardHint.TextSize=portrait and 10 or 11
+    place(self.rewardCTA,12,rh-(short and 38 or 50),rw-24,short and 30 or 38)
+    self.rewardCTALabel.TextSize=short and 15 or 18
+    self.nextPreview.Visible=not smallPortrait
+    self.nextCaption.Visible=not smallPortrait
+    if smallPortrait then
+        -- Keep the wallet usable below the lobby controls even in a short portrait window.
+        place(self.coin,12,10,32,32); self.coinMark.TextSize=23
+        place(self.wallet,54,4,80,34); self.wallet.TextSize=29
+        place(self.walletCaption,56,35,80,14); self.walletCaption.TextSize=10
+        place(self.nextName,136,8,rw-148,28); self.nextName.TextSize=16
+        self.nextNameSize.MaxTextSize=16
+        place(self.goal,136,36,rw-148,20); self.goal.TextSize=11
+        place(self.progress,12,64,rw-24,22)
+        self.rewardHint.Visible=false
+        place(self.rewardCTA,12,99,rw-24,30); self.rewardCTALabel.TextSize=15
+        local available=math.max(80,size.Y-254)
+        self.rewardBaseScale=math.min(1,available/rh)
+    else self.rewardBaseScale=1 end
+    if not self.rewardTween or self.rewardTween.PlaybackState~=Enum.PlaybackState.Playing then
+        self.rewardScale.Scale=self.rewardBaseScale
+    end
+
+    local w=math.min(920,size.X-20)
+    local h=math.min(630,size.Y-16)
     self.card.Size=UDim2.fromOffset(w,h)
-    local narrow=w<560
-    local compact=not narrow and h<390
-    self.previewCamera.FieldOfView=compact and 26 or 38
+    local narrow=w<600
+    local compact=not narrow and h<420
+    self.previewCamera.FieldOfView=compact and 28 or 38
     self.filter.Parent=compact and self.card or self.body
     self.preview.Parent=compact and self.card or self.body
     self.previewName.Parent=compact and self.card or self.body
     self.collection.Visible=not compact
     self.previewDetail.Visible=not compact
     self.previewNote.Visible=not compact
-    place(self.title,18,10,w-85,29); self.title.TextSize=narrow and 20 or 24
-    place(self.balance,18,40,w-85,20)
-    place(self.closeButton,w-58,12,44,44)
-    local bodyHeight=math.max(70,h-(compact and 166 or 181))
-    place(self.body,14,68,w-28,bodyHeight)
-    local inner=w-34
-    local listWidth=narrow and inner or math.floor(inner*0.48)
+    place(self.title,20,10,w-90,38); self.title.TextSize=narrow and (w<350 and 24 or 29) or 34
+    place(self.balance,22,49,w-90,29); self.balance.TextSize=narrow and 22 or 25
+    place(self.closeButton,w-66,14,48,48)
+    local bodyY=compact and 82 or 92
+    local footerHeight=compact and 100 or 132
+    local bodyHeight=math.max(70,h-bodyY-footerHeight)
+    place(self.body,16,bodyY,w-32,bodyHeight)
+    local inner=w-40
+    local listWidth=narrow and inner or math.floor(inner*0.49)
     if compact then self.body.Size=UDim2.fromOffset(listWidth,bodyHeight) end
     local listTop=narrow and 298 or 0
-    place(self.filter,0,listTop,150,44)
-    if compact then place(self.filter,w-224,12,150,44) end
-    place(self.collection,160,listTop,listWidth-160,44)
-    local cellWidth=(listWidth-8)/2
+    place(self.filter,0,listTop,math.min(186,listWidth*0.57),46)
+    self.filter.TextSize=narrow and 17 or 18
+    if compact then place(self.filter,w-248,15,166,46) end
+    place(self.collection,math.min(198,listWidth*0.6),listTop,listWidth-math.min(198,listWidth*0.6),46)
+    local cellWidth=(listWidth-10)/2
+    local cellHeight=compact and 76 or 94
+    local rowStep=cellHeight+10
     local count=0
     for _,item in ipairs(Catalog.all()) do
         local card=self.cards[item.id]
@@ -166,43 +272,46 @@ function Shop:_layout()
         card.button.Visible=visible==true
         if visible then
             local row=math.floor(count/2); local col=count%2
-            place(card.button,col*(cellWidth+8),listTop+(compact and 0 or 54)+row*85,cellWidth,77)
-            place(card.swatch,10,10,cellWidth-20,9)
-            place(card.name,10,24,cellWidth-20,22)
-            place(card.price,10,49,cellWidth-20,19)
-            card.name.TextSize=cellWidth<150 and 12 or 13
+            place(card.button,col*(cellWidth+10),listTop+(compact and 2 or 58)+row*rowStep,cellWidth,cellHeight)
+            place(card.swatch,10,10,cellWidth-20,compact and 8 or 13)
+            place(card.name,10,compact and 23 or 31,cellWidth-20,26)
+            place(card.price,10,compact and 51 or 63,cellWidth-20,22)
+            card.name.TextSize=cellWidth<150 and 15 or 18
+            card.price.TextSize=cellWidth<150 and 12 or 14
             count+=1
         end
     end
-    local listBottom=listTop+(compact and 0 or 54)+math.ceil(count/2)*85
-    local x=narrow and 0 or listWidth+18
-    local y=0
+    local listBottom=listTop+(compact and 2 or 58)+math.ceil(count/2)*rowStep
+    local x=narrow and 0 or listWidth+20
     local previewWidth=narrow and inner or inner-x
-    place(self.preview,x,y,previewWidth,172)
-    place(self.previewName,x,y+180,previewWidth,27)
-    place(self.previewDetail,x,y+209,previewWidth,48)
-    place(self.previewNote,x,y+264,previewWidth,17)
-    self.previewNote.TextSize=narrow and 9 or 10
-    self.body.CanvasSize=UDim2.fromOffset(0,compact and listBottom or math.max(listBottom,y+285))
-    self.previewName.TextSize=compact and 15 or 20
+    place(self.preview,x,0,previewWidth,narrow and 176 or 208)
+    place(self.previewName,x,narrow and 183 or 218,previewWidth,34)
+    place(self.previewDetail,x,narrow and 220 or 258,previewWidth,44)
+    place(self.previewNote,x,narrow and 271 or 308,previewWidth,18)
+    self.previewNote.TextSize=narrow and 11 or 12
+    self.body.CanvasSize=UDim2.fromOffset(0,compact and listBottom or math.max(listBottom,narrow and 298 or 336))
+    self.previewName.TextSize=compact and 20 or (narrow and 25 or 27)
     if compact then
-        place(self.preview,14+x,68,previewWidth,bodyHeight-25)
-        place(self.previewName,14+x,68+bodyHeight-23,previewWidth,23)
+        place(self.preview,16+x,bodyY,previewWidth,bodyHeight-30)
+        place(self.previewName,16+x,bodyY+bodyHeight-27,previewWidth,27)
     end
-    place(self.status,18,h-109,w-36,35)
-    place(self.action,18,h-70,w-36,44)
-    place(self.saveLabel,18,h-23,w-36,17)
+    place(self.status,20,h-126,w-40,40)
+    self.status.TextSize=narrow and 13 or 14
+    place(self.action,20,h-78,w-40,52)
+    self.action.TextSize=narrow and 17 or 22
+    place(self.saveLabel,20,h-22,w-40,17)
+    self.saveLabel.TextSize=narrow and 10 or 11
     if compact then
-        place(self.status,18,h-92,w-36,26)
-        place(self.action,18,h-64,w-36,44)
-        place(self.saveLabel,18,h-19,w-36,17)
+        place(self.status,20,h-97,w-40,27); self.status.TextSize=12
+        place(self.action,20,h-66,w-40,46); self.action.TextSize=19
+        place(self.saveLabel,20,h-18,w-40,16); self.saveLabel.TextSize=10
     end
-    self.goal.Size=UDim2.fromOffset(math.min(300,size.X-40),32)
 end
 
 function Shop:open()
     if self.phase~="Lobby" and self.phase~="Queued" then return end
     self.overlay.Visible=true
+    self.openButton.Visible=false; self.openButton.Active=false; self.openButton.Selectable=false
     local hud=Players.LocalPlayer.PlayerGui:FindFirstChild("SkyboundHUD")
     if hud and hud:FindFirstChild("PersonalStats") then hud.PersonalStats.Visible=false end
     self:_layout(); self:_preview(); self:_refresh()
@@ -225,38 +334,77 @@ function Shop:_refresh()
         local owned=economy.owned[entry.id]==true
         if owned then count+=1 elseif not nextItem then nextItem=entry end
         local card=self.cards[entry.id]
-        card.border.Enabled=self.selected==entry.id
-        card.price.Text=economy.equippedTrail==entry.id and "EQUIPPED" or (owned and "OWNED" or tostring(entry.price).." CREDITS")
-        card.price.TextColor3=owned and C.teal or C.gold
+        local selected=self.selected==entry.id
+        card.border.Color=selected and C.ink or C.muted
+        card.border.Thickness=selected and 3 or 1
+        card.button.BackgroundColor3=selected and C.teal or C.tile
+        card.price.Text=economy.equippedTrail==entry.id and "EQUIPPED" or (owned and "OWNED" or tostring(entry.price).." COINS")
+        card.price.TextColor3=C.ink
     end
     local credits=economy.credits or 0
-    self.balance.Text=tostring(credits).." CREDITS  /  "..count.." EFFECTS OWNED"
+    self.balance.Text=self.economy and (tostring(credits).." COINS") or "LOADING COINS…"
+    self.wallet.Text=self.economy and tostring(credits) or "…"
     self.collection.Text=tostring(count).." / "..#Catalog.ORDER.." OWNED"
     self.filter.Text=self.onlyOwned and "MY COLLECTION" or "ALL EFFECTS"
-    self.openButton.Text="FLIGHT EFFECTS  /  "..tostring(credits).." C"
-    self.goal.Text=nextItem and ("NEXT: "..nextItem.name.."  /  "..math.min(credits,nextItem.price).." of "..nextItem.price.." credits")
-        or "COMPLETE COLLECTION  /  Fly your signature trail."
+    self.nextItemId=nextItem and nextItem.id or nil
+    local target=nextItem or Catalog.get(economy.equippedTrail) or Catalog.get(Catalog.DEFAULT_ID)
+    local settings=self.settings or {}
+    local previewKey=target.id..":"..tostring(settings.color)..":"..tostring(settings.planeId)
+    if previewKey~=self.nextPreviewKey then
+        self.nextPreviewKey=previewKey
+        previewPlane(self.nextWorld,target,settings)
+    end
+    local canAfford=nextItem and credits>=nextItem.price
+    if self.lastNextId~=self.nextItemId then self.pendingRewardPulse=nil end
+    if self.lastNextId==self.nextItemId and self.lastAffordable==false and canAfford then
+        self.pendingRewardPulse=self.nextItemId
+    end
+    self.lastNextId=self.nextItemId; self.lastAffordable=canAfford==true
+    self.nextCaption.Text=nextItem and "NEXT FLIGHT EFFECT" or "YOUR COLLECTION"
+    self.nextName.Text=string.upper(target.name)
+    self.goal.Text=nextItem and (canAfford and "Ready to buy!" or ((nextItem.price-credits).." more coins")) or "All effects owned!"
+    self.progressFill.Size=UDim2.fromScale(nextItem and nextItem.price>0 and math.clamp(credits/nextItem.price,0,1) or 1,1)
+    self.progressFill.BackgroundColor3=canAfford and C.green or C.gold
+    self.progressLabel.Text=nextItem and (math.min(credits,nextItem.price).." / "..nextItem.price.." COINS") or "COMPLETE COLLECTION"
+    self.rewardHint.Text=nextItem and (canAfford and "Choose your new look in the shop."
+        or (nextItem.price-credits<=Catalog.PRACTICE_REWARD and "One more finished flight to afford it!" or "Every finished flight brings it closer."))
+        or "Fly your signature trail."
+    self.rewardCTALabel.Text=canAfford and "VIEW NEW FLIGHT EFFECT" or "BROWSE FLIGHT EFFECTS"
+    self.rewardCTA.BackgroundColor3=canAfford and C.green or C.gold
+    if not self.economy then
+        self.goal.Text="Loading collection…"; self.rewardHint.Text="Your flight effects will appear here."
+        self.progressLabel.Text="LOADING…"
+    end
+    if self.pendingRewardPulse==self.nextItemId and canAfford and self.openButton.Visible and not self.overlay.Visible then
+        self.pendingRewardPulse=false
+        if not self.reducedMotion then
+            if self.rewardTween then self.rewardTween:Cancel() end
+            self.rewardScale.Scale=self.rewardBaseScale or 1
+            self.rewardTween=TweenService:Create(self.rewardScale,TweenInfo.new(0.24,Enum.EasingStyle.Back,Enum.EasingDirection.Out,0,true),{Scale=(self.rewardBaseScale or 1)*1.035})
+            self.rewardTween:Play()
+        end
+    end
     local pending=os.clock()<self.pendingUntil
     local equipped=economy.equippedTrail==item.id
     local owned=economy.owned[item.id]==true
     local affordable=credits>=item.price
-    local enabled=economy.canShop and not equipped and (owned or affordable) and not pending
+    local enabled=self.phase=="Lobby" and economy.canShop and not equipped and (owned or affordable) and not pending
     self.action.Active=enabled==true; self.action.Selectable=enabled==true; self.action.AutoButtonColor=enabled==true
-    self.action.BackgroundColor3=enabled and C.teal or C.tile
+    self.action.BackgroundColor3=enabled and (owned and C.teal or C.gold) or C.tile
     self.action.TextColor3=enabled and C.ink or C.muted
     self.action.Text=pending and "WORKING…" or (equipped and "EQUIPPED FOR YOUR NEXT FLIGHT"
         or (owned and ("EQUIP "..string.upper(item.name))
-        or (affordable and ("BUY "..string.upper(item.name).."  /  "..item.price.." CREDITS")
-        or ("EARN "..(item.price-credits).." MORE CREDITS"))))
+        or (affordable and ("BUY "..string.upper(item.name).." · "..item.price.." COINS")
+        or ("EARN "..(item.price-credits).." MORE COINS"))))
     local feedback=self.feedback
     if self.phase=="Queued" then self.status.Text="Leave the queue to buy or change your trail."
     elseif feedback and os.clock()<(self.feedbackUntil or 0) then
-        self.status.Text=feedback.message
+        self.status.Text=feedback.message:gsub("CREDITS","COINS"):gsub("credits","coins")
     elseif not economy.canShop then self.status.Text="Your collection is loading or saving is unavailable. Try again when ready."
     elseif owned then self.status.Text=equipped and "Your equipped trail follows your plane into every flight." or "Owned. Equip this trail for your next flight."
-    else self.status.Text="Earn 25 credits per practice flight. Duels earn 40, plus result bonuses." end
-    self.status.TextColor3=feedback and not feedback.ok and os.clock()<(self.feedbackUntil or 0) and C.gold or C.muted
-    local saves={session_only="STUDIO SESSION  /  Purchases reset when Play stops.",loading="Loading your collection…",
+    else self.status.Text="Finish a practice flight: +25 coins. Finish a duel: +40, plus result bonuses." end
+    self.status.TextColor3=feedback and not feedback.ok and os.clock()<(self.feedbackUntil or 0) and C.amber or C.muted
+    local saves={session_only="STUDIO SESSION · Purchases reset when Play stops.",loading="Loading your collection…",
         saved="Collection saved.",pending="Saving your collection…",unavailable="Cloud save unavailable. Purchases are disabled."}
     self.saveLabel.Text=saves[self.saveStatus] or "Loading your collection…"
 end
@@ -264,7 +412,11 @@ end
 function Shop:update(snapshot,settings)
     self.phase=snapshot.phase; self.economy=snapshot.economy; self.saveStatus=snapshot.saveStatus; self.settings=settings
     local inHub=self.phase=="Lobby" or self.phase=="Queued"
-    self.openButton.Visible=inHub; self.goal.Visible=inHub
+    local hud=Players.LocalPlayer.PlayerGui:FindFirstChild("SkyboundHUD")
+    local stats=hud and hud:FindFirstChild("PersonalStats")
+    self.openButton.Visible=inHub and not self.overlay.Visible and not (stats and stats.Visible)
+    self.openButton.Active=self.openButton.Visible
+    self.openButton.Selectable=self.openButton.Visible
     if not inHub then self:close() end
     local ownedKey=""
     for _,id in ipairs(Catalog.ORDER) do
@@ -281,6 +433,7 @@ function Shop:update(snapshot,settings)
 end
 
 function Shop:destroy()
+    if self.rewardTween then self.rewardTween:Cancel() end
     for _,connection in ipairs(self.connections) do connection:Disconnect() end
     self.gui:Destroy()
 end

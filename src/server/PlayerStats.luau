@@ -125,7 +125,7 @@ function PlayerStats:_cosmetic(record, itemId, equip)
 	else
 		if economy.owned[itemId] then return feedback(false, "already_owned", "You already own " .. item.name .. ". Select Equip to use it.", itemId) end
 		if economy.credits < item.price then
-			return feedback(false, "insufficient_credits", "Earn " .. tostring(item.price - economy.credits) .. " more credits to unlock " .. item.name .. ".", itemId)
+			return feedback(false, "insufficient_credits", "Earn " .. tostring(item.price - economy.credits) .. " more coins to buy " .. item.name .. ".", itemId)
 		end
 		-- The debit and ownership grant share one fenced persistence record.
 		economy.credits = economy.credits - item.price

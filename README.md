@@ -18,7 +18,7 @@ To test alone, press **Practice vs Ghost**. This explicitly starts a duel agains
 2. **Vote:** choose Coast, Skyline, or Storm. The vote lasts eight seconds; both pilots receive the same generated course conditions.
 3. **Choose your power:** select Pinball, Missile Muncher or Meteor Dive from three large animated cards, optionally change the free plane and paint, then press **Lock In Power**. Once both pilots confirm, or the 25-second selection timer expires, these choices lock and the selection panel closes.
 4. **Aim your jet:** on the wider runway view, click or touch ahead of the jet to point it toward your chosen direction, or hold and drag to adjust within **15–60°**. Trajectory dots help line up the shot, keeping the jet clear of angle labels and a crosshair. The dotted guide previews the first three seconds without predicting future course contacts. Release sets the angle; **Ready to Launch** confirms it. Both pilots confirming, or the separate 20-second aiming timer expiring, starts the shared three-second countdown.
-5. **Watch:** the planes fly automatically through staggered clusters of numbers and missiles. Fuel marked **+5 / +10 / +20** adds momentum. Missiles reduce speed and push the plane down unless Missile Muncher eats them. Meteor stays committed to its dive through fuel contacts; its own pull-up creates the recovery. Floating feedback shows actual pickups, hits, shield saves and fully cleared near misses; near misses award no extra distance or boost.
+5. **Watch:** the planes fly automatically through staggered clusters of numbers and missiles. Fuel marked **+5 / +10 / +20** adds momentum. Missiles reduce speed and push the plane down unless Missile Muncher eats them. Power speed bursts fade while retaining the distance already earned. Meteor stays committed to its dive through fuel contacts; its own pull-up creates the recovery. After **18 seconds**, the shared **Headwind** builds over ten seconds, increasing downward pull and reducing fuel lift for both pilots. The HUD counts down to it. Floating feedback shows actual pickups, hits, shield saves and fully cleared near misses; near misses award no extra distance or boost.
 6. **Touch down:** final ground contact locks that plane's horizontal distance; Pinball spends its three bounces first. The other plane continues until its own touchdown or the 45-second flight limit.
 7. **Choose what is next:** results offer **Rematch** or **Return to Lobby**. A human rematch requires both pilots; practice requires only the human's request. Results expire back to the lobby after 90 seconds, without automatically starting another match.
 
@@ -28,14 +28,14 @@ To test alone, press **Practice vs Ghost**. This explicitly starts a duel agains
 | --- | --- |
 | Hub and queue | Normal Roblox movement and camera; walk onto or off a paired pad |
 | Hangar stations | Use the nearby prompt (**E** on keyboard) to select a free fleet plane, browse effects or start solo practice |
-| Effects shop | **Flight Effects** also opens the shop anywhere in the hub; select an effect, buy with credits, then **Equip**; **X**, **Escape** or gamepad **B** closes it |
+| Effects shop | **Flight Effects** also opens the shop anywhere in the hub; select an effect, buy with coins, then **Equip**; **X**, **Escape** or gamepad **B** closes it |
 | Selection | Choose a power, plane and color; **Lock In Power** or **R** confirms the choices |
 | Aiming | Click/tap ahead or hold and drag to aim; release sets the angle; **A / D** adjust by 1°; **Ready to Launch** or **R** marks ready |
 | Flight | Watch automatically; **Q / E** or the camera arrows switch the watched pilot |
 | Gamepad | Selectable on-screen buttons; **Y** marks ready; shoulder buttons switch the watched pilot |
 | Leaving a duel | Use **Leave Duel** during flight or **Return to Lobby** after results |
 
-Avatar movement controls are disabled during a match or while the effects shop is open, and restored in the hub when the shop closes. The flight HUD shows both pilots' distances, the local player's lead or deficit, the watched pilot's identity, and height above the ground.
+Avatar movement controls are disabled during a match or while the effects shop is open, and restored in the hub when the shop closes. The flight HUD shows both pilots' distances and remaining powers, the local player's lead or deficit, headwind state, the watched pilot's identity, and height above the ground. The flight camera frames both pilots while they fit within a bounded zoom; larger gaps use directional rival markers. Landed pilots retain a final-distance marker. Q/E or camera arrows choose the priority pilot, including after landing.
 
 The greatest horizontal distance wins. One displayed game meter equals one simulated stud. Final scores and personal best use **0.1 m** precision; equal scores share a rank. Leaving or disconnecting during flight forfeits the duel, even if that pilot had travelled farther. Leaving before flight cancels the pairing; an opponent who has left cannot accept a rematch.
 
@@ -51,7 +51,7 @@ All three powers are free and activate automatically after takeoff. Choose exact
 
 | Power | Flight rule | Launch strategy |
 | --- | --- | --- |
-| **Pinball** | The first three ground contacts bounce the plane upward and add forward momentum; the fourth lands. | Aim low to use the ground as a launchpad. |
+| **Pinball** | The first three ground contacts create progressively lower skips and brief forward bursts; the fourth lands. | Aim low to use the ground as a launchpad. |
 | **Missile Muncher** | The first three missile contacts feed increasingly strong boosts instead of causing damage; later missiles hit normally. | Aim through missile lanes. |
 | **Meteor Dive** | The first apex starts a fast dive, followed by one automatic pull-up near the ground. Peak altitude determines the forward burst. | Aim high to charge the blast. |
 
@@ -61,26 +61,28 @@ The four plane colors have identical performance. Flight settings last for the c
 
 ### Earn, buy and equip effects
 
-Complete a flight, see the earned credits on results, return to the hangar, then open **Flight Effects**. Browse the catalog or **My Collection**, inspect the plane and trail-color preview, buy an effect and press **Equip** to use it on the next flight. Buying adds ownership; equipping is a separate action. Queueing allows browsing, but purchases and equipment changes require leaving the queue.
+Complete a flight, see the earned coins on results, return to the hangar, then open **Flight Effects**. Browse the catalog or **My Collection**, inspect the plane and trail-color preview, buy an effect and press **Equip** to use it on the next flight. Buying adds ownership; equipping is a separate action. Queueing allows browsing, but purchases and equipment changes require leaving the queue.
 
-| Completed flight | Credits |
+| Completed flight | Coins |
 | --- | --- |
 | Practice, regardless of result | 25 |
 | Human duel loss | 40 |
 | Human duel draw | 50 |
 | Human duel win | 60 |
 
-Aborted flights and forfeits award no credits. The server validates rewards, prices, ownership and equipment; repeating a result cannot grant another reward. Trails change appearance only, with no effect on flight physics or power strength.
+Aborted flights and forfeits award no coins. The server validates rewards, prices, ownership and equipment; repeating a result cannot grant another reward. Trails change appearance only, with no effect on flight physics or power strength.
 
-Classic Contrail is owned initially. The five unlocks cost **40** (Sky Blue), **100** (Afterburner), **180** (Mint Current), **300** (Violet Pulse) and **500** (Golden Hour) credits. The hub shows progress toward the next unowned effect. The showroom and shop use static colored ribbons for preview; actual moving trails appear during flight.
+Classic Contrail is owned initially. The five unlocks cost **40** (Sky Blue), **100** (Afterburner), **180** (Mint Current), **300** (Violet Pulse) and **500** (Golden Hour) coins. The hub shows progress toward the next unowned effect. The showroom and shop use static colored ribbons for preview; actual moving trails appear during flight.
 
 ### Saving and analytics
 
-Studio deliberately uses **session-only** stats, credits, ownership and equipped trails, shown in the HUD and shop, and makes no DataStore calls. Purchases work during Play but reset when that session stops. Published live servers use `Skybound_PlayerStats_v1` with server-only `UpdateAsync`, session leases, duplicate-result protection, retries, autosaves and departure/shutdown saves. Statistics and the cosmetic collection share one record; existing version-one statistics migrate with the default free trail. Failed loads are never overwritten, and purchases are disabled while data is loading or cloud saving is unavailable. Published persistence is implemented but still needs a published test experience and reconnect/multiple-server verification; do not enable Studio API access against production data just to test this prototype.
+Studio deliberately uses **session-only** stats, coins, ownership and equipped trails, shown in the HUD and shop, and makes no DataStore calls. Purchases work during Play but reset when that session stops. Published live servers use `Skybound_PlayerStats_v1` with server-only `UpdateAsync`, session leases, duplicate-result protection, retries, autosaves and departure/shutdown saves. Statistics and the cosmetic collection share one record; existing version-one statistics migrate with the default free trail. Failed loads are never overwritten, and purchases are disabled while data is loading or cloud saving is unavailable. Published persistence is implemented but still needs live reconnect/multiple-server verification; do not enable Studio API access against production data just to test this prototype.
 
 The starter analytics module uses native Roblox custom events for session duration, queueing, match starts/completions/duration, rematches and abandoned phases. Events distinguish practice from human duels, are rate limited, and contain no custom names, user IDs or arbitrary text. Roblox associates events with the supplied player. Analytics is disabled in Studio and enabled by default on published live servers; set the `FlightServer` script's `AnalyticsEnabled` attribute to `false` to opt out. Dashboards and live event delivery require published testing.
 
 ### Presentation
+
+The interface uses bold cartoon lettering, larger primary controls, and a clear focus for each phase. The hangar wallet shows a coin balance, the next unowned trail preview, and progress toward its price. Results count up the server-confirmed coin award once per round and show the next purchase goal; reduced-motion mode displays the final values immediately. Race distance, lead, power charges, and pilot markers are enlarged, with camera framing derived from the space between the flight controls. Portrait layouts stack choices; short landscape layouts keep results and their actions together.
 
 The hangar has metal walls, roof trusses and skylights, work lights, concrete floors, taxiway markings, parked aircraft with landing gear, maintenance carts and labelled departure gates. The fleet bays select free planes; the effects counter opens the working shop. Three parked effect displays show trail colors and prices, and the solo dispatch corner offers practice.
 
@@ -93,7 +95,7 @@ Flight sounds mix events from both pilots, including the practice ghost, with re
 ## Current scope
 
 - Walkable procedural aircraft hangar, selectable fleet bays, four paired duel gates, queue occupancy displays and optional practice.
-- Earned credit rewards, five purchasable cosmetic trails, collection filtering, preview and separate equip actions.
+- Earned coin rewards, five purchasable cosmetic trails, collection filtering, preview and separate equip actions.
 - Server-controlled cosmetic ownership and equipped trails, with Studio session storage and a published persistence implementation awaiting live verification.
 - Independent match state, votes, settings and results for each pair.
 - Server-controlled flight simulation, validated commands, shared course conditions and distance rankings.
@@ -102,7 +104,7 @@ Flight sounds mix events from both pilots, including the practice ghost, with re
 - Setup and results controls adapted for short landscape phone screens.
 - Cartoon arcade HUD with rounded outlined headings and scores, blue panels, green ready/rematch actions, and native course icons. Small instructions use a simpler font for readability.
 
-All fleet planes remain free and can be selected in the hangar or during match setup. The first shop sells known cosmetic trails for earned credits. Plane purchases, paid cosmetics, random crates, trading, daily quests, launch/landing effect categories, final Blender assets and publishing remain future work. No Robux products are connected.
+All fleet planes remain free and can be selected in the hangar or during match setup. The first shop sells known cosmetic trails for earned coins. Plane purchases, paid cosmetics, random crates, trading, daily quests, launch/landing effect categories and final Blender assets remain future work. No Robux products are connected.
 
 ## Source and build
 
@@ -171,5 +173,7 @@ python scripts/test_server.py
 The harness exercises queue pairing, match isolation, plane selection, angle validation, speed-spoof rejection, configuration locks, departures, rematches, one-ghost practice and statistics saving. It translates a small subset of Luau for Lua and substitutes Roblox services; it does not validate real networking, avatar physics, rendering, audible output or touch input. Actual Luau and gameplay validation remains in Roblox Studio, including separate player clients and phone emulation.
 
 Using the same optional `lupa` environment, `python scripts/sample_simulation.py --samples 15` evaluates 315 flights across three courses and seven plane/angle/gadget presets. Add `--baseline /path/to/previous/Simulation.luau` to compare both versions with identical seeds; old power-based modules receive an approximate equivalent speed setting. These are simulation outcomes, not player enjoyment or device performance measurements.
+
+For powered pacing, use `python scripts/sample_simulation.py --powers --samples 5 --baseline /path/to/previous/Simulation.luau`. This compares 405 flights per version and matched cross-power duels, reporting flight duration, the wait between landings, time within 100 metres, and wins/ties. `--json` provides machine-readable results; `--arenas` and `--angles` narrow a tuning experiment. Equal-angle comparisons are not optimized launch strategies. The first pacing pass is recorded in [the October 9 sample](docs/PACING-SAMPLE-2026-10-09.json).
 
 Recorded Studio checks and remaining gaps are in `VALIDATION.md`.

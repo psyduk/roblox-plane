@@ -440,7 +440,7 @@ return function(Simulation)
 			if state.powerPhase == "spent" then break end
 		end
 		check(state.powerPhase == "spent" and state.powerUses == 1 and state.powerCharges == 0, "Meteor did not spend exactly one burst")
-		check(state.vx > previousSpeed + 50 and state.vy > 25 and state.lastEvent.kind == "meteorBoost" and state.eventSerial == diveSerial + 1, "Meteor pull-up lacks its forward blast")
+		check(state.vx > previousSpeed + 50 and state.vy > 22 and state.vy <= 32 and state.lastEvent.kind == "meteorBoost" and state.eventSerial == diveSerial + 1, "Meteor pull-up lacks its forward blast or compact recovery")
 		state.y, state.vy = 10, -15
 		Simulation.step(state, course, Simulation.FIXED_DT)
 		check(state.powerUses == 1 and state.vy < 0 and state.eventSerial == diveSerial + 1, "Spent Meteor reactivated")
@@ -457,7 +457,7 @@ return function(Simulation)
 		end
 		local low, high, extreme = blast(40), blast(160), blast(10000)
 		check(high.vx > low.vx + 25 and high.vy > low.vy, "Achieved height did not strengthen Meteor")
-		check(extreme.vx <= 165 and extreme.vy <= 35, "Meteor strength is unbounded")
+		check(extreme.vx <= 165 and extreme.vy <= 32, "Meteor strength is unbounded")
 	end)
 
 	test("fuel cannot cancel Meteor's committed dive or erase its high-speed burst", function()
@@ -494,6 +494,110 @@ return function(Simulation)
 				end
 			end
 		end
+	end)
+
+	test("power bursts fade without surrendering earned distance or fuel momentum", function()
+		local course = emptyCourse()
+		local boosted = Simulation.newFlight({ powerId = "Muncher" }, course)
+		local baseline = Simulation.newFlight({ powerId = "Muncher" }, course)
+		boosted.y, boosted.vy = 120, 0
+		baseline.y, baseline.vy = 120, 0
+		course.items = { item("missile", 0, 120, 1) }
+		Simulation.step(boosted, course, Simulation.FIXED_DT)
+		Simulation.step(baseline, emptyCourse(), Simulation.FIXED_DT)
+		baseline.vy = boosted.vy
+		local kick = boosted.vx - baseline.vx
+		check(kick > 10, "Power burst lost its immediate kick")
+		-- Both pilots collect identical fuel after the kick. Fading the burst
+		-- must not subtract that ordinary earned momentum from either flight.
+		for _, state in ipairs({ boosted, baseline }) do
+			local fuel = emptyCourse()
+			fuel.items = { item("fuel", state.x, state.y, 2, 10) }
+			Simulation.step(state, fuel, Simulation.FIXED_DT)
+		end
+		local previousGap = boosted.x - baseline.x
+		for _ = 1, 300 do
+			Simulation.step(boosted, emptyCourse(), Simulation.FIXED_DT)
+			Simulation.step(baseline, emptyCourse(), Simulation.FIXED_DT)
+			local gap = boosted.x - baseline.x
+			check(boosted.alive and baseline.alive and gap >= previousGap, "Burst decay erased earned distance")
+			previousGap = gap
+		end
+		check(boosted.vx > baseline.vx and boosted.vx - baseline.vx < kick * 0.05, "Burst left a permanent speed advantage")
+		check(previousGap > 10 and previousGap < 25, "Brief burst did not earn bounded forward distance")
+	end)
+
+	test("fuel at the burst speed cap still earns lasting momentum", function()
+		local boosted = Simulation.newFlight({ powerId = "Muncher" }, emptyCourse())
+		local baseline = Simulation.newFlight({ powerId = "Muncher" }, emptyCourse())
+		boosted.y, boosted.vy, boosted.vx = 120, 0, 100
+		baseline.y, baseline.vy, baseline.vx = 120, 0, 100
+		local missiles = emptyCourse()
+		for id = 1, 3 do table.insert(missiles.items, item("missile", 0, 120, id)) end
+		Simulation.step(boosted, missiles, Simulation.FIXED_DT)
+		Simulation.step(baseline, emptyCourse(), Simulation.FIXED_DT)
+		baseline.vy = boosted.vy
+		check(boosted.vx == 125, "Regression setup did not fill the Muncher speed cap")
+		for _, state in ipairs({ boosted, baseline }) do
+			local fuel = emptyCourse()
+			for id = 4, 6 do table.insert(fuel.items, item("fuel", state.x, state.y, id, 20)) end
+			Simulation.step(state, fuel, Simulation.FIXED_DT)
+		end
+		for _ = 1, 300 do
+			Simulation.step(boosted, emptyCourse(), Simulation.FIXED_DT)
+			Simulation.step(baseline, emptyCourse(), Simulation.FIXED_DT)
+			check(boosted.vx >= baseline.vx - 0.0000001 and boosted.distance >= baseline.distance, "Burst cap forfeited fuel momentum after the power faded")
+			check(boosted.vx <= 125 and boosted.burstVx >= 0, "Fuel replacement escaped the speed cap")
+		end
+	end)
+
+	test("headwind follows a shared clock and preserves unspent power charges", function()
+		local function fall(elapsed, x, charges)
+			local state = Simulation.newFlight({ powerId = "Pinball" }, emptyCourse())
+			state.elapsed, state.x, state.y, state.vy, state.powerCharges = elapsed, x, 100, 0, charges
+			Simulation.step(state, emptyCourse(), Simulation.FIXED_DT)
+			check(state.powerCharges == charges, "Headwind silently consumed a power charge")
+			return state.vy
+		end
+		local early = fall(5, 0, 3)
+		local before = fall(Simulation.PRESSURE_START - 1, 900, 3)
+		local middle = fall(Simulation.PRESSURE_START + Simulation.PRESSURE_RAMP / 2, 200, 1)
+		local leader = fall(Simulation.PRESSURE_START + Simulation.PRESSURE_RAMP / 2, 2200, 3)
+		local late = fall(Simulation.PRESSURE_START + Simulation.PRESSURE_RAMP + 1, 0, 0)
+		check(close(early, before), "Headwind altered the opening launch")
+		check(middle < early and late < middle, "Late pressure did not build gradually")
+		check(close(middle, leader), "Headwind depends on race position or remaining power")
+	end)
+
+	test("headwind weakens late fuel lift while retaining its forward reward", function()
+		local function refuel(elapsed)
+			local course = emptyCourse()
+			local state = Simulation.newFlight({ powerId = "Muncher" }, course)
+			state.elapsed, state.y, state.vy, state.vx = elapsed, 12, -22, 60
+			course.items = { item("fuel", 0, 12, 1, 20) }
+			Simulation.step(state, course, Simulation.FIXED_DT)
+			return state
+		end
+		local early, late = refuel(5), refuel(Simulation.PRESSURE_START + Simulation.PRESSURE_RAMP)
+		check(early.vy > late.vy and late.vy > 0, "Late fuel should give a small save rather than another long climb")
+		check(close(early.vx, late.vx) and late.pickups == 1, "Headwind removed the earned forward fuel reward")
+	end)
+
+	test("Pinball recoveries shrink and resolve promptly without course contacts", function()
+		local state = Simulation.newFlight({ powerId = "Pinball" }, emptyCourse())
+		state.y, state.vy = 0.01, -20
+		local lastUses, lastLift, firstBounce = 0, math.huge, nil
+		for _ = 1, 1500 do
+			Simulation.step(state, emptyCourse(), Simulation.FIXED_DT)
+			if state.powerUses > lastUses then
+				check(state.vy > 0 and state.vy < lastLift, "Successive bounces did not get lower")
+				firstBounce = firstBounce or state.elapsed
+				lastLift, lastUses = state.vy, state.powerUses
+			end
+			if not state.alive then break end
+		end
+		check(not state.alive and state.powerUses == 3 and state.finishReason == "landed", "Compact skips failed to finish after three charges")
+		check(state.elapsed - firstBounce < 17, "Three empty-course skips still create a long second flight")
 	end)
 
 	return tostring(passed) .. " simulation tests passed"

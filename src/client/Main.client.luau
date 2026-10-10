@@ -34,6 +34,7 @@ local lastPhase = ""
 local lastRound = ""
 local cameraPosition = nil
 local selfCrashedAt = nil
+local manualSpectate = false
 local hud = nil
 local characterControls = nil
 local controlsEnabled = nil
@@ -82,6 +83,7 @@ local function cycleSpectate(delta)
     if #choices==0 then return end
     local index=table.find(choices,watchedUserId) or 1
     watchedUserId=choices[(index-1+delta)%#choices+1]
+    manualSpectate=true
     selfCrashedAt=nil
     cameraPosition=nil
 end
@@ -138,6 +140,7 @@ snapshots.OnClientEvent:Connect(function(data)
         cameraPosition=nil
         watchedUserId=localPlayer.UserId
         selfCrashedAt=nil
+        manualSpectate=false
         if previewPlane then previewPlane:Destroy(); previewPlane=nil end
     end
     local key=tostring(data.courseSeed)..data.courseName
@@ -183,6 +186,56 @@ UserInputService.InputBegan:Connect(function(input,processed)
     end
 end)
 
+local function duelFrame(viewport, target)
+    local field=hud:getFlightViewport()
+    local portrait=viewport.X<viewport.Y
+    local baseHeight=math.max(viewport.Y<450 and 300 or 260,portrait and viewport.Y*240/viewport.X or 0)
+    -- At most 18% wider on desktop/landscape, 25% on portrait. Large gaps
+    -- become edge markers instead of shrinking the aircraft into distant dots.
+    local maxHeight=baseHeight*(portrait and 1.25 or 1.18)
+    local own=smooth[target.userId] or target.flight
+    local rival
+    for _,entry in ipairs(latest.players) do
+        if entry.userId~=target.userId and entry.flight then rival=smooth[entry.userId] or entry.flight; break end
+    end
+    local safeWidth=math.max(80,field.right-field.left)
+    local safeHeight=math.max(40,field.bottom-field.top)
+    local requiredHeight=baseHeight
+    if rival then
+        requiredHeight=math.max(requiredHeight,(math.abs(own.x-rival.x)+90)*viewport.Y/safeWidth,
+            (math.abs(own.y-rival.y)+64)*viewport.Y/safeHeight)
+    end
+    local visibleHeight=math.min(requiredHeight,maxHeight)
+    local unitsPerPixel=visibleHeight/viewport.Y
+    local together=rival and requiredHeight<=maxHeight
+    local centerX,centerY
+    if together then
+        centerX=(own.x+rival.x)/2+12
+        centerY=(own.y+rival.y)/2+8
+    else
+        centerX=own.x+math.min(65,safeWidth*unitsPerPixel*0.16)
+        centerY=own.y+12
+    end
+    -- Bias the frame toward the unobstructed region below the score/power bar,
+    -- retaining room beneath the plane for its identity and the ground.
+    local safeCenterX=(field.left+field.right)/2
+    local safeCenterY=(field.top+field.bottom)/2
+    local focusY=centerY+(safeCenterY-viewport.Y/2)*unitsPerPixel
+    -- Low skips should skim the bottom of the action area, not reveal a large
+    -- empty foreground. Reserve the below-plane label as well as the aircraft;
+    -- raising this focus only moves high pilots farther away from the top HUD.
+    local groundMargin=math.max(40,12/unitsPerPixel+26)
+    focusY=math.max(focusY,(field.bottom-groundMargin-viewport.Y/2)*unitsPerPixel)
+    local focus=World.COURSE_ORIGIN+Vector3.new(
+        centerX+(viewport.X/2-safeCenterX)*unitsPerPixel,
+        focusY,0)
+    worldFolder:SetAttribute("CameraMode",together and "duel" or "follow")
+    worldFolder:SetAttribute("CameraWorldHeight",visibleHeight)
+    worldFolder:SetAttribute("CameraHeightLimit",maxHeight)
+    worldFolder:SetAttribute("WatchedUserId",target.userId)
+    return focus,visibleHeight
+end
+
 RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Value+1,function(dt)
     local camera=workspace.CurrentCamera
     if not latest or not camera then return end
@@ -200,7 +253,7 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
         for _,p in ipairs(latest.players) do if p.flight then watchedUserId=p.userId; target=p; break end end
     end
     local own=getEntry(localPlayer.UserId)
-    if phase=="Flight" and watchedUserId==localPlayer.UserId and own and own.flight and not own.flight.alive then
+    if phase=="Flight" and not manualSpectate and watchedUserId==localPlayer.UserId and own and own.flight and not own.flight.alive then
         selfCrashedAt=selfCrashedAt or os.clock()
         if os.clock()-selfCrashedAt>2 then
             local leader=nil
@@ -226,7 +279,9 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
                     text.Text=p.userId==localPlayer.UserId and "YOU" or (p.bot and "GHOST" or "RIVAL")
                     text.TextColor3=p.userId==localPlayer.UserId and Color3.fromRGB(255,225,112) or Color3.new(1,1,1)
                     text.TextStrokeTransparency=0.1; text.TextStrokeColor3=Color3.fromRGB(23,39,77)
-                    text.TextSize=12; text.Font=Enum.Font.FredokaOne
+                    text.TextSize=16; text.Font=Enum.Font.FredokaOne
+                    local rounding=Instance.new("UICorner")
+                    rounding.CornerRadius=UDim.new(0,8); rounding.Parent=text
                     text.Parent=localPlayer.PlayerGui:FindFirstChild("SkyboundHUD")
                     planeLabels[p.userId]=text
                 end
@@ -296,15 +351,12 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
         -- A fixed side-on aiming frame keeps pointer movement independent of
         -- camera movement. Match HUD's clear field between its header/footer.
         local viewport=camera.ViewportSize
-        local topInset,bottomInset=GuiService:GetGuiInset()
-        local guiHeight=math.max(1,viewport.Y-topInset.Y-bottomInset.Y)
-        local landscape=viewport.X>=680 and guiHeight<470
-        local fieldTop=landscape and (guiHeight<330 and 54 or 62) or 81
-        local footerHeight=viewport.X<560 and 98 or 64
-        local fieldBottom=guiHeight-28-footerHeight-10
+        local field=hud:getAimViewport()
+        local fieldTop=field.top
+        local fieldBottom=field.bottom
         local fieldHeight=math.max(42,fieldBottom-fieldTop)
         local targetX=viewport.X*0.24
-        local targetY=fieldTop+math.min(fieldHeight*0.65,math.max(0,fieldHeight-44))+topInset.Y
+        local targetY=fieldTop+math.min(fieldHeight*0.65,math.max(0,fieldHeight-44))
         -- Fit the whole tilted jet and its pilot; long guide points are clipped
         -- by HUD at the field edges instead of changing zoom with launch angle.
         local worldWidth=viewport.X<560 and 250 or 320
@@ -335,7 +387,9 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
         local centerHeight=shortScreen and 125 or 105
         local visibleWidth=visibleHeight*aspect
         local ahead=math.min(145,visibleWidth*0.21)
-        if active and target and target.flight then
+        if phase=="Flight" and target and target.flight then
+            focus,visibleHeight=duelFrame(camera.ViewportSize,target)
+        elseif active and target and target.flight then
             local s=smooth[target.userId] or target.flight
             -- Follow a high climb gently so the aircraft stays below the HUD.
             -- The ground returns into view as soon as the plane descends.
@@ -351,16 +405,50 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
     end
     latest.viewingLobby=lobbyView
     local inset=GuiService:GetGuiInset()
-    local previousPoint=nil
+    local field=phase=="Flight" and hud:getFlightViewport() or nil
+    local previousMarker=nil
     for _,p in ipairs(latest.players) do
         local model,label=planes[p.userId],planeLabels[p.userId]
         if model and label then
             local point,visible=camera:WorldToViewportPoint(model:GetPivot().Position-Vector3.new(0,12,0))
-            local y=point.Y-inset.Y
-            if previousPoint and math.abs(point.X-previousPoint.X)<65 and math.abs(y-previousPoint.Y)<20 then y-=20 end
-            label.Position=UDim2.fromOffset(point.X,y)
-            label.Visible=phase=="Flight" and visible
-            previousPoint=Vector2.new(point.X,y)
+            label.Visible=phase=="Flight"
+            if field then
+                local role=p.userId==localPlayer.UserId and "YOU" or (p.bot and "GHOST" or "RIVAL")
+                local landed=p.flight and not p.flight.alive
+                local outside=not visible or point.X<field.left+35 or point.X>field.right-35
+                    or point.Y<field.top or point.Y>field.bottom-20
+                local compact=camera.ViewportSize.X<560 or camera.ViewportSize.Y<450
+                local labelHeight=compact and 28 or 32
+                local width=(outside or landed) and math.min(compact and 210 or 250,camera.ViewportSize.X*0.48) or 94
+                local x=math.clamp(point.X,field.left+width/2,field.right-width/2)
+                local y=math.clamp(point.Y,field.top,field.bottom-labelHeight)
+                local text=role
+                if landed then text=text.." · "..tostring(math.floor(p.flight.distance+0.5)).." m FINAL"
+                elseif outside and target and target.flight then
+                    local gap=p.flight.x-target.flight.x
+                    text=text.." · "..(gap>=0 and "+" or "−")..tostring(math.floor(math.abs(gap)+0.5)).." m"
+                end
+                if outside then
+                    local arrow=point.X<field.left+35 and "←" or (point.X>field.right-35 and "→"
+                        or (point.Y<field.top and "↑" or "↓"))
+                    text=arrow.." "..text
+                end
+                if previousMarker and math.abs(x-previousMarker.x)<(width+previousMarker.width)/2+4
+                    and math.abs(y-previousMarker.y)<labelHeight+2 then
+                    y=y+labelHeight+4<=field.bottom-labelHeight and y+labelHeight+4 or math.max(field.top,y-labelHeight-4)
+                end
+                label.Size=UDim2.fromOffset(width,labelHeight)
+                label.Position=UDim2.fromOffset(x,y-inset.Y)
+                label.Text=text
+                label.TextSize=compact and 14 or 16
+                label.TextXAlignment=Enum.TextXAlignment.Center
+                label.TextTruncate=Enum.TextTruncate.AtEnd
+                label.BackgroundColor3=Color3.fromRGB(23,39,77)
+                label.BackgroundTransparency=outside and 0.12 or 1
+                label:SetAttribute("EdgeMarker",outside)
+                label:SetAttribute("Landed",landed)
+                previousMarker={x=x,y=y,width=width}
+            end
         end
     end
     if hud.setLobbyView then hud:setLobbyView(lobbyView) end

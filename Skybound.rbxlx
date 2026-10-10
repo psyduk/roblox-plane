@@ -56991,7 +56991,7 @@ gcLgc4RKxr21zq2UlJSM]]></BinaryString>
 							<int name="MaxVisibleGraphemes">-1</int>
 							<string name="OpenTypeFeatures"></string>
 							<bool name="RichText">false</bool>
-							<string name="Text">FLY. EARN CREDITS. MAKE IT YOURS.</string>
+							<string name="Text">FLY. EARN COINS. MAKE IT YOURS.</string>
 							<Color3 name="TextColor3">
 								<R>1</R>
 								<G>0.960784316</G>
@@ -61277,7 +61277,7 @@ gcLgc4RKxr21zq2UlJSM]]></BinaryString>
 							<int name="MaxVisibleGraphemes">-1</int>
 							<string name="OpenTypeFeatures"></string>
 							<bool name="RichText">false</bool>
-							<string name="Text">40 CREDITS</string>
+							<string name="Text">40 COINS</string>
 							<Color3 name="TextColor3">
 								<R>1</R>
 								<G>0.960784316</G>
@@ -65088,7 +65088,7 @@ gcLgc4RKxr21zq2UlJSM]]></BinaryString>
 							<int name="MaxVisibleGraphemes">-1</int>
 							<string name="OpenTypeFeatures"></string>
 							<bool name="RichText">false</bool>
-							<string name="Text">100 CREDITS</string>
+							<string name="Text">100 COINS</string>
 							<Color3 name="TextColor3">
 								<R>1</R>
 								<G>0.960784316</G>
@@ -68899,7 +68899,7 @@ gcLgc4RKxr21zq2UlJSM]]></BinaryString>
 							<int name="MaxVisibleGraphemes">-1</int>
 							<string name="OpenTypeFeatures"></string>
 							<bool name="RichText">false</bool>
-							<string name="Text">300 CREDITS</string>
+							<string name="Text">300 COINS</string>
 							<Color3 name="TextColor3">
 								<R>1</R>
 								<G>0.960784316</G>
@@ -70391,7 +70391,7 @@ gcLgc4RKxr21zq2UlJSM]]></BinaryString>
 							<int name="MaxVisibleGraphemes">-1</int>
 							<string name="OpenTypeFeatures"></string>
 							<bool name="RichText">false</bool>
-							<string name="Text">PRACTICE + EARN CREDITS</string>
+							<string name="Text">PRACTICE + EARN COINS</string>
 							<Color3 name="TextColor3">
 								<R>1</R>
 								<G>0.960784316</G>
@@ -71488,6 +71488,7 @@ local lastPhase = ""
 local lastRound = ""
 local cameraPosition = nil
 local selfCrashedAt = nil
+local manualSpectate = false
 local hud = nil
 local characterControls = nil
 local controlsEnabled = nil
@@ -71536,6 +71537,7 @@ local function cycleSpectate(delta)
     if #choices==0 then return end
     local index=table.find(choices,watchedUserId) or 1
     watchedUserId=choices[(index-1+delta)%#choices+1]
+    manualSpectate=true
     selfCrashedAt=nil
     cameraPosition=nil
 end
@@ -71592,6 +71594,7 @@ snapshots.OnClientEvent:Connect(function(data)
         cameraPosition=nil
         watchedUserId=localPlayer.UserId
         selfCrashedAt=nil
+        manualSpectate=false
         if previewPlane then previewPlane:Destroy(); previewPlane=nil end
     end
     local key=tostring(data.courseSeed)..data.courseName
@@ -71637,6 +71640,56 @@ UserInputService.InputBegan:Connect(function(input,processed)
     end
 end)
 
+local function duelFrame(viewport, target)
+    local field=hud:getFlightViewport()
+    local portrait=viewport.X<viewport.Y
+    local baseHeight=math.max(viewport.Y<450 and 300 or 260,portrait and viewport.Y*240/viewport.X or 0)
+    -- At most 18% wider on desktop/landscape, 25% on portrait. Large gaps
+    -- become edge markers instead of shrinking the aircraft into distant dots.
+    local maxHeight=baseHeight*(portrait and 1.25 or 1.18)
+    local own=smooth[target.userId] or target.flight
+    local rival
+    for _,entry in ipairs(latest.players) do
+        if entry.userId~=target.userId and entry.flight then rival=smooth[entry.userId] or entry.flight; break end
+    end
+    local safeWidth=math.max(80,field.right-field.left)
+    local safeHeight=math.max(40,field.bottom-field.top)
+    local requiredHeight=baseHeight
+    if rival then
+        requiredHeight=math.max(requiredHeight,(math.abs(own.x-rival.x)+90)*viewport.Y/safeWidth,
+            (math.abs(own.y-rival.y)+64)*viewport.Y/safeHeight)
+    end
+    local visibleHeight=math.min(requiredHeight,maxHeight)
+    local unitsPerPixel=visibleHeight/viewport.Y
+    local together=rival and requiredHeight<=maxHeight
+    local centerX,centerY
+    if together then
+        centerX=(own.x+rival.x)/2+12
+        centerY=(own.y+rival.y)/2+8
+    else
+        centerX=own.x+math.min(65,safeWidth*unitsPerPixel*0.16)
+        centerY=own.y+12
+    end
+    -- Bias the frame toward the unobstructed region below the score/power bar,
+    -- retaining room beneath the plane for its identity and the ground.
+    local safeCenterX=(field.left+field.right)/2
+    local safeCenterY=(field.top+field.bottom)/2
+    local focusY=centerY+(safeCenterY-viewport.Y/2)*unitsPerPixel
+    -- Low skips should skim the bottom of the action area, not reveal a large
+    -- empty foreground. Reserve the below-plane label as well as the aircraft;
+    -- raising this focus only moves high pilots farther away from the top HUD.
+    local groundMargin=math.max(40,12/unitsPerPixel+26)
+    focusY=math.max(focusY,(field.bottom-groundMargin-viewport.Y/2)*unitsPerPixel)
+    local focus=World.COURSE_ORIGIN+Vector3.new(
+        centerX+(viewport.X/2-safeCenterX)*unitsPerPixel,
+        focusY,0)
+    worldFolder:SetAttribute("CameraMode",together and "duel" or "follow")
+    worldFolder:SetAttribute("CameraWorldHeight",visibleHeight)
+    worldFolder:SetAttribute("CameraHeightLimit",maxHeight)
+    worldFolder:SetAttribute("WatchedUserId",target.userId)
+    return focus,visibleHeight
+end
+
 RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Value+1,function(dt)
     local camera=workspace.CurrentCamera
     if not latest or not camera then return end
@@ -71654,7 +71707,7 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
         for _,p in ipairs(latest.players) do if p.flight then watchedUserId=p.userId; target=p; break end end
     end
     local own=getEntry(localPlayer.UserId)
-    if phase=="Flight" and watchedUserId==localPlayer.UserId and own and own.flight and not own.flight.alive then
+    if phase=="Flight" and not manualSpectate and watchedUserId==localPlayer.UserId and own and own.flight and not own.flight.alive then
         selfCrashedAt=selfCrashedAt or os.clock()
         if os.clock()-selfCrashedAt>2 then
             local leader=nil
@@ -71680,7 +71733,9 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
                     text.Text=p.userId==localPlayer.UserId and "YOU" or (p.bot and "GHOST" or "RIVAL")
                     text.TextColor3=p.userId==localPlayer.UserId and Color3.fromRGB(255,225,112) or Color3.new(1,1,1)
                     text.TextStrokeTransparency=0.1; text.TextStrokeColor3=Color3.fromRGB(23,39,77)
-                    text.TextSize=12; text.Font=Enum.Font.FredokaOne
+                    text.TextSize=16; text.Font=Enum.Font.FredokaOne
+                    local rounding=Instance.new("UICorner")
+                    rounding.CornerRadius=UDim.new(0,8); rounding.Parent=text
                     text.Parent=localPlayer.PlayerGui:FindFirstChild("SkyboundHUD")
                     planeLabels[p.userId]=text
                 end
@@ -71750,15 +71805,12 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
         -- A fixed side-on aiming frame keeps pointer movement independent of
         -- camera movement. Match HUD's clear field between its header/footer.
         local viewport=camera.ViewportSize
-        local topInset,bottomInset=GuiService:GetGuiInset()
-        local guiHeight=math.max(1,viewport.Y-topInset.Y-bottomInset.Y)
-        local landscape=viewport.X>=680 and guiHeight<470
-        local fieldTop=landscape and (guiHeight<330 and 54 or 62) or 81
-        local footerHeight=viewport.X<560 and 98 or 64
-        local fieldBottom=guiHeight-28-footerHeight-10
+        local field=hud:getAimViewport()
+        local fieldTop=field.top
+        local fieldBottom=field.bottom
         local fieldHeight=math.max(42,fieldBottom-fieldTop)
         local targetX=viewport.X*0.24
-        local targetY=fieldTop+math.min(fieldHeight*0.65,math.max(0,fieldHeight-44))+topInset.Y
+        local targetY=fieldTop+math.min(fieldHeight*0.65,math.max(0,fieldHeight-44))
         -- Fit the whole tilted jet and its pilot; long guide points are clipped
         -- by HUD at the field edges instead of changing zoom with launch angle.
         local worldWidth=viewport.X<560 and 250 or 320
@@ -71789,7 +71841,9 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
         local centerHeight=shortScreen and 125 or 105
         local visibleWidth=visibleHeight*aspect
         local ahead=math.min(145,visibleWidth*0.21)
-        if active and target and target.flight then
+        if phase=="Flight" and target and target.flight then
+            focus,visibleHeight=duelFrame(camera.ViewportSize,target)
+        elseif active and target and target.flight then
             local s=smooth[target.userId] or target.flight
             -- Follow a high climb gently so the aircraft stays below the HUD.
             -- The ground returns into view as soon as the plane descends.
@@ -71805,16 +71859,50 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
     end
     latest.viewingLobby=lobbyView
     local inset=GuiService:GetGuiInset()
-    local previousPoint=nil
+    local field=phase=="Flight" and hud:getFlightViewport() or nil
+    local previousMarker=nil
     for _,p in ipairs(latest.players) do
         local model,label=planes[p.userId],planeLabels[p.userId]
         if model and label then
             local point,visible=camera:WorldToViewportPoint(model:GetPivot().Position-Vector3.new(0,12,0))
-            local y=point.Y-inset.Y
-            if previousPoint and math.abs(point.X-previousPoint.X)<65 and math.abs(y-previousPoint.Y)<20 then y-=20 end
-            label.Position=UDim2.fromOffset(point.X,y)
-            label.Visible=phase=="Flight" and visible
-            previousPoint=Vector2.new(point.X,y)
+            label.Visible=phase=="Flight"
+            if field then
+                local role=p.userId==localPlayer.UserId and "YOU" or (p.bot and "GHOST" or "RIVAL")
+                local landed=p.flight and not p.flight.alive
+                local outside=not visible or point.X<field.left+35 or point.X>field.right-35
+                    or point.Y<field.top or point.Y>field.bottom-20
+                local compact=camera.ViewportSize.X<560 or camera.ViewportSize.Y<450
+                local labelHeight=compact and 28 or 32
+                local width=(outside or landed) and math.min(compact and 210 or 250,camera.ViewportSize.X*0.48) or 94
+                local x=math.clamp(point.X,field.left+width/2,field.right-width/2)
+                local y=math.clamp(point.Y,field.top,field.bottom-labelHeight)
+                local text=role
+                if landed then text=text.." · "..tostring(math.floor(p.flight.distance+0.5)).." m FINAL"
+                elseif outside and target and target.flight then
+                    local gap=p.flight.x-target.flight.x
+                    text=text.." · "..(gap>=0 and "+" or "−")..tostring(math.floor(math.abs(gap)+0.5)).." m"
+                end
+                if outside then
+                    local arrow=point.X<field.left+35 and "←" or (point.X>field.right-35 and "→"
+                        or (point.Y<field.top and "↑" or "↓"))
+                    text=arrow.." "..text
+                end
+                if previousMarker and math.abs(x-previousMarker.x)<(width+previousMarker.width)/2+4
+                    and math.abs(y-previousMarker.y)<labelHeight+2 then
+                    y=y+labelHeight+4<=field.bottom-labelHeight and y+labelHeight+4 or math.max(field.top,y-labelHeight-4)
+                end
+                label.Size=UDim2.fromOffset(width,labelHeight)
+                label.Position=UDim2.fromOffset(x,y-inset.Y)
+                label.Text=text
+                label.TextSize=compact and 14 or 16
+                label.TextXAlignment=Enum.TextXAlignment.Center
+                label.TextTruncate=Enum.TextTruncate.AtEnd
+                label.BackgroundColor3=Color3.fromRGB(23,39,77)
+                label.BackgroundTransparency=outside and 0.12 or 1
+                label:SetAttribute("EdgeMarker",outside)
+                label:SetAttribute("Landed",landed)
+                previousMarker={x=x,y=y,width=width}
+            end
         end
     end
     if hud.setLobbyView then hud:setLobbyView(lobbyView) end
@@ -71871,6 +71959,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local PlaneCatalog = require(ReplicatedStorage:WaitForChild("FlightGame"):WaitForChild("PlaneCatalog"))
 local PowerCatalog = require(ReplicatedStorage:WaitForChild("FlightGame"):WaitForChild("PowerCatalog"))
+local CosmeticCatalog = require(ReplicatedStorage:WaitForChild("FlightGame"):WaitForChild("CosmeticCatalog"))
+local Simulation = require(ReplicatedStorage:WaitForChild("FlightGame"):WaitForChild("Simulation"))
 
 local Hud = {}
 Hud.__index = Hud
@@ -71886,11 +71976,12 @@ local COLORS = {
 	coral = Color3.fromRGB(242, 79, 106),
 	line = Color3.fromRGB(156, 191, 221),
 	gold = Color3.fromRGB(255, 217, 65),
+	amber = Color3.fromRGB(153, 79, 12),
 }
 local DISPLAY_TEXT = {
 	Brand = true, Title = true, Timer = true, Name = true, Votes = true,
 	Distance = true, OpponentDistance = true, YourDistance = true, BestDistance = true,
-	Lead = true, Rank = true,
+	Lead = true, Rank = true, RewardAmount = true, RewardGoal = true,
 }
 local PAINTS = {
 	Color3.fromRGB(255, 104, 102),
@@ -71992,7 +72083,7 @@ local function button(parent, name, text, x, y, width, height, color)
 		TextStrokeColor3 = COLORS.ink,
 		TextStrokeTransparency = 0,
 		Font = Enum.Font.FredokaOne,
-		TextSize = 16,
+		TextSize = 20,
 		AutoButtonColor = true,
 		Selectable = true,
 	}, parent)
@@ -72433,6 +72524,7 @@ function Hud.new(callbacks)
 	self.rematchRequested = false
 	self.rematchPendingUntil = 0
 	self.canRematch = false
+	self.rewardSeen, self.rewardOrder = {}, {}
 
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 	local previous = playerGui:FindFirstChild("SkyboundHUD")
@@ -72463,7 +72555,7 @@ function Hud.new(callbacks)
 	self.timer = label(self.header, "Timer", "--", 0, 10, 58, 44, 28, COLORS.white, true)
 	self.timer.Position = UDim2.new(1, -68, 0, 10)
 	self.timer.TextXAlignment = Enum.TextXAlignment.Center
-    self.footer = label(self.gui, "Prototype", "FLY · EARN CREDITS · COLLECT FLIGHT EFFECTS", 0, 0, 500, 16, 10, COLORS.white, true)
+    self.footer = label(self.gui, "Prototype", "FLY · EARN COINS · COLLECT FLIGHT EFFECTS", 0, 0, 600, 18, 12, COLORS.white, true)
 	self.footer.AnchorPoint = Vector2.new(0.5, 1)
 	self.footer.Position = UDim2.new(0.5, 0, 1, -5)
 	self.footer.TextXAlignment = Enum.TextXAlignment.Center
@@ -72474,6 +72566,8 @@ function Hud.new(callbacks)
 	stroke(self.hubCard, COLORS.ink, 3)
 	gloss(self.hubCard)
 	self.hubTitle = label(self.hubCard, "Title", "SKYBOUND / FLIGHT CLUB", 14, 9, 292, 22, 17, COLORS.white, true)
+	self.hubTitle.TextScaled = true
+	create("UITextSizeConstraint", { MinTextSize = 16, MaxTextSize = 27 }, self.hubTitle)
 	self.hubInstruction = label(self.hubCard, "Instruction", "Walk onto a 1v1 pad with an opponent.", 14, 34, 292, 31, 12, COLORS.white)
 	self.hubInstruction.TextWrapped = true
 	self.hubAction = button(self.gui, "HubAction", "PRACTICE VS GHOST", 0, 0, 198, 48, COLORS.cyan)
@@ -72712,6 +72806,11 @@ function Hud.new(callbacks)
 	self.powerFlightText = label(self.powerFlightBadge, "PowerState", "PINBALL · 3 BOUNCES", 9, 3, 282, 25, 13, COLORS.ink, true)
 	self.powerFlightText.Font = Enum.Font.FredokaOne
 	self.powerFlightText.TextXAlignment = Enum.TextXAlignment.Center
+	self.opponentPowerText = label(self.powerFlightBadge, "OpponentPowerState", "", 159, 3, 132, 25, 13, COLORS.cyan, true)
+	self.opponentPowerText.Font = Enum.Font.FredokaOne
+	self.opponentPowerText.TextXAlignment = Enum.TextXAlignment.Center
+	self.powerFlightDivider = frame(self.powerFlightBadge, "Divider", 149, 6, 1, 19, COLORS.muted)
+	self.powerFlightBadge.BackgroundColor3 = COLORS.ink
 	self.powerBurst = frame(self.gui, "PowerLocked", 0, 0, 520, 112, COLORS.gold)
 	self.powerBurst.AnchorPoint = Vector2.new(0.5, 0.5)
 	self.powerBurst.Visible = false
@@ -72790,6 +72889,23 @@ function Hud.new(callbacks)
 	self.bestDistance = label(personal, "BestDistance", "0 m", 223, 33, 183, 28, 23, COLORS.white, true)
 	self.nextRoundLabel = label(self.resultsPanel, "NextRound", "Request a rematch or return to the club.", 24, 434, 422, 16, 12, COLORS.muted)
 	self.nextRoundLabel.TextXAlignment = Enum.TextXAlignment.Center
+	self.rewardPanel = frame(self.resultsPanel, "FlightReward", 24, 292, 422, 158, COLORS.ink)
+	corner(self.rewardPanel, 16)
+	stroke(self.rewardPanel, COLORS.gold, 3)
+	self.rewardAmount = label(self.rewardPanel, "RewardAmount", "+0 COINS", 16, 8, 390, 44, 38, COLORS.gold, true)
+	self.rewardAmount.TextColor3 = COLORS.gold
+	self.rewardAmount.TextXAlignment = Enum.TextXAlignment.Center
+	self.rewardBalance = label(self.rewardPanel, "Balance", "", 16, 53, 390, 20, 14, COLORS.white, true)
+	self.rewardBalance.TextXAlignment = Enum.TextXAlignment.Center
+	self.rewardGoal = label(self.rewardPanel, "RewardGoal", "NEXT: SKY BLUE", 16, 79, 390, 24, 21, COLORS.white, true)
+	self.rewardGoal.TextXAlignment = Enum.TextXAlignment.Center
+	create("UITextSizeConstraint", { MinTextSize = 14, MaxTextSize = 24 }, self.rewardGoal)
+	self.rewardTrack = frame(self.rewardPanel, "ProgressTrack", 16, 110, 390, 14, COLORS.muted)
+	corner(self.rewardTrack, 7)
+	self.rewardFill = frame(self.rewardTrack, "ProgressFill", 0, 0, 0, 14, COLORS.cyan)
+	corner(self.rewardFill, 7)
+	self.rewardHint = label(self.rewardPanel, "ProgressHint", "", 16, 132, 390, 20, 14, COLORS.white, true)
+	self.rewardHint.TextXAlignment = Enum.TextXAlignment.Center
 	self.resultActions = frame(self.gui, "ResultActions", 0, 0, 470, 64)
 	self.resultActions.AnchorPoint = Vector2.new(0.5, 0)
 	self.resultActions.Visible = false
@@ -72856,158 +72972,183 @@ function Hud:_makePersonalHud()
 end
 
 function Hud:_layoutPersonal(viewport, height)
-	local width = math.min(470, viewport.X - 24)
-	local cardHeight = math.min(338, height - 16)
+	local width = math.min(620, viewport.X - 24)
+	local short = height < 430
+	local cardHeight = math.min(short and 304 or 420, height - 16)
 	self.statsCard.Size = UDim2.fromOffset(width, cardHeight)
-	self.statsCard.Title.TextSize = width < 400 and 18 or 24
-	self.statsCard.Title.Size = UDim2.fromOffset(width - 80, 30)
-	self.statsClose.Position = UDim2.fromOffset(width - 52, 8)
+	self.statsCard.Title.TextSize = width < 400 and 22 or 30
+	self.statsCard.Title.Size = UDim2.fromOffset(width - 80, 36)
+	self.statsClose.Position = UDim2.fromOffset(width - 54, 10)
 	local cellWidth = (width - 44) / 2
-	local cellHeight = (cardHeight - 126) / 3
+	local cellHeight = (cardHeight - 138) / 3
 	for index, cell in ipairs(self.statsCells) do
-		cell.Position = UDim2.fromOffset(16 + ((index - 1) % 2) * (cellWidth + 12), 59 + math.floor((index - 1) / 2) * (cellHeight + 7))
+		cell.Position = UDim2.fromOffset(16 + ((index - 1) % 2) * (cellWidth + 12), 61 + math.floor((index - 1) / 2) * (cellHeight + 8))
 		cell.Size = UDim2.fromOffset(cellWidth, cellHeight)
-		cell.Caption.Size = UDim2.fromOffset(cellWidth - 24, 15)
-		cell.Distance.Position = UDim2.fromOffset(12, 21)
-		cell.Distance.Size = UDim2.fromOffset(cellWidth - 24, math.max(20, cellHeight - 23))
-		cell.Distance.TextSize = cardHeight < 310 and 20 or 24
+		cell.Caption.Position = UDim2.fromOffset(10, 5)
+		cell.Caption.Size = UDim2.fromOffset(cellWidth - 20, 18)
+		cell.Caption.TextSize = width < 400 and 11 or 13
+		cell.Distance.Position = UDim2.fromOffset(10, 23)
+		cell.Distance.Size = UDim2.fromOffset(cellWidth - 20, math.max(22, cellHeight - 25))
+		cell.Distance.TextSize = short and 25 or (width < 400 and 29 or 36)
 	end
-	self.statsRecord.Position = UDim2.fromOffset(18, cardHeight - 48)
-	self.statsRecord.Size = UDim2.fromOffset(width - 36, 18)
-	self.statsSave.Position = UDim2.fromOffset(18, cardHeight - 28)
-	self.statsSave.Size = UDim2.fromOffset(width - 36, 22)
+	self.statsRecord.Position = UDim2.fromOffset(18, cardHeight - 54)
+	self.statsRecord.Size = UDim2.fromOffset(width - 36, 20)
+	self.statsRecord.TextSize = width < 400 and 13 or 15
+	self.statsSave.Position = UDim2.fromOffset(18, cardHeight - 32)
+	self.statsSave.Size = UDim2.fromOffset(width - 36, 28)
+	self.statsSave.TextSize = 12
 end
 
 function Hud:_layoutDuel(viewport, height)
 	local function place(item, x, y, width, sizeY)
-		item.Position = UDim2.fromOffset(x, y)
-		item.Size = UDim2.fromOffset(width, sizeY)
+		item.Position, item.Size = UDim2.fromOffset(x, y), UDim2.fromOffset(width, sizeY)
 	end
-	local hubWidth = math.min(320, viewport.X - 32)
-	self.hubCard.Size = UDim2.fromOffset(hubWidth, 76)
-	self.hubTitle.Size = UDim2.fromOffset(hubWidth - 28, 22)
-	self.hubInstruction.Size = UDim2.fromOffset(hubWidth - 28, 31)
+	local portrait = viewport.X < 600
+	local short = not portrait and height < 430
+	local actionWidth = short and 260 or 280
+	local rewardWidth = short and 252 or 318
+	local hubWidth = portrait and viewport.X - 24 or math.min(short and 340 or 420, viewport.X - math.max(actionWidth, rewardWidth) - 48)
+	local hubHeight = short and 82 or 100
+	place(self.hubCard, portrait and 12 or 16, short and 6 or 10, hubWidth, hubHeight)
+	place(self.hubTitle, 16, 9, hubWidth - 32, 31)
+	self.hubTitle.TextSize = portrait and 22 or (hubWidth < 350 and 20 or 27)
+	place(self.hubInstruction, 16, short and 39 or 44, hubWidth - 32, short and 34 or 43)
+	self.hubInstruction.TextSize = hubWidth < 350 and 13 or 15
 	self.hubAction.AnchorPoint = Vector2.new(1, 0)
-	self.hubAction.Position = UDim2.new(1, -16, 0, viewport.X >= 560 and 10 or 94)
-	-- The flight bar replaces the normal header; the course keeps the center.
-	local flightWidth = math.min(690, viewport.X - 24)
+	self.hubAction.Position = UDim2.new(1, portrait and -12 or -16, 0, portrait and 122 or (short and 8 or 10))
+	self.hubAction.Size = UDim2.fromOffset(portrait and viewport.X - 24 or (short and 260 or 280), portrait and 52 or (short and 50 or 58))
+	self.hubAction.TextSize = portrait and 21 or 23
+	local utilityY = portrait and 184 or (short and 100 or 122)
+	local utilityWidth = portrait and (viewport.X - 36) / 2 or math.min(short and 142 or 166, (hubWidth - 12) / 2)
+	place(self.statsButton, portrait and 12 or 16, utilityY, utilityWidth, short and 44 or 46)
+	self.statsButton.TextSize = short and 17 or 19
+	self.hubSoundPosition = UDim2.fromOffset((portrait and 12 or 16) + utilityWidth + 12, utilityY)
+	self.hubSoundSize = UDim2.fromOffset(utilityWidth, short and 44 or 46)
+	-- Distances lead the scoreboard; two slim rows retain the shared race view.
+	local flightWidth = math.min(900, viewport.X - 24)
+	local flightHeight = short and 72 or (portrait and 82 or 94)
 	local column = (flightWidth - 32) / 3
 	self.flightPanel.Position = UDim2.new(0.5, 0, 0, 6)
-	self.flightPanel.Size = UDim2.fromOffset(flightWidth, 64)
-	self.flightPanel.CanvasSize = UDim2.fromOffset(0, 64)
+	self.flightPanel.Size = UDim2.fromOffset(flightWidth, flightHeight)
+	self.flightPanel.CanvasSize = UDim2.fromOffset(0, flightHeight)
 	self.flightPanel.Rule.Visible = false
-	place(self.ownPilot, 14, 3, column, 15)
-	place(self.flightDistance, 14, 19, column, 29)
-	self.flightDistance.TextSize = 26
-	place(self.opponentPilot, flightWidth - column - 14, 3, column, 15)
-	place(self.opponentDistance, flightWidth - column - 14, 19, column, 29)
-	self.opponentDistance.TextSize = 26
-	place(self.leadLabel, 16 + column, 6, column, 23)
-	self.leadLabel.TextSize = flightWidth < 430 and 12 or 18
-	place(self.flightStatus, 16 + column, 29, column, 17)
+	local numberY, numberHeight = short and 18 or 24, short and 32 or 40
+	place(self.ownPilot, 12, 4, column, 18)
+	place(self.opponentPilot, flightWidth - column - 12, 4, column, 18)
+	self.ownPilot.TextSize, self.opponentPilot.TextSize = portrait and 12 or 14, portrait and 12 or 14
+	self.ownPilot.TextTruncate, self.opponentPilot.TextTruncate = Enum.TextTruncate.AtEnd, Enum.TextTruncate.AtEnd
+	place(self.flightDistance, 12, numberY, column, numberHeight)
+	place(self.opponentDistance, flightWidth - column - 12, numberY, column, numberHeight)
+	self.flightDistance.TextSize, self.opponentDistance.TextSize = portrait and 30 or (short and 31 or 42), portrait and 30 or (short and 31 or 42)
+	place(self.leadLabel, 16 + column, short and 8 or 12, column, portrait and 35 or 29)
+	self.leadLabel.TextSize = portrait and 16 or (short and 21 or 25)
+	self.leadLabel.TextWrapped = true
+	place(self.flightStatus, 16 + column, short and 38 or 47, column, 21)
 	self.flightStatus.TextXAlignment = Enum.TextXAlignment.Center
-	self.flightStatus.TextSize = flightWidth < 430 and 10 or 12
-	place(self.watchedLabel, 14, 47, flightWidth / 2 - 18, 15)
-	self.watchedLabel.TextSize = 10
-	place(self.flightStats, flightWidth / 2, 47, flightWidth / 2 - 14, 15)
-	self.flightStats.TextSize = 10
+	self.flightStatus.TextSize = portrait and 11 or (short and 12 or 14)
+	place(self.watchedLabel, 12, flightHeight - 21, flightWidth / 2 - 18, 18)
+	self.watchedLabel.TextSize = portrait and 11 or 13
+	place(self.flightStats, flightWidth / 2, flightHeight - 21, flightWidth / 2 - 12, 18)
+	self.flightStats.TextSize = portrait and 11 or 13
 	self.flightStats.TextXAlignment = Enum.TextXAlignment.Right
 	self.flightStats.TextTruncate = Enum.TextTruncate.AtEnd
 	self.flightControls.AnchorPoint = Vector2.new(1, 1)
 	self.flightControls.Position = UDim2.new(1, -12, 1, -26)
-	self.flightControls.Size = UDim2.fromOffset(326, 52)
-	self.flightControls.CanvasSize = UDim2.fromOffset(0, 52)
-	place(self.flightControls.PreviousPilot, 4, 4, 44, 44)
-	place(self.spectateLabel, 52, 4, 58, 44)
-	self.spectateLabel.Visible = true
+	local controlsWidth = portrait and 274 or (short and 286 or 410)
+	local controlsHeight = short and 48 or 58
+	self.flightControls.Size = UDim2.fromOffset(controlsWidth, controlsHeight)
+	self.flightControls.CanvasSize = UDim2.fromOffset(0, controlsHeight)
+	local controlY = short and 2 or 5
+	place(self.flightControls.PreviousPilot, 5, controlY, 46, 44)
+	self.spectateLabel.Visible = not portrait and not short
 	self.spectateLabel.Text = "CAMERA"
-	self.spectateLabel.TextSize = 10
-	place(self.flightControls.NextPilot, 114, 4, 44, 44)
-	place(self.lobbyButton, 166, 4, 156, 44)
-	self.lobbyButton.TextSize = 13
-	if viewport.X > viewport.Y and viewport.Y < 400 then
-		self.flightPanel.Size = UDim2.fromOffset(flightWidth, 52)
-		self.flightPanel.CanvasSize = UDim2.fromOffset(0, 52)
-		place(self.ownPilot, 14, 2, column, 13)
-		place(self.opponentPilot, flightWidth - column - 14, 2, column, 13)
-		self.ownPilot.TextSize, self.opponentPilot.TextSize = 10, 10
-		place(self.flightDistance, 14, 15, column, 23)
-		place(self.opponentDistance, flightWidth - column - 14, 15, column, 23)
-		self.flightDistance.TextSize, self.opponentDistance.TextSize = 22, 22
-		place(self.leadLabel, 16 + column, 4, column, 20)
-		self.leadLabel.TextSize = flightWidth < 430 and 12 or 16
-		place(self.flightStatus, 16 + column, 24, column, 14)
-		self.flightStatus.TextSize = 10
-		place(self.watchedLabel, 14, 38, flightWidth / 2 - 18, 13)
-		place(self.flightStats, flightWidth / 2, 38, flightWidth / 2 - 14, 13)
-		self.flightControls.Size = UDim2.fromOffset(230, 44)
-		self.flightControls.CanvasSize = UDim2.fromOffset(0, 44)
-		place(self.flightControls.PreviousPilot, 4, 0, 44, 44)
-		place(self.flightControls.NextPilot, 52, 0, 44, 44)
-		place(self.lobbyButton, 100, 0, 126, 44)
-		self.lobbyButton.TextSize = 12
-		self.spectateLabel.Visible = false
-	else
-		self.ownPilot.TextSize, self.opponentPilot.TextSize = 11, 11
+	self.spectateLabel.TextSize = 15
+	place(self.spectateLabel, 57, controlY, 82, 44)
+	local nextX = self.spectateLabel.Visible and 145 or 57
+	place(self.flightControls.NextPilot, nextX, controlY, 46, 44)
+	place(self.lobbyButton, nextX + 54, controlY, controlsWidth - nextX - 59, 44)
+	self.lobbyButton.TextSize = portrait and 15 or 17
+	self:_layoutResults(viewport, height)
+end
+
+function Hud:_layoutResults(viewport, height)
+	local function place(item, x, y, width, sizeY)
+		item.Position, item.Size = UDim2.fromOffset(x, y), UDim2.fromOffset(width, sizeY)
 	end
-	local width = math.min(470, viewport.X - 24)
-	local inner = width - 48
-	local landscape = viewport.X >= 680 and height < 470
-	local personal = self.resultsPanel.PersonalResult
-	self.resultsPanel.Eyebrow.Visible = not landscape
-	self.nextRoundLabel.Visible = not landscape
+	local landscape = viewport.X >= 600 and height < 470
+	local width = math.min(landscape and 960 or 620, viewport.X - 24)
+	local inner = width - 32
+	local top = self.header.Position.Y.Offset + self.header.Size.Y.Offset + 10
+	local actionsHeight = landscape and 60 or 72
+	local available = math.max(118, height - top - actionsHeight - 18)
+	local contentHeight = landscape and 172 or 536
+	local visible = math.min(contentHeight, available)
 	self.resultsPanel.AnchorPoint = Vector2.new(0.5, 0)
-	if landscape then
-		width = math.min(760, viewport.X - 32)
-		local half = width / 2
-		local rowWidth = half - 24
-		local top = height < 330 and 54 or 65
-		self.resultsPanel.Position = UDim2.new(0.5, 0, 0, top)
-		self.resultsPanel.Size = UDim2.fromOffset(width, 134)
-		self.resultsPanel.CanvasSize = UDim2.fromOffset(0, 134)
-		place(self.resultsPanel.Title, 16, 3, width - 32, 27)
-		self.resultsPanel.Title.TextSize = 21
-		place(self.resultMessage, 16, 31, width - 32, 18)
-		for index, row in ipairs(self.resultRows) do
-			place(row.frame, 16, 54 + (index - 1) * 42, rowWidth, 34)
-			place(row.rank, 10, 0, 26, 34)
-			place(row.name, 41, 0, rowWidth - 145, 34)
-			place(row.distance, rowWidth - 99, 0, 90, 34)
-			row.name.TextSize = 12
-			row.distance.TextSize = 15
-		end
-		place(personal, half + 8, 55, rowWidth, 75)
-		local recordHalf = rowWidth / 2
-		place(personal.YourLabel, 12, 10, recordHalf - 12, 16)
-		place(personal.BestLabel, recordHalf + 4, 10, recordHalf - 12, 16)
-		place(self.yourDistance, 12, 32, recordHalf - 12, 28)
-		place(self.bestDistance, recordHalf + 4, 32, recordHalf - 12, 28)
-		self.yourDistance.TextSize, self.bestDistance.TextSize = 21, 21
-		self.resultActions.Position = UDim2.new(0.5, 0, 0, top + 140)
-	else
-		local available = math.max(110, height - 185)
-		local visible = math.min(328, available)
-		self.resultsPanel.Position = UDim2.new(0.5, 0, 0, 87)
-		self.resultsPanel.Size = UDim2.fromOffset(width, visible)
-		self.resultsPanel.CanvasSize = UDim2.fromOffset(0, 328)
-		place(self.resultsPanel.Title, 24, 43, inner, 34)
-		place(self.resultMessage, 24, 80, inner, 20)
-		for index, row in ipairs(self.resultRows) do
-			place(row.frame, 24, 112 + (index - 1) * 44, inner, 37)
-			place(row.rank, 12, 0, 30, 37)
-			place(row.name, 44, 0, inner - 151, 37)
-			place(row.distance, inner - 110, 0, 98, 37)
-		end
-		place(personal, 24, 211, inner, 75)
-		place(self.nextRoundLabel, 24, 300, inner, 18)
-		self.resultActions.Position = UDim2.new(0.5, 0, 0, 87 + visible + 8)
+	self.resultsPanel.Position = UDim2.new(0.5, 0, 0, top)
+	self.resultsPanel.Size = UDim2.fromOffset(width, visible)
+	self.resultsPanel.CanvasSize = UDim2.fromOffset(0, contentHeight)
+	self.resultsPanel.Eyebrow.Visible = not landscape
+	place(self.resultsPanel.Eyebrow, 20, 12, inner - 8, 18)
+	self.resultsPanel.Eyebrow.TextSize = 12
+	place(self.resultsPanel.Title, 16, landscape and 7 or 34, inner, landscape and 30 or 43)
+	self.resultsPanel.Title.TextSize = landscape and 28 or (width < 430 and 29 or 39)
+	place(self.resultMessage, 18, landscape and 42 or 78, inner - 4, 22)
+	self.resultMessage.TextSize = width < 430 and 13 or 15
+	self.resultMessage.TextTruncate = Enum.TextTruncate.AtEnd
+	self.resultMessage.Visible = not landscape
+	local scoreWidth = landscape and (inner - 16) / 2 or inner
+	local rowY = landscape and 43 or 113
+	local rowHeight = landscape and 38 or 49
+	for index, row in ipairs(self.resultRows) do
+		place(row.frame, 16, rowY + (index - 1) * (rowHeight + (landscape and 6 or 8)), scoreWidth, rowHeight)
+		place(row.rank, 9, 0, 28, rowHeight)
+		place(row.name, 42, 0, scoreWidth - 162, rowHeight)
+		place(row.distance, scoreWidth - 116, 0, 105, rowHeight)
+		row.rank.TextSize = 22
+		row.name.TextSize = width < 430 and 14 or 17
+		row.distance.TextSize = 23
 	end
-	self.resultActions.Size = UDim2.fromOffset(width, 64)
+	local personal = self.resultsPanel.PersonalResult
+	place(personal, 16, landscape and 133 or 232, scoreWidth, landscape and 30 or 75)
+	local half = scoreWidth / 2
+	place(personal.YourLabel, 12, 5, half - 16, 18)
+	place(personal.BestLabel, half + 4, 5, half - 16, 18)
+	personal.YourLabel.TextSize, personal.BestLabel.TextSize = 11, 11
+	place(self.yourDistance, 12, landscape and 24 or 29, half - 16, landscape and 29 or 36)
+	place(self.bestDistance, half + 4, landscape and 24 or 29, half - 16, landscape and 29 or 36)
+	self.yourDistance.TextSize, self.bestDistance.TextSize = landscape and 26 or 30, landscape and 26 or 30
+	personal.YourLabel.Visible, self.yourDistance.Visible = not landscape, not landscape
+	if landscape then
+		place(personal.BestLabel, 10, 5, half - 8, 20)
+		place(self.bestDistance, half, 1, half - 12, 28)
+	end
+	local rewardWidth = landscape and scoreWidth or inner
+	local rewardHeight = landscape and 122 or 175
+	place(self.rewardPanel, landscape and 32 + scoreWidth or 16, landscape and 43 or 322, rewardWidth, rewardHeight)
+	local rewardInner = rewardWidth - 24
+	place(self.rewardAmount, 12, landscape and 1 or 5, rewardInner, landscape and 39 or 45)
+	self.rewardAmount.TextSize = landscape and 34 or (width < 430 and 35 or 43)
+	self.rewardTextSize = self.rewardAmount.TextSize
+	place(self.rewardBalance, 12, landscape and 37 or 51, rewardInner, landscape and 18 or 21)
+	self.rewardBalance.TextSize = 14
+	place(self.rewardGoal, 12, landscape and 58 or 78, rewardInner, landscape and 24 or 27)
+	self.rewardGoal.TextSize = width < 430 and 21 or 24
+	self.rewardGoal.TextScaled = landscape
+	place(self.rewardTrack, 14, landscape and 87 or 115, rewardWidth - 28, landscape and 10 or 14)
+	place(self.rewardHint, 12, landscape and 102 or 137, rewardInner, landscape and 18 or 23)
+	self.rewardHint.TextSize = landscape and 13 or 14
+	self.nextRoundLabel.Visible = not landscape
+	place(self.nextRoundLabel, 16, 507, inner, 20)
+	self.nextRoundLabel.TextSize = 12
+	self.resultActions.Position = UDim2.new(0.5, 0, 0, top + visible + 8)
+	self.resultActions.Size = UDim2.fromOffset(width, actionsHeight)
 	local actionWidth = (width - 24) / 2
-	place(self.rematchButton, 8, 8, actionWidth, 48)
-	place(self.returnButton, 16 + actionWidth, 8, actionWidth, 48)
-	self.rematchButton.TextSize = width < 430 and 11 or 14
-	self.returnButton.TextSize = width < 430 and 11 or 14
+	place(self.rematchButton, 8, 8, actionWidth, actionsHeight - 16)
+	place(self.returnButton, 16 + actionWidth, 8, actionWidth, actionsHeight - 16)
+	self.rematchButton.TextSize = width < 430 and 15 or 21
+	self.returnButton.TextSize = width < 430 and 15 or 21
+	self.rematchButton.TextWrapped, self.returnButton.TextWrapped = true, true
+	self.returnButton.Text = "BACK TO HANGAR"
 end
 
 function Hud:_layoutPowerChoices(viewport, height)
@@ -73019,17 +73160,17 @@ function Hud:_layoutPowerChoices(viewport, height)
 	self.compactPowerActions = portrait or short
 	local width = math.min(1000, math.max(260, viewport.X - 24))
 	local top = self.header.Position.Y.Offset + self.header.Size.Y.Offset + 9
-	local actionHeight = portrait and 111 or (short and 60 or 82)
+	local actionHeight = portrait and 124 or (short and 72 or 92)
 	local availableBody = math.max(130, height - top - actionHeight - 26)
 	local headingHeight = portrait and 66 or (short and 34 or 88)
-	local cardHeight = portrait and math.clamp((availableBody - headingHeight - 12) / 3 - 10, 104, 142)
+	local cardHeight = portrait and math.clamp((availableBody - headingHeight - 12) / 3 - 10, 116, 150)
 		or (short and math.clamp(availableBody - headingHeight - 10, 94, 126) or 274)
 	local gap = portrait and 12 or (short and 14 or 22)
 	local cardWidth = portrait and width - 32 or (width - 36 - gap * 2) / 3
 	local cardTop = headingHeight + (short and 2 or 7)
 	local cardsBottom = cardTop + (portrait and (cardHeight * 3 + gap * 2) or cardHeight)
 	local drawerTop = cardsBottom + (short and 12 or 18)
-	local drawerHeight = short and 124 or 182
+	local drawerHeight = short and 132 or 190
 	local contentHeight = self.compactPowerActions and (self.customizeOpen and drawerTop + drawerHeight + 12 or cardsBottom + 12)
 		or (drawerTop + 48 + (self.customizeOpen and 194 or 0) + 12)
 	local bodyHeight = math.min(contentHeight, availableBody)
@@ -73041,7 +73182,7 @@ function Hud:_layoutPowerChoices(viewport, height)
 	self.powerHeadline.TextSize = short and 24 or (portrait and (width < 350 and 22 or 25) or 38)
 	self.powerSubhead.Visible = not short
 	place(self.powerSubhead, 12, portrait and 43 or 57, width - 24, 19)
-	self.powerSubhead.TextSize = portrait and 10 or 13
+	self.powerSubhead.TextSize = portrait and 12 or 16
 	for index, id in ipairs(POWER_IDS) do
 		local card = self.powerCards[id]
 		local x = portrait and width / 2 or 18 + cardWidth / 2 + (index - 1) * (cardWidth + gap)
@@ -73055,49 +73196,50 @@ function Hud:_layoutPowerChoices(viewport, height)
 			local textWidth = cardWidth - textLeft - 10
 			card.art.frame.Position = UDim2.fromOffset(artWidth / 2 + 5, cardHeight / 2 + 5)
 			card.art.scale.Scale = cardWidth < 320 and 0.59 or 0.68
-			place(card.chosen, textLeft, 9, textWidth, 18)
+			place(card.chosen, textLeft, 8, textWidth, 21)
+			card.chosen.TextSize = 12
 			place(card.title, textLeft, 32, textWidth, 27)
-			card.title.TextSize = cardWidth < 320 and 19 or 22
+			card.title.TextSize = cardWidth < 320 and 21 or 25
 			card.title.TextXAlignment = Enum.TextXAlignment.Left
-			card.promise.Visible = cardHeight >= 124
+			card.promise.Visible = cardHeight >= 144
 			place(card.promise, textLeft, 61, textWidth, 32)
-			card.promise.TextSize = 11
+			card.promise.TextSize = 12
 			card.promise.TextXAlignment = Enum.TextXAlignment.Left
 			place(card.plan, textLeft, cardHeight - 37, textWidth, 28)
-			card.plan.TextSize = 10
+			card.plan.TextSize = 12
 			card.plan.TextXAlignment = Enum.TextXAlignment.Left
 		elseif short then
-			card.art.frame.Position = UDim2.fromOffset(cardWidth / 2, cardHeight < 110 and 27 or 33)
-			card.art.scale.Scale = cardHeight < 110 and 0.34 or 0.44
-			place(card.chosen, 7, 5, 89, 16)
-			card.chosen.TextSize = 8
-			place(card.title, 5, cardHeight - 63, cardWidth - 10, 26)
-			card.title.TextSize = cardWidth < 205 and 16 or 19
+			card.art.frame.Position = UDim2.fromOffset(32, 49)
+			card.art.scale.Scale = 0.34
+			place(card.chosen, 7, 5, cardWidth - 14, 18)
+			card.chosen.TextSize = 11
+			place(card.title, 63, 27, cardWidth - 71, 44)
+			card.title.TextSize = cardWidth < 205 and 18 or 21
 			card.title.TextXAlignment = Enum.TextXAlignment.Center
 			card.promise.Visible = false
 			place(card.plan, 9, cardHeight - 33, cardWidth - 18, 27)
-			card.plan.TextSize = 10
+			card.plan.TextSize = 12
 			card.plan.TextXAlignment = Enum.TextXAlignment.Center
 		else
 			card.art.frame.Position = UDim2.fromOffset(cardWidth / 2, 83)
 			card.art.scale.Scale = math.min(1.08, cardWidth / 240)
 			place(card.chosen, 12, 10, cardWidth - 24, 21)
-			card.chosen.TextSize = 10
+			card.chosen.TextSize = 13
 			place(card.title, 10, 142, cardWidth - 20, 59)
 			card.title.TextSize = cardWidth < 240 and 25 or 30
 			card.title.TextXAlignment = Enum.TextXAlignment.Center
 			card.promise.Visible = true
 			place(card.promise, 12, 201, cardWidth - 24, 31)
-			card.promise.TextSize = 13
+			card.promise.TextSize = 16
 			card.promise.TextXAlignment = Enum.TextXAlignment.Center
 			place(card.plan, 9, 238, cardWidth - 18, 26)
-			card.plan.TextSize = cardWidth < 250 and 10 or 12
+			card.plan.TextSize = cardWidth < 250 and 12 or 14
 			card.plan.TextXAlignment = Enum.TextXAlignment.Center
 		end
 	end
 	self.customizeButton.Parent = self.compactPowerActions and self.configActions or self.configPanel
 	if not self.compactPowerActions then place(self.customizeButton, 16, drawerTop, width - 32, 44) end
-	self.customizeButton.TextSize = self.compactPowerActions and 11 or 14
+	self.customizeButton.TextSize = self.compactPowerActions and 14 or 19
 	self.customizePanel.Visible = self.customizeOpen
 	place(self.customizePanel, 16, drawerTop + (self.compactPowerActions and 0 or 52), width - 32, drawerHeight)
 	local drawerWidth = width - 56
@@ -73105,35 +73247,37 @@ function Hud:_layoutPowerChoices(viewport, height)
 	local planeWidth = (planeAreaWidth - 16) / 3
 	for index, id in ipairs(PlaneCatalog.ORDER) do
 		place(self.planeButtons[id], 12 + (index - 1) * (planeWidth + 8), 10, planeWidth, 44)
-		self.planeButtons[id].TextSize = self.compactPowerActions and 12 or 15
+		self.planeButtons[id].TextSize = self.compactPowerActions and 14 or 20
 	end
 	place(self.planeSpeed, 12, 61, planeAreaWidth, 20)
+	self.planeSpeed.TextSize = self.compactPowerActions and 13 or 16
 	place(self.planeStrategy, 12, 85, planeAreaWidth, 20)
-	self.planeStrategy.TextSize = self.compactPowerActions and 10 or 12
+	self.planeStrategy.TextSize = self.compactPowerActions and 12 or 15
 	local paintLeft = short and (drawerWidth / 2 + 22) or 12
 	place(self.paintName, paintLeft, short and 12 or 111, short and drawerWidth / 2 - 20 or drawerWidth, 18)
+	self.paintName.TextSize = 13
 	for index, control in ipairs(self.colorButtons) do place(control, paintLeft + (index - 1) * 56, short and 43 or 132, 46, 44) end
 	self.configActions.Position = UDim2.new(0.5, 0, 0, top + bodyHeight + 8)
 	self.configActions.Size = UDim2.fromOffset(width, actionHeight)
 	if portrait then
 		place(self.powerSummary, 12, 6, width - 24, 35)
-		self.powerSummary.TextSize = 11
-		place(self.customizeButton, 10, 45, 100, 44)
-		place(self.readyButton, 118, 45, width - 128, 44)
+		self.powerSummary.TextSize = 13
+		place(self.customizeButton, 10, 48, 100, 48)
+		place(self.readyButton, 118, 48, width - 128, 48)
 		self.readyButton.TextSize = 20
-		place(self.readyStatus, 10, 92, width - 20, 14)
-		self.readyStatus.TextSize = 9
+		place(self.readyStatus, 10, 101, width - 20, 18)
+		self.readyStatus.TextSize = 11
 		self.readyStatus.TextXAlignment = Enum.TextXAlignment.Center
 	else
 		local buttonWidth = short and 226 or 286
 		local summaryLeft = short and 122 or 14
 		if short then place(self.customizeButton, 10, 8, 100, 44) end
 		place(self.powerSummary, summaryLeft, short and 6 or 8, width - buttonWidth - summaryLeft - 30, short and 31 or 43)
-		self.powerSummary.TextSize = short and 10 or 13
+		self.powerSummary.TextSize = short and 12 or 16
 		place(self.readyButton, width - buttonWidth - 10, short and 8 or 12, buttonWidth, short and 44 or 54)
 		self.readyButton.TextSize = short and 18 or 22
-		place(self.readyStatus, summaryLeft, short and 39 or 55, width - buttonWidth - summaryLeft - 30, 16)
-		self.readyStatus.TextSize = short and 9 or 11
+		place(self.readyStatus, summaryLeft, short and 46 or 66, width - buttonWidth - summaryLeft - 30, 19)
+		self.readyStatus.TextSize = short and 11 or 13
 		self.readyStatus.TextXAlignment = Enum.TextXAlignment.Left
 	end
 	local eventWidth = math.min(520, viewport.X - 32)
@@ -73142,38 +73286,43 @@ function Hud:_layoutPowerChoices(viewport, height)
 	place(self.powerBurstTitle, 10, 5, eventWidth - 20, short and 44 or 76)
 	self.powerBurstTitle.TextSize = short and 35 or (portrait and 39 or 60)
 	place(self.powerBurstDetail, 10, short and 50 or 82, eventWidth - 20, 21)
-	self.powerBurstDetail.TextSize = short and 11 or 13
+	self.powerBurstDetail.TextSize = short and 12 or 15
 	self.countdownText.Size = UDim2.fromOffset(math.min(400, viewport.X - 24), short and 120 or 190)
 	self.countdownText.TextSize = short and 100 or 158
 	local scoreBottom = self.flightPanel.Position.Y.Offset + self.flightPanel.Size.Y.Offset
-	local badgeWidth = math.min(330, viewport.X - 28)
-	self.powerFlightBadge.Size = UDim2.fromOffset(badgeWidth, short and 27 or 31)
+	local badgeWidth = math.min(700, viewport.X - 28)
+	local badgeHeight = short and 38 or 46
+	self.powerFlightBadge.Size = UDim2.fromOffset(badgeWidth, badgeHeight)
 	self.powerFlightBadge.Position = UDim2.new(0.5, 0, 0, scoreBottom + 8)
-	place(self.powerFlightText, 9, 2, badgeWidth - 18, short and 23 or 27)
-	self.powerFlightText.TextSize = short and 12 or 13
+	place(self.powerFlightText, 6, 2, badgeWidth / 2 - 12, badgeHeight - 4)
+	place(self.opponentPowerText, badgeWidth / 2 + 6, 2, badgeWidth / 2 - 12, badgeHeight - 4)
+	place(self.powerFlightDivider, badgeWidth / 2, 6, 1, badgeHeight - 12)
+	self.powerFlightText.TextSize = short and 12 or (portrait and 12 or 16)
+	self.opponentPowerText.TextSize = self.powerFlightText.TextSize
 	self.toast.Size = UDim2.fromOffset(eventWidth, short and 40 or 54)
 	self.toast.CanvasSize = UDim2.fromOffset(0, short and 40 or 54)
-	self.toast.Position = UDim2.new(0.5, 0, 0, scoreBottom + (short and 44 or 51))
+	self.toast.Position = UDim2.new(0.5, 0, 0, scoreBottom + badgeHeight + 16)
 	place(self.toastText, 8, 3, eventWidth - 16, short and 34 or 48)
 	self.toastText.TextSize = short and 25 or (portrait and 27 or 33)
 end
 
 function Hud:_layoutPlaneChoices(viewport, height)
-	local aimWidth = math.min(690, viewport.X - 24)
+	local aimWidth = math.min(900, viewport.X - 24)
 	local portrait = viewport.X < 560
-	local actionHeight = portrait and 98 or 64
+	local actionHeight = portrait and 112 or 82
 	self.aimActions.Size = UDim2.fromOffset(aimWidth, actionHeight)
 	local textWidth = portrait and aimWidth - 28 or aimWidth - 282
-	self.aimHint.Position, self.aimHint.Size = UDim2.fromOffset(14, 5), UDim2.fromOffset(textWidth, 17)
-	self.aimHint.TextSize = portrait and 11 or 12
-	self.fixedStats.Position, self.fixedStats.Size = UDim2.fromOffset(14, 25), UDim2.fromOffset(textWidth, 19)
-	self.fixedStats.TextSize = portrait and 11 or 12
-	self.aimStatus.Position, self.aimStatus.Size = UDim2.fromOffset(portrait and aimWidth / 2 or 14, portrait and 7 or 46), UDim2.fromOffset(portrait and aimWidth / 2 - 14 or textWidth, 14)
+	self.aimHint.Position, self.aimHint.Size = UDim2.fromOffset(14, 7), UDim2.fromOffset(textWidth, 23)
+	self.aimHint.TextSize = portrait and 15 or 19
+	self.fixedStats.Position, self.fixedStats.Size = UDim2.fromOffset(14, 33), UDim2.fromOffset(textWidth, 22)
+	self.fixedStats.TextSize = portrait and 13 or 16
+	self.aimStatus.Position, self.aimStatus.Size = UDim2.fromOffset(portrait and aimWidth / 2 or 14, portrait and 7 or 59), UDim2.fromOffset(portrait and aimWidth / 2 - 14 or textWidth, 14)
 	self.aimStatus.TextXAlignment = portrait and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+	self.aimStatus.TextSize = 12
 	self.aimStatus.Visible = not portrait
-	self.aimReadyButton.Position = UDim2.fromOffset(portrait and 10 or aimWidth - 258, portrait and 47 or 8)
-	self.aimReadyButton.Size = UDim2.fromOffset(portrait and aimWidth - 20 or 246, 44)
-	self.aimReadyButton.TextSize = portrait and 16 or 17
+	self.aimReadyButton.Position = UDim2.fromOffset(portrait and 10 or aimWidth - 258, portrait and 61 or 12)
+	self.aimReadyButton.Size = UDim2.fromOffset(portrait and aimWidth - 20 or 246, portrait and 44 or 58)
+	self.aimReadyButton.TextSize = portrait and 20 or 22
 	local fieldTop = self.header.Position.Y.Offset + self.header.Size.Y.Offset + 6
 	self.aimPad.Position = UDim2.fromOffset(0, fieldTop)
 	self.aimPad.Size = UDim2.fromOffset(viewport.X, math.max(20, height - 28 - actionHeight - 10 - fieldTop))
@@ -73188,172 +73337,200 @@ function Hud:_resize()
 	local topInset, bottomInset = GuiService:GetGuiInset()
 	local height = math.max(180, viewport.Y - topInset.Y - bottomInset.Y)
 	self.layoutHeight = height
-	local landscape = viewport.X >= 600 and height < 470
-	self:_layoutPersonal(viewport, height)
-	local width = math.min(470, math.max(260, viewport.X - 24))
-	local inner = width - 48
-	local narrowCard = width < 430
-	local available = math.max(90, height - 112)
-	local configHeight = narrowCard and 448 or 414
-	local function place(item, x, y, w, h)
-		item.Position = UDim2.fromOffset(x, y)
-		item.Size = UDim2.fromOffset(w, h)
+	local portrait = viewport.X < 600
+	local short = not portrait and height < 470
+	local function place(item, x, y, width, sizeY)
+		item.Position, item.Size = UDim2.fromOffset(x, y), UDim2.fromOffset(width, sizeY)
 	end
+	self.header.Position = UDim2.fromOffset(12, short and 6 or 10)
+	self.header.Size = UDim2.new(1, -24, 0, short and 54 or 76)
+	self.header.Brand.Visible, self.brandSub.Visible = not portrait, not portrait
+	place(self.header.Brand, 18, short and 2 or 8, 225, 36)
+	self.header.Brand.TextSize = short and 27 or 33
+	place(self.brandSub, 20, short and 33 or 46, 235, 18)
+	self.brandSub.TextSize = 12
+	local phaseWidth = portrait and viewport.X - 108 or math.min(430, viewport.X - 350)
+	self.phaseLabel.Position = UDim2.new(1, -phaseWidth - 78, 0, short and 1 or 8)
+	self.phaseLabel.Size = UDim2.fromOffset(phaseWidth, short and 29 or 32)
+	self.phaseLabel.TextXAlignment = portrait and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right
+	self.phaseLabel.Font = Enum.Font.FredokaOne
+	self.phaseLabel.TextSize = portrait and 19 or (short and 20 or 23)
+	self.courseLabel.Position = UDim2.new(1, -phaseWidth - 78, 0, short and 31 or 44)
+	self.courseLabel.Size = UDim2.fromOffset(phaseWidth, 21)
+	self.courseLabel.TextXAlignment = self.phaseLabel.TextXAlignment
+	self.courseLabel.TextSize = portrait and 14 or 15
+	self.timer.Position = UDim2.new(1, -70, 0, short and 1 or 8)
+	self.timer.Size = UDim2.fromOffset(58, short and 48 or 57)
+	self.timer.TextSize = short and 36 or 44
+	self.footer.TextSize = portrait and 10 or 12
+	self.footer.Size = UDim2.fromOffset(viewport.X - 24, 18)
+	local top = self.header.Position.Y.Offset + self.header.Size.Y.Offset + 12
+	local width = math.min(620, viewport.X - 24)
+	local inner = width - 40
+	local available = math.max(100, height - top - 24)
 	for _, entry in ipairs(self.scaledPanels) do
-		local isFlight = entry.panel == self.flightPanel or entry.panel == self.toast or entry.panel == self.flightControls
+		local flight = entry.panel == self.flightPanel or entry.panel == self.toast or entry.panel == self.flightControls
 		entry.scale.Scale = 1
-		entry.panel.ScrollBarThickness = isFlight and 0 or 5
-		entry.panel.ScrollingEnabled = not isFlight
-		if not isFlight then
-			local contentHeight = entry.panel == self.configPanel and configHeight or entry.height
-			local maxHeight = entry.panel == self.configPanel and math.max(75, available - 98) or available
-			local visibleHeight = math.min(contentHeight, maxHeight)
-			local totalHeight = visibleHeight + (entry.panel == self.configPanel and 98 or 0)
-			entry.panel.AnchorPoint = Vector2.new(0.5, 0)
-			entry.panel.Position = UDim2.new(0.5, 0, 0, 87 + math.max(0, (available - totalHeight) / 2))
-			entry.panel.Size = UDim2.fromOffset(width, visibleHeight)
-			entry.panel.CanvasSize = UDim2.fromOffset(0, contentHeight)
-		end
+		entry.panel.ScrollBarThickness = flight and 0 or 5
+		entry.panel.ScrollingEnabled = not flight
 	end
-	for _, panel in ipairs({ self.waitingPanel, self.votePanel, self.configPanel, self.resultsPanel }) do
-		for _, child in ipairs(panel:GetChildren()) do
-			if child:IsA("TextLabel") and child.Position.X.Offset == 24 then
-				child.Size = UDim2.new(0, inner, 0, child.Size.Y.Offset)
-			end
-		end
-	end
-	self.waitingPanel.Title.TextSize = narrowCard and 19 or 24
-	self.waitingPanel.Copy.TextSize = narrowCard and 16 or 18
-	self.waitingPanel.Status.TextWrapped = true
-	self.votePanel.Title.TextSize = narrowCard and 24 or 27
-	self.votePanel.Eyebrow.Visible = true
-	place(self.votePanel.Title, 24, 42, inner, 34)
-	place(self.votePanel.VoteHint, 24, 371, inner, 20)
-	self.votePanel.VoteHint.TextSize = narrowCard and 11 or 12
+	self.waitingPanel.AnchorPoint = Vector2.new(0.5, 0)
+	self.waitingPanel.Position = UDim2.new(0.5, 0, 0, top + math.max(0, (available - 234) / 2))
+	self.waitingPanel.Size = UDim2.fromOffset(width, math.min(234, available))
+	self.waitingPanel.CanvasSize = UDim2.fromOffset(0, 234)
+	place(self.waitingPanel.Title, 20, 22, inner, 70)
+	self.waitingPanel.Title.TextSize = portrait and 29 or 34
+	self.waitingPanel.Title.TextWrapped = true
+	place(self.waitingPanel.Copy, 20, 97, inner, 67)
+	self.waitingPanel.Copy.TextSize = portrait and 18 or 21
+	place(self.waitingMessage, 20, 185, inner, 32)
+	self.waitingMessage.TextSize, self.waitingMessage.TextWrapped = 15, true
+	self.votePanel.AnchorPoint = Vector2.new(0.5, 0)
+	self.votePanel.Position = UDim2.new(0.5, 0, 0, top)
+	self.votePanel.Size = UDim2.fromOffset(width, math.min(454, available))
+	self.votePanel.CanvasSize = UDim2.fromOffset(0, 454)
+	self.votePanel.Eyebrow.Visible = not short
+	place(self.votePanel.Eyebrow, 20, 15, inner, 18)
+	self.votePanel.Eyebrow.TextSize = 13
+	place(self.votePanel.Title, 20, 40, inner, 44)
+	self.votePanel.Title.TextSize = portrait and 31 or 39
+	place(self.votePanel.VoteHint, 20, 416, inner, 23)
+	self.votePanel.VoteHint.TextSize = portrait and 12 or 15
 	for index, name in ipairs({ "Coast", "Skyline", "Storm" }) do
 		local control = self.voteButtons[name]
-		control.Position = UDim2.fromOffset(24, 91 + (index - 1) * 90)
-		control.Size = UDim2.fromOffset(inner, 78)
-		place(control.Badge, 11, 12, 49, 54)
-		place(control.Badge.Number, 0, 0, 49, 54)
-		control.Badge.Number.TextSize = 20
-		local courseTitle = control:FindFirstChild("Name")
-		place(courseTitle, 73, 13, inner - 127, 24)
-		courseTitle.TextSize = narrowCard and 16 or 20
-		place(control.Detail, 73, 39, inner - 123, 30)
-		control.Detail.TextWrapped = true
-		place(control.Votes, inner - 51, 19, 42, 26)
-		place(control.VotesLabel, inner - 54, 47, 47, 14)
+		place(control, 20, 100 + (index - 1) * 103, inner, 89)
+		place(control.Badge, 12, 16, 54, 56)
+		local title = control:FindFirstChild("Name")
+		place(title, 80, 11, inner - 143, 31)
+		title.TextSize = portrait and 23 or 29
+		place(control.Detail, 80, 44, inner - 143, 36)
+		control.Detail.TextSize, control.Detail.TextWrapped = portrait and 12 or 15, true
+		place(control.Votes, inner - 53, 13, 42, 36)
+		control.Votes.TextSize = 31
+		place(control.VotesLabel, inner - 57, 54, 49, 18)
+		control.VotesLabel.TextSize = 11
 	end
-	if viewport.X >= 560 and height < 560 then
-		local wide = math.min(760, viewport.X - 32)
+	if short then
+		local wide = math.min(960, viewport.X - 24)
 		local cardWidth = (wide - 56) / 3
-		self.votePanel.Position = UDim2.new(0.5, 0, 0, 87)
-		self.votePanel.Size = UDim2.fromOffset(wide, math.min(206, available))
-		self.votePanel.CanvasSize = UDim2.fromOffset(0, 206)
-		self.votePanel.CanvasPosition = Vector2.zero
-		self.votePanel.Eyebrow.Visible = false
-		place(self.votePanel.Title, 16, 9, wide - 32, 31)
-		self.votePanel.Title.TextSize = 24
+		self.votePanel.Size = UDim2.fromOffset(wide, math.min(226, available))
+		self.votePanel.CanvasSize = UDim2.fromOffset(0, 226)
+		place(self.votePanel.Title, 16, 6, wide - 32, 37)
+		self.votePanel.Title.TextSize = 30
 		for index, name in ipairs({ "Coast", "Skyline", "Storm" }) do
 			local control = self.voteButtons[name]
-			place(control, 16 + (index - 1) * (cardWidth + 12), 50, cardWidth, 119)
-			place(control.Badge, 10, 10, 34, 34)
-			place(control.Badge.Number, 0, 0, 34, 34)
-			control.Badge.Number.TextSize = 15
-			local courseTitle = control:FindFirstChild("Name")
-			place(courseTitle, 54, 13, cardWidth - 64, 24)
-			courseTitle.TextSize = 16
-			place(control.Detail, 10, 53, cardWidth - 20, 32)
-			place(control.Votes, cardWidth - 49, 86, 37, 26)
-			place(control.VotesLabel, 10, 94, cardWidth - 67, 14)
+			place(control, 16 + (index - 1) * (cardWidth + 12), 53, cardWidth, 134)
+			place(control.Badge, 10, 12, 37, 37)
+			local title = control:FindFirstChild("Name")
+			place(title, 55, 12, cardWidth - 65, 30)
+			title.TextSize = 22
+			place(control.Detail, 10, 57, cardWidth - 20, 37)
+			control.Detail.TextSize = 13
+			place(control.Votes, cardWidth - 51, 96, 39, 30)
+			place(control.VotesLabel, 12, 108, cardWidth - 70, 16)
 		end
-		place(self.votePanel.VoteHint, 16, 181, wide - 32, 18)
-		self.votePanel.VoteHint.TextSize = 11
+		place(self.votePanel.VoteHint, 16, 200, wide - 32, 20)
+		self.votePanel.VoteHint.TextSize = 13
 	end
-	self.resultsPanel.Title.TextSize = narrowCard and 24 or 27
-	self.resultMessage.TextSize = narrowCard and 11 or 12
-	self.resultMessage.TextTruncate = Enum.TextTruncate.AtEnd
-	for _, row in ipairs(self.resultRows) do
-		row.frame.Size = UDim2.fromOffset(inner, 37)
-		place(row.name, 44, 0, inner - 151, 37)
-		row.name.TextSize = narrowCard and 12 or 15
-		place(row.distance, inner - 110, 0, 98, 37)
-		row.distance.TextSize = narrowCard and 15 or 17
-	end
-	local personal = self.resultsPanel.PersonalResult
-	personal.Size = UDim2.fromOffset(inner, 75)
-	local half = inner / 2
-	place(personal.YourLabel, 15, 11, half - 15, 16)
-	place(personal.BestLabel, half + 8, 11, half - 20, 16)
-	place(self.yourDistance, 15, 33, half - 15, 28)
-	place(self.bestDistance, half + 8, 33, half - 20, 28)
-	self.yourDistance.TextSize = narrowCard and 21 or 23
-	self.bestDistance.TextSize = narrowCard and 21 or 23
-	self.nextRoundLabel.TextSize = narrowCard and 10 or 12
-	self.compactFlight = height < 430
-	local flightHeight = self.compactFlight and 103 or 126
-	self.flightPanel.Size = UDim2.fromOffset(width, flightHeight)
-	self.flightPanel.CanvasSize = UDim2.fromOffset(0, flightHeight)
-	place(self.watchedLabel, 20, self.compactFlight and 8 or 13, width - 40, 19)
-	place(self.flightDistance, 20, self.compactFlight and 28 or 33, width - 163, self.compactFlight and 38 or 46)
-	self.flightDistance.TextSize = self.compactFlight and 32 or 39
-	place(self.flightStatus, width - 137, self.compactFlight and 39 or 46, 116, 25)
-	self.flightStatus.TextSize = narrowCard and 12 or 15
-	place(self.flightPanel.Rule, 20, self.compactFlight and 73 or 88, width - 40, 1)
-	place(self.flightStats, 20, self.compactFlight and 82 or 98, width - 40, 17)
-	self.flightStats.TextSize = narrowCard and 10 or 12
-	self.toast.Size = UDim2.fromOffset(width, 47)
-	self.toast.Position = UDim2.new(0.5, 0, 0, 87 + flightHeight + 12)
-	place(self.toastText, 16, 9, width - 32, 28)
-	self.toastText.TextSize = narrowCard and 14 or 17
-	self.flightControls.Size = UDim2.fromOffset(width, 67)
-	local spectateWidth = width - 171
-	place(self.flightControls.PreviousPilot, 8, 10, 48, 47)
-	place(self.spectateLabel, 61, 11, math.max(20, spectateWidth - 109), 45)
-	self.spectateLabel.Text = narrowCard and "PILOTS" or "WATCH PILOTS"
-	self.spectateLabel.TextSize = narrowCard and 10 or 12
-	place(self.flightControls.NextPilot, spectateWidth - 43, 10, 48, 47)
-	place(self.lobbyButton, spectateWidth + 13, 10, 148, 47)
-	self.lobbyButton.TextSize = narrowCard and 14 or 16
-	self.flightPanel.Position = UDim2.new(0.5, 0, 0, 87)
-	local narrow = viewport.X < 600
-	self.header.Position = UDim2.fromOffset(narrow and 8 or 16, 10)
-	self.header.Size = UDim2.new(1, narrow and -16 or -32, 0, 65)
-	self.header.Brand.TextSize = narrow and 18 or 23
-	self.header.Brand.Size = UDim2.fromOffset(narrow and 135 or 175, 24)
-	self.brandSub.TextSize = narrow and 8 or 10
-	self.phaseLabel.TextSize = narrow and 9 or 13
-	self.phaseLabel.Size = UDim2.fromOffset(narrow and 136 or 310, 23)
-	self.phaseLabel.Position = UDim2.new(1, narrow and -190 or -390, 0, 13)
-	self.courseLabel.TextSize = narrow and 9 or 11
-	self.courseLabel.Size = UDim2.fromOffset(narrow and 136 or 310, 17)
-	self.courseLabel.Position = UDim2.new(1, narrow and -190 or -390, 0, 37)
-	self.timer.TextSize = narrow and 23 or 28
-	self.timer.Position = UDim2.new(1, narrow and -53 or -68, 0, 10)
-	self.timer.Size = UDim2.fromOffset(narrow and 46 or 58, 44)
-	self.footer.TextSize = viewport.X < 390 and 8 or 10
-	if landscape then
-		self.header.Position = UDim2.fromOffset(12, 6)
-		self.header.Size = UDim2.new(1, -24, 0, height < 330 and 42 or 50)
-		self.header.Brand.Position = UDim2.fromOffset(18, 0)
-		self.brandSub.Position = UDim2.fromOffset(19, 23)
-		self.phaseLabel.Position = UDim2.new(1, -390, 0, 0)
-		self.courseLabel.Position = UDim2.new(1, -390, 0, 23)
-		self.timer.Position = UDim2.new(1, -68, 0, 3)
-		self.timer.Size = UDim2.fromOffset(58, 36)
-		self.timer.TextSize = 25
-		if height < 330 then
-			self.votePanel.Position = UDim2.new(0.5, 0, 0, 54)
-			self.votePanel.Size = UDim2.fromOffset(math.min(760, viewport.X - 32), 206)
-		end
-	else
-		self.header.Brand.Position = UDim2.fromOffset(18, 10)
-		self.brandSub.Position = UDim2.fromOffset(19, 35)
-	end
+	self:_layoutPersonal(viewport, height)
 	self:_layoutPlaneChoices(viewport, height)
 	self:_layoutDuel(viewport, height)
 	self:_layoutPowerChoices(viewport, height)
+end
+
+-- Viewport coordinates, including Roblox's top inset. The camera and edge
+-- markers share this clear area so neither drifts underneath the duel controls.
+function Hud:getFlightViewport()
+	self:_resize()
+	local topInset, bottomInset = GuiService:GetGuiInset()
+	local viewport = self.lastViewport
+	local top = topInset.Y + self.powerFlightBadge.Position.Y.Offset + self.powerFlightBadge.Size.Y.Offset + 12
+	local controlTop = self.flightControls.Position.Y.Offset - self.flightControls.Size.Y.Offset
+	if viewport.X < 480 then controlTop = math.min(controlTop, -130) end
+	local bottom = viewport.Y - bottomInset.Y + controlTop - 14
+	return { left = 18, right = viewport.X - 18, top = top, bottom = math.max(top + 40, bottom) }
+end
+
+function Hud:getAimViewport()
+	self:_resize()
+	local topInset = GuiService:GetGuiInset()
+	local top = topInset.Y + self.aimPad.Position.Y.Offset
+	return { left = 0, right = self.lastViewport.X, top = top, bottom = top + self.aimPad.Size.Y.Offset }
+end
+
+-- Animate presentation once for an authoritative award, never a refresh or purchase.
+-- The final balance remains the server's value; no currency is granted here.
+function Hud:_refreshReward(snapshot, yourResult, now)
+	local economy = snapshot.economy
+	local earned = math.max(0, tonumber(yourResult and yourResult.creditsEarned) or 0)
+	local balance = math.max(0, tonumber(economy and economy.credits) or 0)
+	local key = tostring(snapshot.matchId) .. ":" .. tostring(snapshot.roundId)
+	local animation = self.rewardAnimation
+	if economy and yourResult and earned > 0 and not self.rewardSeen[key] then
+		self.rewardSeen[key] = true
+		table.insert(self.rewardOrder, key)
+		if #self.rewardOrder > 32 then self.rewardSeen[table.remove(self.rewardOrder, 1)] = nil end
+		animation = { key = key, started = now, before = math.max(0, balance - earned), after = balance, earned = earned }
+		self.rewardAnimation = animation
+	end
+	local progress = 1
+	if animation and animation.key == key and not self.reducedMotion then
+		progress = math.clamp((now - animation.started) / 0.85, 0, 1)
+		progress = 1 - (1 - progress) ^ 3
+	end
+	local shownEarned = math.floor(earned * progress + 0.5)
+	local shownBalance = balance
+	if animation and animation.key == key and animation.after == balance then
+		shownBalance = math.floor(animation.before + (balance - animation.before) * progress + 0.5)
+	end
+	self.rewardAmount.Text = earned > 0 and ("+" .. tostring(shownEarned) .. " COINS") or "FLIGHT COMPLETE"
+	self.rewardAmount.TextSize = earned > 0 and (self.rewardTextSize or 35) or math.floor((self.rewardTextSize or 35) * 0.75)
+	self.rewardBalance.Text = economy and (tostring(shownBalance) .. " COINS IN YOUR BANK") or "Loading your coin balance…"
+	local nextItem
+	if economy then
+		for _, id in ipairs(CosmeticCatalog.ORDER) do
+			local item = CosmeticCatalog.get(id)
+			if item.price > 0 and not (economy.owned and economy.owned[id]) then nextItem = item; break end
+		end
+	end
+	self.rewardTrack.Visible = nextItem ~= nil
+	if nextItem then
+		local color = nextItem.color
+		self.rewardFill.BackgroundColor3 = Color3.fromRGB(color.r, color.g, color.b)
+		self.rewardFill.Size = UDim2.new(math.clamp(shownBalance / nextItem.price, 0, 1), 0, 1, 0)
+		self.rewardGoal.Text = "NEXT: " .. string.upper(nextItem.name)
+		if balance >= nextItem.price then
+			self.rewardHint.Text = "READY TO BUY · " .. nextItem.price .. " COINS IN HANGAR"
+			self.rewardHint.TextColor3 = COLORS.gold
+		else
+			self.rewardHint.Text = tostring(balance) .. " / " .. nextItem.price .. " · " .. (nextItem.price - balance) .. " MORE COINS"
+			self.rewardHint.TextColor3 = COLORS.white
+		end
+	elseif economy then
+		self.rewardGoal.Text = "COLLECTION COMPLETE!"
+		self.rewardHint.Text = "Try a different trail in the hangar."
+		self.rewardHint.TextColor3 = COLORS.white
+	else
+		self.rewardGoal.Text = "YOUR NEXT FLIGHT EFFECT"
+		self.rewardHint.Text = "Your collection will appear when loaded."
+		self.rewardHint.TextColor3 = COLORS.white
+	end
+end
+
+local function duelPowerState(player, role)
+	local flight = player and player.flight
+	if not flight then return role .. "\nREADY", COLORS.white end
+	local id = flight.powerId or (player.settings and player.settings.powerId) or PowerCatalog.DEFAULT_ID
+	local name = id == "Muncher" and "MUNCHER" or string.upper(id)
+	if not flight.alive then return role .. " · LANDED\n" .. distance(flight.distance or flight.x), COLORS.white end
+	local charges = math.max(0, flight.powerCharges or 0)
+	local status
+	if id == "Meteor" then
+		status = flight.powerPhase == "diving" and "DIVING!" or (charges > 0 and "BLAST READY" or "POWER SPENT")
+	else
+		status = tostring(charges) .. (id == "Pinball" and " BOUNCES LEFT" or " BITES LEFT")
+	end
+	return role .. " · " .. name .. "\n" .. status, powerColor(id)
 end
 
 function Hud:update(snapshot, localUserId, watchedUserId)
@@ -73437,11 +73614,12 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	local inHub = phase == "Lobby" or phase == "Queued"
 	self.statsButton.Visible = inHub
 	if not inHub then self.statsOverlay.Visible = false end
-	self.statsButton.Position = UDim2.fromOffset(16, self.lastViewport.X < 560 and 150 or 100)
 	self.soundButton.Visible = inHub or phase == "Flight"
 	self.soundButton.AnchorPoint = inHub and Vector2.zero or Vector2.new(0, 1)
-	self.soundButton.Position = inHub and UDim2.fromOffset(152, self.lastViewport.X < 560 and 150 or 100)
+	self.soundButton.Position = inHub and self.hubSoundPosition
 		or UDim2.new(0, 12, 1, self.lastViewport.X < 480 and -86 or -26)
+	self.soundButton.Size = inHub and self.hubSoundSize or UDim2.fromOffset(118, 44)
+	self.soundButton.TextSize = inHub and 18 or 14
 	local stats = snapshot.stats or {}
 	for key, value in pairs(self.statsValues) do
 		value.Text = key == "bestDistance" and distance(stats[key] or 0, true) or tostring(stats[key] or 0)
@@ -73487,7 +73665,8 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	self.waitingMessage.Text = snapshot.message or "Getting the runway ready…"
 	if phase == "Lobby" then
         self.hubTitle.Text = "SKYBOUND / THE HANGAR"
-        self.hubInstruction.Text = PlaneCatalog.get(self.settings.planeId).name.." selected · Duel gates ahead.\nFleet left. Flight effects right."
+		self.hubInstruction.Text = self.hubCard.Size.X.Offset < 350 and "Duel gates ahead.\nFleet left · Flight effects right."
+			or (PlaneCatalog.get(self.settings.planeId).name.." selected · Duel gates ahead.\nFleet left. Flight effects right.")
 		self.hubAction.Text = "PRACTICE VS GHOST"
 		self.hubAction.Visible = self.callbacks.practice ~= nil
 	elseif phase == "Queued" then
@@ -73519,6 +73698,8 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		local ownDistance = ownFlight and (ownFlight.distance or ownFlight.x) or 0
 		local rivalDistance = rivalFlight and (rivalFlight.distance or rivalFlight.x) or 0
 		local gap = ownDistance - rivalDistance
+		self.powerFlightText.Text, self.powerFlightText.TextColor3 = duelPowerState(localPlayer, "YOU")
+		self.opponentPowerText.Text, self.opponentPowerText.TextColor3 = duelPowerState(opponent, opponent and opponent.bot and "GHOST" or "RIVAL")
 		self.ownPilot.Text = "YOU" .. (localPlayer and " · " .. string.upper(localPlayer.name) or "")
 		self.opponentPilot.Text = opponent and string.upper(opponent.name) or "OPPONENT"
 		self.flightDistance.Text = distance(ownDistance)
@@ -73527,11 +73708,18 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		elseif gap > 0 then self.leadLabel.Text = "LEAD +" .. distance(gap)
 		else self.leadLabel.Text = "TRAIL " .. distance(-gap) end
 		self.leadLabel.TextColor3 = gap < -0.5 and COLORS.coral or COLORS.green
-		self.watchedLabel.Text = watchedPlayer and ("CAMERA: " .. string.upper(watchedPlayer.name)) or "CAMERA: TAKEOFF"
-		self.watchedLabel.TextTruncate = Enum.TextTruncate.AtEnd
 		local altitude = flight and math.max(0, flight.y or 0) or 0
-		self.flightStatus.Text = flight and flight.alive and ("GROUND " .. distance(altitude)) or "DISTANCE LOCKED"
-		self.flightStatus.TextColor3 = flight and flight.alive and altitude < 28 and COLORS.coral or COLORS.muted
+		local watchRole = watchedPlayer and (watchedPlayer.userId == localUserId and "YOU" or (watchedPlayer.bot and "GHOST" or "RIVAL")) or "TAKEOFF"
+		self.watchedLabel.Text = "CAMERA: " .. watchRole .. (flight and flight.alive and (" · GROUND " .. distance(altitude)) or " · LANDED")
+		self.watchedLabel.TextTruncate = Enum.TextTruncate.AtEnd
+		self.watchedLabel.TextColor3 = flight and flight.alive and altitude < 28 and COLORS.coral or COLORS.muted
+		local elapsed = snapshot.elapsed or 0
+		local pressure = Simulation.flightPressure(elapsed)
+		self.flightStatus.Text = elapsed < Simulation.PRESSURE_START
+			and ("HEADWIND IN " .. tostring(math.ceil(Simulation.PRESSURE_START - elapsed)) .. "s")
+			or (pressure >= 1 and "STRONG HEADWIND" or "HEADWIND ↑")
+		self.flightStatus.TextColor3 = elapsed >= Simulation.PRESSURE_START and COLORS.amber or COLORS.muted
+		self.flightStatus:SetAttribute("HeadwindPressure", pressure)
 		self.flightStats.Text = "Waiting for takeoff"
 		self.flightStats.TextColor3 = COLORS.muted
 		if flight then
@@ -73539,12 +73727,6 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 				or (watchedPlayer.settings and watchedPlayer.settings.powerId) or PowerCatalog.DEFAULT_ID
 			local power = PowerCatalog.get(powerId) or PowerCatalog.get(PowerCatalog.DEFAULT_ID)
 			powerId = power.id
-			local charges = math.max(0, flight.powerCharges or 0)
-			local powerStatus = powerId == "Meteor" and (flight.powerPhase == "diving" and "DIVING!"
-				or (charges > 0 and "CLIMB TO CHARGE" or "BLAST RELEASED"))
-				or (tostring(charges) .. (powerId == "Pinball" and " BOUNCES LEFT" or " BITES LEFT"))
-			self.powerFlightText.Text = string.upper(power.name) .. " · " .. powerStatus
-			self.powerFlightBadge.BackgroundColor3 = powerColor(powerId)
 			self.flightStats.Text = "FUEL " .. tostring(flight.pickups or 0)
 				.. "  /  HITS " .. tostring(flight.hits or 0)
 				.. ((flight.shield == true or (type(flight.shield) == "number" and flight.shield > 0)) and "  /  SHIELD" or "")
@@ -73596,15 +73778,15 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		self.bestDistance.Text = distance(stats.bestDistance or (localPlayer and localPlayer.best) or 0, true)
 		self.resultsPanel.PersonalResult.BestLabel.Text = snapshot.saveStatus == "session_only" and "BEST THIS SESSION" or "PERSONAL BEST"
 		self.resultMessage.Text = snapshot.message or "Change your setup. Chase a little farther."
-		self.resultsPanel.Title.Text = yourResult and yourResult.rank == 1
-			and (hasForfeit and "YOU WIN THE DUEL." or "YOU WENT FURTHEST.") or "ONE MORE FLIGHT?"
+		local firstPlaces = 0
+		for _, result in ipairs(snapshot.results or {}) do
+			if result.rank == 1 then firstPlaces += 1 end
+		end
+		self.resultsPanel.Title.Text = firstPlaces > 1 and "DEAD HEAT!"
+			or (yourResult and yourResult.rank == 1
+			and (hasForfeit and "YOU WIN THE DUEL." or "YOU WENT FURTHEST.") or "ONE MORE FLIGHT?")
         self.nextRoundLabel.Text = (snapshot.endsAt or 0) > 0 and ("Return to lobby in " .. remaining .. "s") or "Request a rematch or head back to the club."
-        if yourResult and (yourResult.creditsEarned or 0)>0 then
-            self.nextRoundLabel.Text = "+"..yourResult.creditsEarned.." CREDITS  ·  "..tostring(snapshot.economy and snapshot.economy.credits or 0).." TOTAL  ·  SHOP IN HANGAR"
-            if not self.nextRoundLabel.Visible then
-                self.resultMessage.Text = "+"..yourResult.creditsEarned.." CREDITS  ·  "..self.resultMessage.Text
-            end
-        end
+		self:_refreshReward(snapshot, yourResult, now)
 		self.canRematch = snapshot.canRematch == true
 		self.rematchRequested = localPlayer ~= nil and localPlayer.rematchReady == true
 		if not self.canRematch then
@@ -74240,13 +74422,15 @@ return PilotAvatar
 local Players = game:GetService("Players")
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local shared = game:GetService("ReplicatedStorage"):WaitForChild("FlightGame")
 local Catalog = require(shared:WaitForChild("CosmeticCatalog"))
 local World = require(shared:WaitForChild("World"))
 local Shop = {}
 Shop.__index = Shop
-local C = { ink=Color3.fromRGB(19,32,49), panel=Color3.fromRGB(29,46,63), tile=Color3.fromRGB(42,62,79),
-    white=Color3.fromRGB(242,246,238), muted=Color3.fromRGB(180,199,204), gold=Color3.fromRGB(255,207,94), teal=Color3.fromRGB(86,224,205) }
+local C = { ink=Color3.fromRGB(23,39,77), panel=Color3.fromRGB(255,254,247), tile=Color3.fromRGB(214,236,253),
+    white=Color3.fromRGB(255,254,247), muted=Color3.fromRGB(67,87,117), gold=Color3.fromRGB(255,217,65),
+    teal=Color3.fromRGB(64,224,248), green=Color3.fromRGB(105,226,66), amber=Color3.fromRGB(153,79,12) }
 local function create(kind, props, parent)
     local object=Instance.new(kind)
     for key,value in pairs(props) do object[key]=value end
@@ -74259,73 +74443,126 @@ end
 local function round(parent,radius)
     create("UICorner",{CornerRadius=UDim.new(0,radius or 10)},parent)
 end
+local function stroke(parent,tint,thickness)
+    return create("UIStroke",{Name="Border",ApplyStrokeMode=Enum.ApplyStrokeMode.Border,Color=tint or C.ink,Thickness=thickness or 2},parent)
+end
 local function text(parent,name,value,size,color)
     return create("TextLabel",{Name=name,Text=value,BackgroundTransparency=1,TextSize=size or 14,
-        TextColor3=color or C.white,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,
+        TextColor3=color or C.ink,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Left,
         TextYAlignment=Enum.TextYAlignment.Center},parent)
 end
+local function display(parent,name,value,size,tint)
+    local label=text(parent,name,value,size,tint or C.white)
+    label.Font=Enum.Font.FredokaOne
+    create("UIStroke",{Name="LetterOutline",ApplyStrokeMode=Enum.ApplyStrokeMode.Contextual,Color=C.ink,Thickness=2},label)
+    return label
+end
 local function button(parent,name,value,color)
-    local object=create("TextButton",{Name=name,Text=value,TextSize=14,Font=Enum.Font.GothamBold,
-        TextColor3=C.white,BackgroundColor3=color or C.tile,BorderSizePixel=0,Selectable=true,AutoButtonColor=true},parent)
-    round(object)
+    local object=create("TextButton",{Name=name,Text=value,TextSize=20,Font=Enum.Font.FredokaOne,
+        TextColor3=C.ink,BackgroundColor3=color or C.tile,BorderSizePixel=0,Selectable=true,AutoButtonColor=true},parent)
+    round(object,14); stroke(object)
     return object
 end
 local function place(object,x,y,w,h)
     object.Position=UDim2.fromOffset(x,y); object.Size=UDim2.fromOffset(w,h)
 end
 local function color(rgb) return Color3.fromRGB(rgb.r,rgb.g,rgb.b) end
+local function viewport(parent,name)
+    local view=create("ViewportFrame",{Name=name,BackgroundColor3=C.tile,BorderSizePixel=0,
+        Ambient=Color3.fromRGB(200,220,235),LightColor=Color3.new(1,1,1),LightDirection=Vector3.new(-1,-1,-1)},parent)
+    round(view,12)
+    local world=create("WorldModel",{},view)
+    local camera=create("Camera",{FieldOfView=38,CFrame=CFrame.lookAt(Vector3.new(13,17,35),Vector3.new(-7,0,0))},view)
+    view.CurrentCamera=camera
+    return view,world,camera
+end
+local function previewPlane(world,item,settings)
+    world:ClearAllChildren()
+    local plane=World.createPlane(world,"EffectPreviewPlane",settings.color or 2,settings.planeId,item.id)
+    plane:ScaleTo(1.4); plane:PivotTo(CFrame.new(3,0,0))
+    -- ViewportFrame does not render Trails. This taper uses the actual trail's catalog colors.
+    for index=1,18 do
+        local t=(index-1)/17
+        create("Part",{Name="TrailColorSample",Anchored=true,CanCollide=false,CastShadow=false,
+            Material=Enum.Material.Neon,Color=color(item.color):Lerp(color(item.secondaryColor),t),
+            Size=Vector3.new(1.05,math.max(0.1,item.width*(1-t*0.8)),0.35),
+            CFrame=CFrame.new(-3-index,math.sin(t*4)*0.35,0),Transparency=t*0.7},world)
+    end
+end
 
 function Shop.new(send)
     local self=setmetatable({send=send,selected=Catalog.DEFAULT_ID,phase="Lobby",pendingUntil=0,cards={},connections={},onlyOwned=false},Shop)
     self.gui=create("ScreenGui",{Name="SkyboundEffects",ResetOnSpawn=false,IgnoreGuiInset=false,
         DisplayOrder=30,ZIndexBehavior=Enum.ZIndexBehavior.Sibling},Players.LocalPlayer:WaitForChild("PlayerGui"))
-    self.openButton=button(self.gui,"OpenEffects","FLIGHT EFFECTS  /  0 C",C.ink)
-    self.openButton.AnchorPoint=Vector2.new(0,1)
-    self.openButton.Position=UDim2.new(0,16,1,-88); self.openButton.Size=UDim2.fromOffset(228,48)
-    self.goal=text(self.gui,"NextUnlock","Complete flights to earn your first trail.",11,C.white)
-    self.goal.AnchorPoint=Vector2.new(0,1); self.goal.Position=UDim2.new(0,20,1,-140)
-    self.goal.Size=UDim2.fromOffset(300,32); self.goal.TextWrapped=true
-    self.goal.TextStrokeColor3=C.ink; self.goal.TextStrokeTransparency=0.15
+    self.reducedMotion=false
+    pcall(function() self.reducedMotion=GuiService.ReducedMotionEnabled end)
+    self.openButton=button(self.gui,"OpenEffects","",C.panel)
+    self.rewardScale=create("UIScale",{Scale=1},self.openButton)
+    self.coin=box(self.openButton,"Coin",C.gold); round(self.coin,50); stroke(self.coin,C.amber,3)
+    self.coinInner=box(self.coin,"Inset",C.gold); round(self.coinInner,50); stroke(self.coinInner,C.amber,1.5)
+    self.coinInner.Position=UDim2.fromScale(0.17,0.17); self.coinInner.Size=UDim2.fromScale(0.66,0.66)
+    self.coinMark=text(self.coin,"Mark","S",28,C.amber); self.coinMark.Font=Enum.Font.FredokaOne
+    self.coinMark.Size=UDim2.fromScale(1,1); self.coinMark.TextXAlignment=Enum.TextXAlignment.Center
+    self.wallet=display(self.openButton,"CoinBalance","0",42,C.gold)
+    self.wallet.TextScaled=true
+    create("UITextSizeConstraint",{MinTextSize=14,MaxTextSize=42},self.wallet)
+    self.walletCaption=text(self.openButton,"CoinLabel","COINS",12,C.muted)
+    self.nextPreview,self.nextWorld,self.nextCamera=viewport(self.openButton,"NextEffectPreview")
+    self.nextCaption=text(self.openButton,"NextCaption","NEXT FLIGHT EFFECT",11,C.muted)
+    self.nextName=display(self.openButton,"NextName","SKY BLUE",23,C.white); self.nextName.TextWrapped=true
+    self.nextName.TextScaled=true
+    self.nextNameSize=create("UITextSizeConstraint",{MinTextSize=12,MaxTextSize=23},self.nextName)
+    self.goal=text(self.openButton,"NextUnlock","40 more coins",14,C.ink)
+    self.progress=box(self.openButton,"RewardProgress",C.tile); round(self.progress,8); stroke(self.progress,C.ink,1.5)
+    self.progressFill=box(self.progress,"Fill",C.gold); round(self.progressFill,8)
+    self.progressFill.Size=UDim2.fromScale(0,1)
+    self.progressLabel=text(self.progress,"ProgressLabel","0 / 40",13,C.ink)
+    self.progressLabel.Size=UDim2.fromScale(1,1); self.progressLabel.TextXAlignment=Enum.TextXAlignment.Center
+    self.rewardHint=text(self.openButton,"RewardHint","Finish flights. Collect your favorite trail.",11,C.muted)
+    self.rewardCTA=box(self.openButton,"BrowseAction",C.gold); round(self.rewardCTA,10); stroke(self.rewardCTA)
+    self.rewardCTALabel=text(self.rewardCTA,"Label","BROWSE FLIGHT EFFECTS",18,C.ink)
+    self.rewardCTALabel.Font=Enum.Font.FredokaOne
+    self.rewardCTALabel.Size=UDim2.fromScale(1,1); self.rewardCTALabel.TextXAlignment=Enum.TextXAlignment.Center
     self.overlay=box(self.gui,"ShopOverlay",C.ink)
     self.overlay.Size=UDim2.fromScale(1,1); self.overlay.BackgroundTransparency=0.18
     self.overlay.Visible=false; self.overlay.Active=true
-    self.card=box(self.overlay,"EffectsShop",C.panel); round(self.card,16)
+    self.card=box(self.overlay,"EffectsShop",C.panel); round(self.card,20); stroke(self.card,C.ink,3)
     self.card.AnchorPoint=Vector2.new(0.5,0.5); self.card.Position=UDim2.fromScale(0.5,0.5)
-    self.title=text(self.card,"Title","FLIGHT EFFECTS",24)
-    self.balance=text(self.card,"Balance","0 CREDITS",13,C.gold)
+    self.title=display(self.card,"Title","FLIGHT EFFECTS",34)
+    self.balance=display(self.card,"Balance","0 COINS",25,C.gold)
     self.closeButton=button(self.card,"Close","X")
     self.body=create("ScrollingFrame",{Name="Browse",BackgroundTransparency=1,BorderSizePixel=0,
-        ScrollBarThickness=4,ScrollBarImageColor3=C.teal,CanvasSize=UDim2.fromOffset(0,400)},self.card)
+        ScrollBarThickness=5,ScrollBarImageColor3=C.ink,CanvasSize=UDim2.fromOffset(0,400)},self.card)
     self.filter=button(self.body,"CollectionFilter","ALL EFFECTS")
-    self.collection=text(self.body,"CollectionCount","1 / 6 OWNED",11,C.muted)
-    self.preview=create("ViewportFrame",{Name="PlanePreview",BackgroundColor3=C.ink,BorderSizePixel=0,
-        Ambient=Color3.fromRGB(200,220,235),LightColor=Color3.new(1,1,1),LightDirection=Vector3.new(-1,-1,-1)},self.body)
-    round(self.preview,12)
-    self.previewWorld=create("WorldModel",{},self.preview)
-    self.previewCamera=create("Camera",{FieldOfView=38,CFrame=CFrame.lookAt(Vector3.new(13,17,35),Vector3.new(-7,0,0))},self.preview)
-    self.preview.CurrentCamera=self.previewCamera
-    self.previewName=text(self.body,"SelectedName","CLASSIC",20)
-    self.previewDetail=text(self.body,"SelectedDescription","",12,C.muted); self.previewDetail.TextWrapped=true
-    self.previewNote=text(self.body,"PreviewNote","TRAIL COLOR PREVIEW  /  COSMETIC ONLY",10,C.muted)
+    self.collection=text(self.body,"CollectionCount","1 / 6 OWNED",13,C.muted)
+    self.preview,self.previewWorld,self.previewCamera=viewport(self.body,"PlanePreview")
+    self.previewName=display(self.body,"SelectedName","CLASSIC",27)
+    self.previewDetail=text(self.body,"SelectedDescription","",15,C.muted); self.previewDetail.TextWrapped=true
+    self.previewNote=text(self.body,"PreviewNote","FLIGHT EFFECT · COSMETIC ONLY",12,C.muted)
     for _,item in ipairs(Catalog.all()) do
         local control=button(self.body,item.id,"",C.tile)
         local swatch=box(control,"Swatch",color(item.color)); round(swatch,5)
         create("UIGradient",{Color=ColorSequence.new(color(item.color),color(item.secondaryColor))},swatch)
-        local name=text(control,"ItemName",item.name,13)
+        local name=text(control,"ItemName",item.name,17); name.Font=Enum.Font.FredokaOne
         name.TextTruncate=Enum.TextTruncate.AtEnd
-        local price=text(control,"Price",tostring(item.price).." C",11,C.gold)
-        local border=create("UIStroke",{Color=C.teal,Thickness=2,Enabled=false},control)
+        local price=text(control,"Price",tostring(item.price).." COINS",13,C.ink)
+        local border=control:FindFirstChild("Border")
         self.cards[item.id]={button=control,swatch=swatch,name=name,price=price,border=border}
         table.insert(self.connections,control.Activated:Connect(function()
             self.selected=item.id; self:_preview(); self:_refresh()
-            if self.card.AbsoluteSize.X<560 then self.body.CanvasPosition=Vector2.zero end
+            if self.card.AbsoluteSize.X<600 then self.body.CanvasPosition=Vector2.zero end
         end))
     end
-    self.status=text(self.card,"Feedback","Finish flights. Earn credits. Make your plane yours.",12,C.muted)
+    self.status=text(self.card,"Feedback","Finish flights. Earn coins. Make your plane yours.",14,C.muted)
     self.status.TextWrapped=true
     self.action=button(self.card,"PurchaseOrEquip","EQUIPPED",C.teal); self.action.TextColor3=C.ink
-    self.saveLabel=text(self.card,"SaveStatus","",10,C.muted)
-    table.insert(self.connections,self.openButton.Activated:Connect(function() self:open() end))
+    self.action.TextWrapped=true
+    self.saveLabel=text(self.card,"SaveStatus","",11,C.muted)
+    table.insert(self.connections,self.openButton.Activated:Connect(function()
+        self.selected=self.nextItemId or (self.economy and self.economy.equippedTrail) or Catalog.DEFAULT_ID
+        self.onlyOwned=false
+        self:open()
+    end))
     table.insert(self.connections,self.closeButton.Activated:Connect(function() self:close() end))
     table.insert(self.connections,self.filter.Activated:Connect(function()
         self.onlyOwned=not self.onlyOwned
@@ -74350,20 +74587,8 @@ function Shop.new(send)
 end
 
 function Shop:_preview()
-    self.previewWorld:ClearAllChildren()
     local item=Catalog.get(self.selected)
-    local settings=self.settings or {}
-    local plane=World.createPlane(self.previewWorld,"EffectPreviewPlane",settings.color or 2,settings.planeId,item.id)
-    plane:ScaleTo(1.4)
-    plane:PivotTo(CFrame.new(3,0,0))
-    -- ViewportFrame does not render Trails. A taper shows the same catalog colors.
-    for index=1,18 do
-        local t=(index-1)/17
-        create("Part",{Name="TrailColorSample",Anchored=true,CanCollide=false,CastShadow=false,
-            Material=Enum.Material.Neon,Color=color(item.color):Lerp(color(item.secondaryColor),t),
-            Size=Vector3.new(1.05,math.max(0.1,item.width*(1-t*0.8)),0.35),
-            CFrame=CFrame.new(-3-index,math.sin(t*4)*0.35,0),Transparency=t*0.7},self.previewWorld)
-    end
+    previewPlane(self.previewWorld,item,self.settings or {})
     self.previewName.Text=string.upper(item.name)
     self.previewDetail.Text=item.description
 end
@@ -74372,31 +74597,94 @@ function Shop:_layout()
     local size=self.gui.AbsoluteSize
     if size.X<1 then size=Vector2.new(960,660) end
     self.lastSize=size
-    local w=math.min(790,size.X-20)
-    local h=math.min(526,size.Y-16)
+    local portrait=size.X<600
+    local short=not portrait and size.Y<500
+    local rw=short and 252 or (portrait and math.min(286,size.X-24) or 318)
+    local smallPortrait=portrait and size.Y<540
+    local rh=short and 176 or (smallPortrait and 140 or (portrait and 246 or 258))
+    self.openButton.AnchorPoint=portrait and Vector2.zero or Vector2.new(1,0)
+    self.openButton.Position=portrait and UDim2.fromOffset(12,242) or UDim2.new(1,short and -12 or -18,0,short and 76 or 84)
+    self.openButton.Size=UDim2.fromOffset(rw,rh)
+    local coinSize=short and 34 or 44
+    place(self.coin,14,12,coinSize,coinSize)
+    self.coinMark.TextSize=short and 24 or 30
+    place(self.wallet,coinSize+24,short and 6 or 5,rw-coinSize-38,short and 35 or 48)
+    self.wallet.TextSize=short and 31 or 42
+    place(self.walletCaption,coinSize+26,short and 38 or 48,rw-coinSize-38,14)
+    self.walletCaption.TextSize=short and 10 or 12
+    local rewardY=short and 56 or 76
+    local previewWidth=short and 86 or 112
+    local previewHeight=short and 46 or (portrait and 60 or 72)
+    place(self.nextPreview,12,rewardY,previewWidth,previewHeight)
+    self.nextCamera.FieldOfView=short and 40 or 38
+    local tx=previewWidth+22
+    local tw=rw-tx-12
+    place(self.nextCaption,tx,rewardY-3,tw,14)
+    self.nextCaption.TextSize=short and 9 or 10
+    place(self.nextName,tx,rewardY+11,tw,short and 22 or 36)
+    self.nextName.TextSize=short and 17 or 21
+    self.nextNameSize.MaxTextSize=short and 17 or 21
+    place(self.goal,tx,rewardY+(short and 34 or 49),tw,short and 16 or 19)
+    self.goal.TextSize=short and 11 or 12
+    self.goal.TextWrapped=true
+    local barY=short and 110 or (portrait and 151 or 160)
+    place(self.progress,14,barY,rw-28,short and 20 or 24)
+    self.progressLabel.TextSize=short and 12 or 14
+    place(self.rewardHint,14,barY+27,rw-28,17)
+    self.rewardHint.Visible=not short
+    self.rewardHint.TextSize=portrait and 10 or 11
+    place(self.rewardCTA,12,rh-(short and 38 or 50),rw-24,short and 30 or 38)
+    self.rewardCTALabel.TextSize=short and 15 or 18
+    self.nextPreview.Visible=not smallPortrait
+    self.nextCaption.Visible=not smallPortrait
+    if smallPortrait then
+        -- Keep the wallet usable below the lobby controls even in a short portrait window.
+        place(self.coin,12,10,32,32); self.coinMark.TextSize=23
+        place(self.wallet,54,4,80,34); self.wallet.TextSize=29
+        place(self.walletCaption,56,35,80,14); self.walletCaption.TextSize=10
+        place(self.nextName,136,8,rw-148,28); self.nextName.TextSize=16
+        self.nextNameSize.MaxTextSize=16
+        place(self.goal,136,36,rw-148,20); self.goal.TextSize=11
+        place(self.progress,12,64,rw-24,22)
+        self.rewardHint.Visible=false
+        place(self.rewardCTA,12,99,rw-24,30); self.rewardCTALabel.TextSize=15
+        local available=math.max(80,size.Y-254)
+        self.rewardBaseScale=math.min(1,available/rh)
+    else self.rewardBaseScale=1 end
+    if not self.rewardTween or self.rewardTween.PlaybackState~=Enum.PlaybackState.Playing then
+        self.rewardScale.Scale=self.rewardBaseScale
+    end
+
+    local w=math.min(920,size.X-20)
+    local h=math.min(630,size.Y-16)
     self.card.Size=UDim2.fromOffset(w,h)
-    local narrow=w<560
-    local compact=not narrow and h<390
-    self.previewCamera.FieldOfView=compact and 26 or 38
+    local narrow=w<600
+    local compact=not narrow and h<420
+    self.previewCamera.FieldOfView=compact and 28 or 38
     self.filter.Parent=compact and self.card or self.body
     self.preview.Parent=compact and self.card or self.body
     self.previewName.Parent=compact and self.card or self.body
     self.collection.Visible=not compact
     self.previewDetail.Visible=not compact
     self.previewNote.Visible=not compact
-    place(self.title,18,10,w-85,29); self.title.TextSize=narrow and 20 or 24
-    place(self.balance,18,40,w-85,20)
-    place(self.closeButton,w-58,12,44,44)
-    local bodyHeight=math.max(70,h-(compact and 166 or 181))
-    place(self.body,14,68,w-28,bodyHeight)
-    local inner=w-34
-    local listWidth=narrow and inner or math.floor(inner*0.48)
+    place(self.title,20,10,w-90,38); self.title.TextSize=narrow and (w<350 and 24 or 29) or 34
+    place(self.balance,22,49,w-90,29); self.balance.TextSize=narrow and 22 or 25
+    place(self.closeButton,w-66,14,48,48)
+    local bodyY=compact and 82 or 92
+    local footerHeight=compact and 100 or 132
+    local bodyHeight=math.max(70,h-bodyY-footerHeight)
+    place(self.body,16,bodyY,w-32,bodyHeight)
+    local inner=w-40
+    local listWidth=narrow and inner or math.floor(inner*0.49)
     if compact then self.body.Size=UDim2.fromOffset(listWidth,bodyHeight) end
     local listTop=narrow and 298 or 0
-    place(self.filter,0,listTop,150,44)
-    if compact then place(self.filter,w-224,12,150,44) end
-    place(self.collection,160,listTop,listWidth-160,44)
-    local cellWidth=(listWidth-8)/2
+    place(self.filter,0,listTop,math.min(186,listWidth*0.57),46)
+    self.filter.TextSize=narrow and 17 or 18
+    if compact then place(self.filter,w-248,15,166,46) end
+    place(self.collection,math.min(198,listWidth*0.6),listTop,listWidth-math.min(198,listWidth*0.6),46)
+    local cellWidth=(listWidth-10)/2
+    local cellHeight=compact and 76 or 94
+    local rowStep=cellHeight+10
     local count=0
     for _,item in ipairs(Catalog.all()) do
         local card=self.cards[item.id]
@@ -74404,43 +74692,46 @@ function Shop:_layout()
         card.button.Visible=visible==true
         if visible then
             local row=math.floor(count/2); local col=count%2
-            place(card.button,col*(cellWidth+8),listTop+(compact and 0 or 54)+row*85,cellWidth,77)
-            place(card.swatch,10,10,cellWidth-20,9)
-            place(card.name,10,24,cellWidth-20,22)
-            place(card.price,10,49,cellWidth-20,19)
-            card.name.TextSize=cellWidth<150 and 12 or 13
+            place(card.button,col*(cellWidth+10),listTop+(compact and 2 or 58)+row*rowStep,cellWidth,cellHeight)
+            place(card.swatch,10,10,cellWidth-20,compact and 8 or 13)
+            place(card.name,10,compact and 23 or 31,cellWidth-20,26)
+            place(card.price,10,compact and 51 or 63,cellWidth-20,22)
+            card.name.TextSize=cellWidth<150 and 15 or 18
+            card.price.TextSize=cellWidth<150 and 12 or 14
             count+=1
         end
     end
-    local listBottom=listTop+(compact and 0 or 54)+math.ceil(count/2)*85
-    local x=narrow and 0 or listWidth+18
-    local y=0
+    local listBottom=listTop+(compact and 2 or 58)+math.ceil(count/2)*rowStep
+    local x=narrow and 0 or listWidth+20
     local previewWidth=narrow and inner or inner-x
-    place(self.preview,x,y,previewWidth,172)
-    place(self.previewName,x,y+180,previewWidth,27)
-    place(self.previewDetail,x,y+209,previewWidth,48)
-    place(self.previewNote,x,y+264,previewWidth,17)
-    self.previewNote.TextSize=narrow and 9 or 10
-    self.body.CanvasSize=UDim2.fromOffset(0,compact and listBottom or math.max(listBottom,y+285))
-    self.previewName.TextSize=compact and 15 or 20
+    place(self.preview,x,0,previewWidth,narrow and 176 or 208)
+    place(self.previewName,x,narrow and 183 or 218,previewWidth,34)
+    place(self.previewDetail,x,narrow and 220 or 258,previewWidth,44)
+    place(self.previewNote,x,narrow and 271 or 308,previewWidth,18)
+    self.previewNote.TextSize=narrow and 11 or 12
+    self.body.CanvasSize=UDim2.fromOffset(0,compact and listBottom or math.max(listBottom,narrow and 298 or 336))
+    self.previewName.TextSize=compact and 20 or (narrow and 25 or 27)
     if compact then
-        place(self.preview,14+x,68,previewWidth,bodyHeight-25)
-        place(self.previewName,14+x,68+bodyHeight-23,previewWidth,23)
+        place(self.preview,16+x,bodyY,previewWidth,bodyHeight-30)
+        place(self.previewName,16+x,bodyY+bodyHeight-27,previewWidth,27)
     end
-    place(self.status,18,h-109,w-36,35)
-    place(self.action,18,h-70,w-36,44)
-    place(self.saveLabel,18,h-23,w-36,17)
+    place(self.status,20,h-126,w-40,40)
+    self.status.TextSize=narrow and 13 or 14
+    place(self.action,20,h-78,w-40,52)
+    self.action.TextSize=narrow and 17 or 22
+    place(self.saveLabel,20,h-22,w-40,17)
+    self.saveLabel.TextSize=narrow and 10 or 11
     if compact then
-        place(self.status,18,h-92,w-36,26)
-        place(self.action,18,h-64,w-36,44)
-        place(self.saveLabel,18,h-19,w-36,17)
+        place(self.status,20,h-97,w-40,27); self.status.TextSize=12
+        place(self.action,20,h-66,w-40,46); self.action.TextSize=19
+        place(self.saveLabel,20,h-18,w-40,16); self.saveLabel.TextSize=10
     end
-    self.goal.Size=UDim2.fromOffset(math.min(300,size.X-40),32)
 end
 
 function Shop:open()
     if self.phase~="Lobby" and self.phase~="Queued" then return end
     self.overlay.Visible=true
+    self.openButton.Visible=false; self.openButton.Active=false; self.openButton.Selectable=false
     local hud=Players.LocalPlayer.PlayerGui:FindFirstChild("SkyboundHUD")
     if hud and hud:FindFirstChild("PersonalStats") then hud.PersonalStats.Visible=false end
     self:_layout(); self:_preview(); self:_refresh()
@@ -74463,38 +74754,77 @@ function Shop:_refresh()
         local owned=economy.owned[entry.id]==true
         if owned then count+=1 elseif not nextItem then nextItem=entry end
         local card=self.cards[entry.id]
-        card.border.Enabled=self.selected==entry.id
-        card.price.Text=economy.equippedTrail==entry.id and "EQUIPPED" or (owned and "OWNED" or tostring(entry.price).." CREDITS")
-        card.price.TextColor3=owned and C.teal or C.gold
+        local selected=self.selected==entry.id
+        card.border.Color=selected and C.ink or C.muted
+        card.border.Thickness=selected and 3 or 1
+        card.button.BackgroundColor3=selected and C.teal or C.tile
+        card.price.Text=economy.equippedTrail==entry.id and "EQUIPPED" or (owned and "OWNED" or tostring(entry.price).." COINS")
+        card.price.TextColor3=C.ink
     end
     local credits=economy.credits or 0
-    self.balance.Text=tostring(credits).." CREDITS  /  "..count.." EFFECTS OWNED"
+    self.balance.Text=self.economy and (tostring(credits).." COINS") or "LOADING COINS…"
+    self.wallet.Text=self.economy and tostring(credits) or "…"
     self.collection.Text=tostring(count).." / "..#Catalog.ORDER.." OWNED"
     self.filter.Text=self.onlyOwned and "MY COLLECTION" or "ALL EFFECTS"
-    self.openButton.Text="FLIGHT EFFECTS  /  "..tostring(credits).." C"
-    self.goal.Text=nextItem and ("NEXT: "..nextItem.name.."  /  "..math.min(credits,nextItem.price).." of "..nextItem.price.." credits")
-        or "COMPLETE COLLECTION  /  Fly your signature trail."
+    self.nextItemId=nextItem and nextItem.id or nil
+    local target=nextItem or Catalog.get(economy.equippedTrail) or Catalog.get(Catalog.DEFAULT_ID)
+    local settings=self.settings or {}
+    local previewKey=target.id..":"..tostring(settings.color)..":"..tostring(settings.planeId)
+    if previewKey~=self.nextPreviewKey then
+        self.nextPreviewKey=previewKey
+        previewPlane(self.nextWorld,target,settings)
+    end
+    local canAfford=nextItem and credits>=nextItem.price
+    if self.lastNextId~=self.nextItemId then self.pendingRewardPulse=nil end
+    if self.lastNextId==self.nextItemId and self.lastAffordable==false and canAfford then
+        self.pendingRewardPulse=self.nextItemId
+    end
+    self.lastNextId=self.nextItemId; self.lastAffordable=canAfford==true
+    self.nextCaption.Text=nextItem and "NEXT FLIGHT EFFECT" or "YOUR COLLECTION"
+    self.nextName.Text=string.upper(target.name)
+    self.goal.Text=nextItem and (canAfford and "Ready to buy!" or ((nextItem.price-credits).." more coins")) or "All effects owned!"
+    self.progressFill.Size=UDim2.fromScale(nextItem and nextItem.price>0 and math.clamp(credits/nextItem.price,0,1) or 1,1)
+    self.progressFill.BackgroundColor3=canAfford and C.green or C.gold
+    self.progressLabel.Text=nextItem and (math.min(credits,nextItem.price).." / "..nextItem.price.." COINS") or "COMPLETE COLLECTION"
+    self.rewardHint.Text=nextItem and (canAfford and "Choose your new look in the shop."
+        or (nextItem.price-credits<=Catalog.PRACTICE_REWARD and "One more finished flight to afford it!" or "Every finished flight brings it closer."))
+        or "Fly your signature trail."
+    self.rewardCTALabel.Text=canAfford and "VIEW NEW FLIGHT EFFECT" or "BROWSE FLIGHT EFFECTS"
+    self.rewardCTA.BackgroundColor3=canAfford and C.green or C.gold
+    if not self.economy then
+        self.goal.Text="Loading collection…"; self.rewardHint.Text="Your flight effects will appear here."
+        self.progressLabel.Text="LOADING…"
+    end
+    if self.pendingRewardPulse==self.nextItemId and canAfford and self.openButton.Visible and not self.overlay.Visible then
+        self.pendingRewardPulse=false
+        if not self.reducedMotion then
+            if self.rewardTween then self.rewardTween:Cancel() end
+            self.rewardScale.Scale=self.rewardBaseScale or 1
+            self.rewardTween=TweenService:Create(self.rewardScale,TweenInfo.new(0.24,Enum.EasingStyle.Back,Enum.EasingDirection.Out,0,true),{Scale=(self.rewardBaseScale or 1)*1.035})
+            self.rewardTween:Play()
+        end
+    end
     local pending=os.clock()<self.pendingUntil
     local equipped=economy.equippedTrail==item.id
     local owned=economy.owned[item.id]==true
     local affordable=credits>=item.price
-    local enabled=economy.canShop and not equipped and (owned or affordable) and not pending
+    local enabled=self.phase=="Lobby" and economy.canShop and not equipped and (owned or affordable) and not pending
     self.action.Active=enabled==true; self.action.Selectable=enabled==true; self.action.AutoButtonColor=enabled==true
-    self.action.BackgroundColor3=enabled and C.teal or C.tile
+    self.action.BackgroundColor3=enabled and (owned and C.teal or C.gold) or C.tile
     self.action.TextColor3=enabled and C.ink or C.muted
     self.action.Text=pending and "WORKING…" or (equipped and "EQUIPPED FOR YOUR NEXT FLIGHT"
         or (owned and ("EQUIP "..string.upper(item.name))
-        or (affordable and ("BUY "..string.upper(item.name).."  /  "..item.price.." CREDITS")
-        or ("EARN "..(item.price-credits).." MORE CREDITS"))))
+        or (affordable and ("BUY "..string.upper(item.name).." · "..item.price.." COINS")
+        or ("EARN "..(item.price-credits).." MORE COINS"))))
     local feedback=self.feedback
     if self.phase=="Queued" then self.status.Text="Leave the queue to buy or change your trail."
     elseif feedback and os.clock()<(self.feedbackUntil or 0) then
-        self.status.Text=feedback.message
+        self.status.Text=feedback.message:gsub("CREDITS","COINS"):gsub("credits","coins")
     elseif not economy.canShop then self.status.Text="Your collection is loading or saving is unavailable. Try again when ready."
     elseif owned then self.status.Text=equipped and "Your equipped trail follows your plane into every flight." or "Owned. Equip this trail for your next flight."
-    else self.status.Text="Earn 25 credits per practice flight. Duels earn 40, plus result bonuses." end
-    self.status.TextColor3=feedback and not feedback.ok and os.clock()<(self.feedbackUntil or 0) and C.gold or C.muted
-    local saves={session_only="STUDIO SESSION  /  Purchases reset when Play stops.",loading="Loading your collection…",
+    else self.status.Text="Finish a practice flight: +25 coins. Finish a duel: +40, plus result bonuses." end
+    self.status.TextColor3=feedback and not feedback.ok and os.clock()<(self.feedbackUntil or 0) and C.amber or C.muted
+    local saves={session_only="STUDIO SESSION · Purchases reset when Play stops.",loading="Loading your collection…",
         saved="Collection saved.",pending="Saving your collection…",unavailable="Cloud save unavailable. Purchases are disabled."}
     self.saveLabel.Text=saves[self.saveStatus] or "Loading your collection…"
 end
@@ -74502,7 +74832,11 @@ end
 function Shop:update(snapshot,settings)
     self.phase=snapshot.phase; self.economy=snapshot.economy; self.saveStatus=snapshot.saveStatus; self.settings=settings
     local inHub=self.phase=="Lobby" or self.phase=="Queued"
-    self.openButton.Visible=inHub; self.goal.Visible=inHub
+    local hud=Players.LocalPlayer.PlayerGui:FindFirstChild("SkyboundHUD")
+    local stats=hud and hud:FindFirstChild("PersonalStats")
+    self.openButton.Visible=inHub and not self.overlay.Visible and not (stats and stats.Visible)
+    self.openButton.Active=self.openButton.Visible
+    self.openButton.Selectable=self.openButton.Visible
     if not inHub then self:close() end
     local ownedKey=""
     for _,id in ipairs(Catalog.ORDER) do
@@ -74519,6 +74853,7 @@ function Shop:update(snapshot,settings)
 end
 
 function Shop:destroy()
+    if self.rewardTween then self.rewardTween:Cancel() end
     for _,connection in ipairs(self.connections) do connection:Disconnect() end
     self.gui:Destroy()
 end
@@ -74892,9 +75227,21 @@ Simulation.GRAVITY = 3.8
 Simulation.THIN_AIR_HEIGHT = 135
 Simulation.NEAR_MISS_MARGIN = 12
 Simulation.EVENT_HISTORY_LIMIT = 12
+-- Power kicks are brief surges, separate from earned fuel/launch momentum.
+-- About 90% fades in three seconds; distance already gained is never removed.
+Simulation.POWER_BURST_DECAY = 0.8
+Simulation.METEOR_BURST_DECAY = 0.3
+Simulation.PRESSURE_START = 18
+Simulation.PRESSURE_RAMP = 10
 
 local function clamp(value, low, high)
 	return math.max(low, math.min(high, value))
+end
+
+-- Both pilots launch together, so elapsed flight time gives them the same
+-- headwind. Position, lead and remaining power charges never affect pressure.
+function Simulation.flightPressure(elapsed)
+	return clamp((elapsed - Simulation.PRESSURE_START) / Simulation.PRESSURE_RAMP, 0, 1)
 end
 
 local function finite(value)
@@ -75001,6 +75348,7 @@ function Simulation.newFlight(settings, course)
 		x = 0,
 		y = 18,
 		vx = math.cos(radians) * speed,
+		burstVx = 0,
 		vy = math.sin(radians) * speed,
 		alive = true,
 		distance = 0,
@@ -75074,6 +75422,12 @@ local function consumePower(state)
 	if state.powerCharges == 0 then state.powerPhase = "spent" end
 end
 
+local function powerBurst(state, amount)
+	local nextSpeed = math.min(forwardLimit(state), state.vx + amount)
+	state.burstVx = math.min(state.burstVx or 0, math.max(0, state.vx - 18)) + math.max(0, nextSpeed - state.vx)
+	state.vx = nextSpeed
+end
+
 local function sweptGap(ax, ay, bx, by, radius)
 	local dx, dy = bx - ax, by - ay
 	local lengthSquared = dx * dx + dy * dy
@@ -75092,10 +75446,14 @@ function Simulation.step(state, course, dt)
 	local oldX, oldY, oldTime = state.x, state.y, state.elapsed
 	state.elapsed = state.elapsed + dt
 	local beforeDeadline = state.elapsed < Simulation.MAX_FLIGHT_TIME
+	local pressure = state.powerId and Simulation.flightPressure(state.elapsed) or 0
 	state.powerPeak = math.max(state.powerPeak or oldY, oldY)
-	state.vx = math.max(18, state.vx * (1 - 0.015 * dt))
+	local burst = math.min(state.burstVx or 0, math.max(0, state.vx - 18))
+	local burstDecay = state.powerId == "Meteor" and Simulation.METEOR_BURST_DECAY or Simulation.POWER_BURST_DECAY
+	state.burstVx = burst * math.exp(-burstDecay * dt)
+	state.vx = math.max(18, (state.vx - burst) * (1 - 0.015 * dt)) + state.burstVx
 	local meteorDiving = state.powerId == "Meteor" and state.powerPhase == "diving"
-	state.vy = math.max(meteorDiving and -64 or -22, state.vy - Simulation.GRAVITY * (meteorDiving and 3.2 or 1) * dt)
+	state.vy = math.max(meteorDiving and -64 or -22, state.vy - Simulation.GRAVITY * (1 + 2 * pressure) * (meteorDiving and 3.2 or 1) * dt)
 	-- Upward thrust fades in thin air, keeping high launches near the stronger
 	-- pickups. This only damps ascent; it never slams a plane down from a ceiling.
 	if state.y > Simulation.THIN_AIR_HEIGHT and state.vy > 0 then
@@ -75113,8 +75471,8 @@ function Simulation.step(state, course, dt)
 	-- sweep; the turn begins at most one step above the pull-up height.
 	if beforeDeadline and state.powerId == "Meteor" and state.powerPhase == "diving" and oldY > 0 and oldY + state.vy * dt <= 18 then
 		local charge = clamp((state.powerPeak - 18) / 140, 0, 1)
-		state.vx = math.min(forwardLimit(state), state.vx + 35 + 45 * charge)
-		state.vy = 25 + 10 * charge
+		powerBurst(state, 35 + 85 * charge)
+		state.vy = 22 + 10 * charge
 		consumePower(state)
 		event(state, "meteorBoost", "METEOR BLAST!", nil, state.powerPeak)
 	end
@@ -75155,18 +75513,23 @@ function Simulation.step(state, course, dt)
 			state.used[item.id] = true
 			if item.kind == "fuel" then
 				state.pickups = state.pickups + 1
-				state.vx = math.min(forwardLimit(state), state.vx + 1 + item.value * 0.3)
+				-- Fuel earns lasting momentum even while a temporary burst fills
+				-- the speed cap. Replace excess burst rather than losing the fuel.
+				local limit = forwardLimit(state)
+				local momentum = math.min(limit, state.vx - state.burstVx + 1 + item.value * 0.3)
+				state.burstVx = math.min(state.burstVx, limit - momentum)
+				state.vx = momentum + state.burstVx
 				-- Fuel first steadies a dive, so even a late pickup visibly saves
 				-- altitude. Stronger numbered cans then supply a larger lift.
 				-- Meteor remains committed to its dive; fuel still adds speed but
 				-- cannot cancel the promised automatic pull-up and blast.
 				if state.powerPhase ~= "diving" then
-					state.vy = math.min(62, math.max(state.vy, -8) + item.value * 0.65)
+					state.vy = math.min(62, math.max(state.vy, -8) + item.value * 0.65 * (1 - 0.35 * pressure))
 				end
 				event(state, "fuel", "+" .. tostring(item.value) .. " FUEL!", item)
 			elseif beforeDeadline and state.powerId == "Muncher" and state.powerCharges > 0 then
 				consumePower(state)
-				state.vx = math.min(forwardLimit(state), state.vx + 8 + 4 * state.powerUses)
+				powerBurst(state, 8 + 4 * state.powerUses)
 				state.vy = math.min(56, math.max(state.vy, -8) + 1 + 3 * state.powerUses)
 				event(state, "munch", "CHOMP! " .. tostring(state.powerUses) .. "/3", item, state.powerUses)
 			else
@@ -75176,6 +75539,7 @@ function Simulation.step(state, course, dt)
 					event(state, "shield", "SHIELD SAVE!", item)
 				else
 					state.vx = math.max(18, state.vx * 0.92)
+					state.burstVx = math.min(state.burstVx * 0.92, math.max(0, state.vx - 18))
 					state.vy = math.max(state.powerPhase == "diving" and -64 or -22, state.vy - 10)
 					event(state, "missile", "MISSILE HIT! Find fuel!", item)
 				end
@@ -75208,8 +75572,8 @@ function Simulation.step(state, course, dt)
 		state.distance = math.max(state.distance, state.x)
 		if beforeDeadline and oldY > 0 and state.powerId == "Pinball" and state.powerCharges > 0 then
 			consumePower(state)
-			state.vx = math.min(forwardLimit(state), state.vx + 18)
-			state.vy = 17 - state.powerUses
+			powerBurst(state, 18)
+			state.vy = 14 - 2 * state.powerUses
 			event(state, "pinball", "BOING! " .. tostring(state.powerUses) .. "/3", nil, state.powerUses)
 		else
 			state.alive = false
@@ -76004,7 +76368,7 @@ function World.buildLobby()
 	part(lobby, "EffectsServiceFloor", Vector3.new(72, 0.1, 95), CFrame.new(86, 4.12, 49), HANGAR.lane)
 	part(lobby, "EffectsAisleEdge", Vector3.new(0.45, 0.1, 94), CFrame.new(50, 4.21, 49), COLORS.cyan)
 	part(lobby, "EffectsBackboard", Vector3.new(1.2, 20, 82), CFrame.new(120, 18, 49), COLORS.navy, Enum.Material.Metal)
-	sign(lobby, "EffectsShopTitle", Vector3.new(118.7, 24, 49), Vector3.new(73, 9, 0.6), "FLIGHT EFFECTS", "FLY. EARN CREDITS. MAKE IT YOURS.", COLORS.cyan, math.pi / 2)
+	sign(lobby, "EffectsShopTitle", Vector3.new(118.7, 24, 49), Vector3.new(73, 9, 0.6), "FLIGHT EFFECTS", "FLY. EARN COINS. MAKE IT YOURS.", COLORS.cyan, math.pi / 2)
 	local counter = part(lobby, "EffectsShopCounter", Vector3.new(6, 4.2, 66), CFrame.new(59, 6.1, 50), HANGAR.steel, Enum.Material.Metal, true)
 	part(lobby, "EffectsCountertop", Vector3.new(7.4, 0.55, 67), CFrame.new(59, 8.5, 50), HANGAR.white, Enum.Material.SmoothPlastic, true)
 	part(lobby, "EffectsCounterLight", Vector3.new(0.2, 0.4, 62), CFrame.new(55.9, 7.1, 50), COLORS.cyan, Enum.Material.Neon)
@@ -76026,7 +76390,7 @@ function World.buildLobby()
 				CFrame.new(93 + ribbon * 6.8, 7.85 + math.sin(ribbon) * 0.3, z), color:Lerp(second, (ribbon - 1) / 2), Enum.Material.Neon)
 			segment.Transparency = 0.16 + (ribbon - 1) * 0.2
 		end
-		sign(lobby, "EffectsDisplayLabel" .. index, Vector3.new(119, 12.7, z), Vector3.new(25, 5, 0.4), string.upper(entry.name), tostring(entry.price) .. " CREDITS", color, math.pi / 2)
+		sign(lobby, "EffectsDisplayLabel" .. index, Vector3.new(119, 12.7, z), Vector3.new(25, 5, 0.4), string.upper(entry.name), tostring(entry.price) .. " COINS", color, math.pi / 2)
 	end
 	maintenanceCart(lobby, Vector3.new(109, 6.75, 94), HANGAR.amber)
 
@@ -76035,7 +76399,7 @@ function World.buildLobby()
 	local practiceDesk = part(lobby, "PracticeDispatchDesk", Vector3.new(16, 4, 6), CFrame.new(31, 6, 88), HANGAR.steel, Enum.Material.Metal, true)
 	part(lobby, "PracticeDeskTop", Vector3.new(17, 0.5, 7), CFrame.new(31, 8.25, 88), HANGAR.white, nil, true)
 	part(lobby, "PracticeDisplay", Vector3.new(9, 4, 0.6), CFrame.new(31, 10.5, 90), COLORS.navy)
-	sign(lobby, "PracticeSign", Vector3.new(31, 19, 101), Vector3.new(32, 9, 0.7), "SOLO FLIGHT", "PRACTICE + EARN CREDITS", COLORS.lime)
+	sign(lobby, "PracticeSign", Vector3.new(31, 19, 101), Vector3.new(32, 9, 0.7), "SOLO FLIGHT", "PRACTICE + EARN COINS", COLORS.lime)
 	lobbyPrompt(practiceDesk, "PracticePrompt", "Practice flight", "SOLO DISPATCH", 14)
 	sign(lobby, "ArrivalsSign", Vector3.new(-12, 23, 101), Vector3.new(43, 9, 0.7), "WELCOME, PILOT", "FLEET LEFT  /  EFFECTS RIGHT  /  DUELS AHEAD", HANGAR.white)
 	World.updateLobbyQueues({})
@@ -76708,11 +77072,11 @@ local PowerCatalog = {}
 PowerCatalog.DEFAULT_ID = "Pinball"
 local order = { "Pinball", "Muncher", "Meteor" }
 local powers = {
-	Pinball = { id = "Pinball", name = "Pinball", description = "Bounce off the ground three times. Every bounce kicks you forward!",
+	Pinball = { id = "Pinball", name = "Pinball", description = "Three quick ground bounces. Each skips lower and bursts forward!",
 		aimHint = "Aim low. Turn the ground into a launchpad.", color = { r = 255, g = 218, b = 70 } },
-	Muncher = { id = "Muncher", name = "Missile Muncher", description = "Eat three missiles. Each bite gives a bigger speed boost!",
+	Muncher = { id = "Muncher", name = "Missile Muncher", description = "Eat three missiles. Each bite gives a bigger burst of speed!",
 		aimHint = "Aim into missiles. Three bites, then watch out.", color = { r = 147, g = 255, b = 70 } },
-	Meteor = { id = "Meteor", name = "Meteor Dive", description = "Dive from your peak, then blast forward just above the ground!",
+	Meteor = { id = "Meteor", name = "Meteor Dive", description = "Dive from your peak, then skim low with a huge burst of speed!",
 		aimHint = "Aim high. More height means a bigger blast.", color = { r = 255, g = 98, b = 63 } },
 }
 
@@ -77535,7 +77899,7 @@ function PlayerStats:_cosmetic(record, itemId, equip)
 	else
 		if economy.owned[itemId] then return feedback(false, "already_owned", "You already own " .. item.name .. ". Select Equip to use it.", itemId) end
 		if economy.credits < item.price then
-			return feedback(false, "insufficient_credits", "Earn " .. tostring(item.price - economy.credits) .. " more credits to unlock " .. item.name .. ".", itemId)
+			return feedback(false, "insufficient_credits", "Earn " .. tostring(item.price - economy.credits) .. " more coins to buy " .. item.name .. ".", itemId)
 		end
 		-- The debit and ownership grant share one fenced persistence record.
 		economy.credits = economy.credits - item.price
@@ -78381,7 +78745,7 @@ return function(Simulation)
 			if state.powerPhase == "spent" then break end
 		end
 		check(state.powerPhase == "spent" and state.powerUses == 1 and state.powerCharges == 0, "Meteor did not spend exactly one burst")
-		check(state.vx > previousSpeed + 50 and state.vy > 25 and state.lastEvent.kind == "meteorBoost" and state.eventSerial == diveSerial + 1, "Meteor pull-up lacks its forward blast")
+		check(state.vx > previousSpeed + 50 and state.vy > 22 and state.vy <= 32 and state.lastEvent.kind == "meteorBoost" and state.eventSerial == diveSerial + 1, "Meteor pull-up lacks its forward blast or compact recovery")
 		state.y, state.vy = 10, -15
 		Simulation.step(state, course, Simulation.FIXED_DT)
 		check(state.powerUses == 1 and state.vy < 0 and state.eventSerial == diveSerial + 1, "Spent Meteor reactivated")
@@ -78398,7 +78762,7 @@ return function(Simulation)
 		end
 		local low, high, extreme = blast(40), blast(160), blast(10000)
 		check(high.vx > low.vx + 25 and high.vy > low.vy, "Achieved height did not strengthen Meteor")
-		check(extreme.vx <= 165 and extreme.vy <= 35, "Meteor strength is unbounded")
+		check(extreme.vx <= 165 and extreme.vy <= 32, "Meteor strength is unbounded")
 	end)
 
 	test("fuel cannot cancel Meteor's committed dive or erase its high-speed burst", function()
@@ -78435,6 +78799,110 @@ return function(Simulation)
 				end
 			end
 		end
+	end)
+
+	test("power bursts fade without surrendering earned distance or fuel momentum", function()
+		local course = emptyCourse()
+		local boosted = Simulation.newFlight({ powerId = "Muncher" }, course)
+		local baseline = Simulation.newFlight({ powerId = "Muncher" }, course)
+		boosted.y, boosted.vy = 120, 0
+		baseline.y, baseline.vy = 120, 0
+		course.items = { item("missile", 0, 120, 1) }
+		Simulation.step(boosted, course, Simulation.FIXED_DT)
+		Simulation.step(baseline, emptyCourse(), Simulation.FIXED_DT)
+		baseline.vy = boosted.vy
+		local kick = boosted.vx - baseline.vx
+		check(kick > 10, "Power burst lost its immediate kick")
+		-- Both pilots collect identical fuel after the kick. Fading the burst
+		-- must not subtract that ordinary earned momentum from either flight.
+		for _, state in ipairs({ boosted, baseline }) do
+			local fuel = emptyCourse()
+			fuel.items = { item("fuel", state.x, state.y, 2, 10) }
+			Simulation.step(state, fuel, Simulation.FIXED_DT)
+		end
+		local previousGap = boosted.x - baseline.x
+		for _ = 1, 300 do
+			Simulation.step(boosted, emptyCourse(), Simulation.FIXED_DT)
+			Simulation.step(baseline, emptyCourse(), Simulation.FIXED_DT)
+			local gap = boosted.x - baseline.x
+			check(boosted.alive and baseline.alive and gap >= previousGap, "Burst decay erased earned distance")
+			previousGap = gap
+		end
+		check(boosted.vx > baseline.vx and boosted.vx - baseline.vx < kick * 0.05, "Burst left a permanent speed advantage")
+		check(previousGap > 10 and previousGap < 25, "Brief burst did not earn bounded forward distance")
+	end)
+
+	test("fuel at the burst speed cap still earns lasting momentum", function()
+		local boosted = Simulation.newFlight({ powerId = "Muncher" }, emptyCourse())
+		local baseline = Simulation.newFlight({ powerId = "Muncher" }, emptyCourse())
+		boosted.y, boosted.vy, boosted.vx = 120, 0, 100
+		baseline.y, baseline.vy, baseline.vx = 120, 0, 100
+		local missiles = emptyCourse()
+		for id = 1, 3 do table.insert(missiles.items, item("missile", 0, 120, id)) end
+		Simulation.step(boosted, missiles, Simulation.FIXED_DT)
+		Simulation.step(baseline, emptyCourse(), Simulation.FIXED_DT)
+		baseline.vy = boosted.vy
+		check(boosted.vx == 125, "Regression setup did not fill the Muncher speed cap")
+		for _, state in ipairs({ boosted, baseline }) do
+			local fuel = emptyCourse()
+			for id = 4, 6 do table.insert(fuel.items, item("fuel", state.x, state.y, id, 20)) end
+			Simulation.step(state, fuel, Simulation.FIXED_DT)
+		end
+		for _ = 1, 300 do
+			Simulation.step(boosted, emptyCourse(), Simulation.FIXED_DT)
+			Simulation.step(baseline, emptyCourse(), Simulation.FIXED_DT)
+			check(boosted.vx >= baseline.vx - 0.0000001 and boosted.distance >= baseline.distance, "Burst cap forfeited fuel momentum after the power faded")
+			check(boosted.vx <= 125 and boosted.burstVx >= 0, "Fuel replacement escaped the speed cap")
+		end
+	end)
+
+	test("headwind follows a shared clock and preserves unspent power charges", function()
+		local function fall(elapsed, x, charges)
+			local state = Simulation.newFlight({ powerId = "Pinball" }, emptyCourse())
+			state.elapsed, state.x, state.y, state.vy, state.powerCharges = elapsed, x, 100, 0, charges
+			Simulation.step(state, emptyCourse(), Simulation.FIXED_DT)
+			check(state.powerCharges == charges, "Headwind silently consumed a power charge")
+			return state.vy
+		end
+		local early = fall(5, 0, 3)
+		local before = fall(Simulation.PRESSURE_START - 1, 900, 3)
+		local middle = fall(Simulation.PRESSURE_START + Simulation.PRESSURE_RAMP / 2, 200, 1)
+		local leader = fall(Simulation.PRESSURE_START + Simulation.PRESSURE_RAMP / 2, 2200, 3)
+		local late = fall(Simulation.PRESSURE_START + Simulation.PRESSURE_RAMP + 1, 0, 0)
+		check(close(early, before), "Headwind altered the opening launch")
+		check(middle < early and late < middle, "Late pressure did not build gradually")
+		check(close(middle, leader), "Headwind depends on race position or remaining power")
+	end)
+
+	test("headwind weakens late fuel lift while retaining its forward reward", function()
+		local function refuel(elapsed)
+			local course = emptyCourse()
+			local state = Simulation.newFlight({ powerId = "Muncher" }, course)
+			state.elapsed, state.y, state.vy, state.vx = elapsed, 12, -22, 60
+			course.items = { item("fuel", 0, 12, 1, 20) }
+			Simulation.step(state, course, Simulation.FIXED_DT)
+			return state
+		end
+		local early, late = refuel(5), refuel(Simulation.PRESSURE_START + Simulation.PRESSURE_RAMP)
+		check(early.vy > late.vy and late.vy > 0, "Late fuel should give a small save rather than another long climb")
+		check(close(early.vx, late.vx) and late.pickups == 1, "Headwind removed the earned forward fuel reward")
+	end)
+
+	test("Pinball recoveries shrink and resolve promptly without course contacts", function()
+		local state = Simulation.newFlight({ powerId = "Pinball" }, emptyCourse())
+		state.y, state.vy = 0.01, -20
+		local lastUses, lastLift, firstBounce = 0, math.huge, nil
+		for _ = 1, 1500 do
+			Simulation.step(state, emptyCourse(), Simulation.FIXED_DT)
+			if state.powerUses > lastUses then
+				check(state.vy > 0 and state.vy < lastLift, "Successive bounces did not get lower")
+				firstBounce = firstBounce or state.elapsed
+				lastLift, lastUses = state.vy, state.powerUses
+			end
+			if not state.alive then break end
+		end
+		check(not state.alive and state.powerUses == 3 and state.finishReason == "landed", "Compact skips failed to finish after three charges")
+		check(state.elapsed - firstBounce < 17, "Three empty-course skips still create a long second flight")
 	end)
 
 	return tostring(passed) .. " simulation tests passed"
@@ -79357,6 +79825,22 @@ end
 			<UniqueId name="UniqueId">43bc9182d3cd3b340ada172a000003d4</UniqueId>
 		</Properties>
 	</Item>
+	<Item class="ProximityPromptService" referent="RBX1966ec89dbb74bfb83c5dd0026dbf8e8">
+		<Properties>
+			<bool name="Enabled">true</bool>
+			<int name="MaxIndicatorsVisible">16</int>
+			<int name="MaxPromptsVisible">16</int>
+			<BinaryString name="AttributesSerialize"></BinaryString>
+			<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+			<bool name="DefinesCapabilities">false</bool>
+			<UniqueId name="HistoryId">00000000000000000000000000000000</UniqueId>
+			<string name="Name">ProximityPromptService</string>
+			<BinaryString name="SerializedOverrides"></BinaryString>
+			<int64 name="SourceAssetId">-1</int64>
+			<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+			<UniqueId name="UniqueId">20afdfc5b7b2e6e20adb0b0e00000a88</UniqueId>
+		</Properties>
+	</Item>
 	<Item class="Lighting" referent="RBX16">
 		<Properties>
 			<Color3 name="Ambient">
@@ -79513,22 +79997,6 @@ X09yaWdpbmFsVGVjaG5vbG9neU9uRmlsZUxvYWQEAQAAAA==]]></BinaryString>
 			<int64 name="SourceAssetId">-1</int64>
 			<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
 			<UniqueId name="UniqueId">43bc9182d3cd3b340ada172a0000065b</UniqueId>
-		</Properties>
-	</Item>
-	<Item class="ProximityPromptService" referent="RBX1966ec89dbb74bfb83c5dd0026dbf8e8">
-		<Properties>
-			<bool name="Enabled">true</bool>
-			<int name="MaxIndicatorsVisible">16</int>
-			<int name="MaxPromptsVisible">16</int>
-			<BinaryString name="AttributesSerialize"></BinaryString>
-			<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
-			<bool name="DefinesCapabilities">false</bool>
-			<UniqueId name="HistoryId">00000000000000000000000000000000</UniqueId>
-			<string name="Name">ProximityPromptService</string>
-			<BinaryString name="SerializedOverrides"></BinaryString>
-			<int64 name="SourceAssetId">-1</int64>
-			<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
-			<UniqueId name="UniqueId">20afdfc5b7b2e6e20adb0b0e00000a88</UniqueId>
 		</Properties>
 	</Item>
 	<SharedStrings>
