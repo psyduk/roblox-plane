@@ -14,27 +14,51 @@ Owner decision, made after looking at Ball VS Ball, RIVALS, Blade Ball and Roblo
 
 - **Aircraft are skins.** They are the main cosmetic and the first thing sold. A skin never changes combat.
 - Every skin shares one hitbox and one set of mount points (nose, belly, wings, tail, centre). Skills attach to mount points, never to a particular model, so every skill works on every skin. Later skins need not be planes (a gryphon, a broom, an airship) as long as they honour the same contract.
-- **Skills come in three slots.**
+- **Skills come in two kinds.** An **offence** is the weapon: how you remove armor. A **wild card** is the trick: it changes movement, the arena or how a hit lands. There is no separate defence slot; defensive tricks such as Spring Bumper and Dodge Roll are wild cards.
 
-| Slot | Role | Built | Planned first |
-| --- | --- | --- | --- |
-| Offence | How you remove armor | Meteor, Firework | Machine Gun |
-| Defence | How you avoid losing armor | Spring Bumper | Dodge |
-| Wild card | Changes movement or the arena | Afterburner, Fizzy Fuel | One more |
+The starting roster is ten of each. "Built" means it exists in the game today.
 
-No skill is strictly stronger than the starter skills. Rarity means stranger, not stronger. Advantages, not hard counters, still applies.
+| Offence | What it does |
+| --- | --- |
+| Meteor (built) | Charges, then dives into a ram |
+| Firework (built) | One big slow rocket |
+| Machine Gun | A short burst along its heading |
+| Pinball | Banks off a wall, then rams |
+| Chomper | Eats one projectile at a time and bites up close |
+| Boomerang | A blade that arcs out and can hit on the way back |
+| Sky Mines | Drops floating mines behind it |
+| Harpoon | Hooks the rival and slings it into a wall |
+| Bomber | Climbs above and drops a bomb straight down |
+| Tesla | A short-range zap that only reaches up close |
+
+| Wild card | What it does |
+| --- | --- |
+| Afterburner (built) | Speed burst after attacking |
+| Fizzy Fuel (built) | Leaves a damaging wake |
+| Spring Bumper (built) | Blocks the first hit and springs apart |
+| Dodge Roll | Rolls out of one hit, then a long cooldown |
+| Decoy | A balloon copy that draws the next aimed attack |
+| Magnet | Pulls the planes together after each attack |
+| Storm Caller | The wind closes sooner and faster |
+| Cloud Cover | Slips through a cloud that breaks the rival's aim |
+| Second Wind | A speed boost once you are on your last armor |
+| Copycat | Copies the rival's wild card at reduced strength |
+
+No skill is strictly stronger than the starter skills. Rarity means stranger, not stronger. Advantages, not hard counters, still applies. Balance targets: each offence wins 45–55% against the field, no single pairing is worse than about 65/35, no wild card lifts a build by more than about ten points on average, and draws and timeouts stay no higher than today's worst matchup.
+
+New skills are built fight logic first, with placeholder visuals and sounds, so the whole matchup table can be measured and beta testers can play every skill before any is polished. Beta builds unlock every skill.
 
 ### Match
 
 - First to two round wins.
-- One pick per round: offence before round one, defence before round two, wild card before the deciding round three. The build resets every match.
-- Each pick is an offer of three random skills from the ones the player owns in that slot. Each player gets one free reroll and one free "pick any skill I own" per match.
+- One pick per round: an offence before round one, a wild card before round two, and a second wild card before a deciding round three. The build resets every match.
+- Each pick is an offer of three random skills from the ones the player owns of that kind. Each player gets one free reroll and one free "pick any skill I own" per match.
 - Both players draft under the same rules. The rival's existing build is visible; the new pick is hidden until both lock.
-- Move to first to three, with swap picks in rounds four and five, once each slot has at least four skills.
+- First to three, with swap picks in later rounds, is a later experiment.
 
 ### Skills are earned, looks are bought
 
-- Everyone starts with two skills per slot. The rest come from coin crates and level-ups. Coins come from playing: more for a win, some for a loss.
+- Everyone starts with a few skills of each kind (start with three offences and three wild cards). The rest come from coin crates and level-ups. Coins come from playing: more for a win, some for a loss.
 - Skills are not sold for Robux, and coins are not sold for Robux. This keeps skill crates outside Roblox's paid random items rules and keeps a loss from feeling bought.
 - Robux products, in order:
   1. Plane skins at fixed prices, a one-time starter pack shown from first spawn, and a Double Coins pass.
@@ -59,7 +83,7 @@ Human 1v1, with a bot when nobody is queued. Bots are named but always marked as
 | Earlier text | Now |
 | --- | --- |
 | "Each plane has one signature" | Signatures are offence skills and work on any skin |
-| One signature plus one modifier | Three slots: offence, defence, wild card |
+| One signature plus one modifier | One offence plus up to two wild cards |
 | "Permanent combat-stat growth is outside this direction" | Still no stat growth. The skill collection is permanent and widens what a player can be offered |
 | "Defer trading, crates, a battle pass, daily chores" | Coin crates, daily quests and playtime rewards arrive in step 3; the season pass in step 5; trading stays deferred |
 | First rivalry MVP draft table | The match rules above |
@@ -273,7 +297,8 @@ These sources establish mechanics and examples. They do not prove those mechanic
 | October 9, 2026 | Give Meteor and Firework stronger visual and sound identities before expanding the roster | User likes consequential choices and explicitly requests more visual impact; presentation quality needs playtesting |
 | October 9, 2026 | Give Meteor real charge-to-impact spacing and add ground crashes after knockout; retain three-hit armor | Explicit user authorization; ordinary flight/recovery remain the reference feel |
 | October 10, 2026 | Aircraft are skins and the main cosmetic; every skill works on every skin | Owner decision |
-| October 10, 2026 | Three skill slots drafted one per round from random offers of owned skills, with one free reroll and one free pick-any per match | Owner decision; modelled on Ball VS Ball, untested with players |
+| October 10, 2026 | Skills drafted one per round from random offers of owned skills, with one free reroll and one free pick-any per match | Owner decision; modelled on Ball VS Ball, untested with players |
+| October 10, 2026 | Two kinds of skill, offence and wild card, with no defence slot; a starting roster of ten each, built logic first and all unlocked for beta | Owner decision; the roster is untested concepts apart from the five built skills |
 | October 10, 2026 | Skills are earned with coins; Robux buys skins, a starter pack and Double Coins first, a season pass later | Owner decision; informed by RIVALS, Blade Ball and Roblox's guidance, from public sources only |
 | October 10, 2026 | Human 1v1 with bot fallback comes before the shop | Owner decision |
 
