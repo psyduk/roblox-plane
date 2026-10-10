@@ -1,3 +1,16 @@
+# Main PLAY enters plane battles — October 9, 2026
+
+The hangar now has one game entrance: **PLAY → battle setup → Launch battle**. The Solo button, separate Battle Lab shortcut and distance-duel gates are removed from the default build. Distance matchmaking and direct practice requests are disabled server-side unless `FlightServer.DistanceModeEnabled` is explicitly set to boolean `true` before startup. The old implementation and its regression coverage remain available for later; see [the archived distance reference](docs/DISTANCE-FLIGHT-REFERENCE.md).
+
+- **47 server scenarios**, 30 player-stat checks and nine cosmetic checks pass. Four scenarios exercise the absent-attribute default: PLAY routing, repeated entry, exit/re-entry, independent simulated opponents, preserved hangar appearance, and blocked pad/practice/debug distance creation. The remaining 43 explicitly opt into the archived distance mode.
+- Native Studio clicks used the main PLAY button, launched the default battle, reached Results at **27.25 seconds**, and returned through **Hangar**. The defeated plane reached `CrashState=Landed` with the crash audio event. Exit removed the arena, restored the hangar visuals and HUD, restored `CameraType.Custom`, walk speed 16 and an unanchored avatar, and cleared `SkyboundFlying`.
+- A native diagnostic sent the former practice command and moved the player to a former pad location. After more than six seconds the player remained in Lobby with `matchId=0` and no queue. The runtime mode attribute was false, and the old buttons and gate/pad geometry were absent. This pad check used a diagnostic teleport, not a walking-input test.
+- Inspected the full-width PLAY button and PLANE BATTLES caption at **2075×856**. Rebuilt `Skybound.rbxlx`; all **30 packaged scripts** match disk and the native Studio sources. The client/server initialized without game-script errors. The session is left at the hangar.
+
+Combat mechanics, rewards and progression are unchanged. This pass establishes the local entry flow; it does not add physical-device or published-network evidence.
+
+---
+
 # Battle Lab and hangar integration — October 9, 2026
 
 Integrated the current Battle Lab onto hangar redesign `ca25d3e`, using `76b18d5` as the reviewed resolution. The final Meteor, crash, audio and simulation modules were verified unchanged. The two entry paths remain separate: **PLAY PLANE BATTLES / BATTLE LAB** starts combat; the hangar's **PLAY / SOLO** starts distance flight.

@@ -560,8 +560,10 @@ local function floorOutline(parent, name, center, size, color)
 end
 
 local boardLabels = {}
+local lobbyDistanceMode = false
 
-function World.buildLobby()
+function World.buildLobby(distanceModeEnabled)
+	lobbyDistanceMode = distanceModeEnabled == true
 	World.resetTheme()
 	local existing = Workspace:FindFirstChild("FlightLobby")
 	if existing then existing:Destroy() end
@@ -569,6 +571,7 @@ function World.buildLobby()
 	boardLabels = {}
 	local lobby = Instance.new("Folder")
 	lobby.Name = "FlightLobby"
+	lobby:SetAttribute("DistanceModeEnabled", lobbyDistanceMode)
 	lobby.Parent = Workspace
 	-- A compact hangar: the pilot's own bay sits in the middle, with every
 	-- other destination a few seconds' walk away. Each zone has one color:
@@ -696,8 +699,8 @@ function World.buildLobby()
 	part(lobby, "DoorLintel", Vector3.new(HALF * 2, 2, 4), CFrame.new(0, 34.1, FRONT), HANGAR.steel, Enum.Material.Metal)
 	part(lobby, "DoorTrack", Vector3.new(HALF * 2 - 24, 0.07, 1), CFrame.new(0, 4.08, FRONT + 2), HANGAR.steel, Enum.Material.Metal)
 
-	-- The flight board over the doors is the club's shared scoreboard: who is
-	-- in the air right now and the longest landing of this server session.
+	-- The board introduces the active game. Distance records remain available
+	-- when the shelved flight mode is explicitly enabled.
 	local boardPose = CFrame.new(0, 43, FRONT + 3) * CFrame.Angles(0, math.pi, 0)
 	part(lobby, "FlightBoardFrame", Vector3.new(112, 15, 0.9), boardPose, COLORS.cyan)
 	local board = part(lobby, "FlightBoard", Vector3.new(110, 13, 0.9), boardPose * CFrame.new(0, 0, -0.2), COLORS.navy)
@@ -708,7 +711,8 @@ function World.buildLobby()
 	boardGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 	boardGui.PixelsPerStud = 20
 	boardGui.Parent = board
-	textLabel(boardGui, "SKYBOUND  FLIGHT  CLUB", UDim2.fromScale(0.04, 0.06), UDim2.fromScale(0.92, 0.3), COLORS.cyan).Name = "Title"
+	textLabel(boardGui, lobbyDistanceMode and "SKYBOUND  FLIGHT  CLUB" or "SKYBOUND  PLANE  BATTLES",
+		UDim2.fromScale(0.04, 0.06), UDim2.fromScale(0.92, 0.3), COLORS.cyan).Name = "Title"
 	boardLabels.flying = textLabel(boardGui, "", UDim2.fromScale(0.04, 0.4), UDim2.fromScale(0.92, 0.27), COLORS.yellow)
 	boardLabels.flying.Name = "NowFlying"
 	boardLabels.best = textLabel(boardGui, "", UDim2.fromScale(0.04, 0.7), UDim2.fromScale(0.92, 0.22), COLORS.cream, Enum.Font.GothamBold)
@@ -738,8 +742,8 @@ function World.buildLobby()
 		end
 	end
 
-	-- The pilot's own bay. Each client parks its selected plane here, so the
-	-- first thing every pilot sees is the aircraft they are about to fly.
+	-- The pilot's display bay. Its selected plane and trail personalize the
+	-- hangar; battle signatures are chosen separately after pressing PLAY.
 	part(lobby, "HeroBayFloor", Vector3.new(40, 0.08, 36), CFrame.new(hero + Vector3.new(0, 0.06, 0)), COLORS.navy)
 	floorOutline(lobby, "HeroBayOutline", hero, Vector2.new(40, 36), COLORS.cyan)
 	for _, side in { -1, 1 } do
@@ -760,34 +764,36 @@ function World.buildLobby()
 	floorOutline(lobby, "UnlockStandOutline", stand, Vector2.new(18, 18), COLORS.purple)
 	lobbyPrompt(pedestal, "UnlockStandPrompt", "View effect", "NEXT UNLOCK", 14)
 
-	-- Two duel gates keep a small club together. PLAY reaches the same queue;
-	-- the pads remain for challenging the pilot standing next to you.
-	for index, station in World.DUEL_STATIONS do
-		local x = (station.seats[1].X + station.seats[2].X) / 2
-		local accent = HANGAR.amber
-		part(lobby, "QueueApproach", Vector3.new(34, 0.06, 28), CFrame.new(x, 4.09, -29), HANGAR.lane)
-		for _, offset in { -17, 17 } do
-			part(lobby, "QueueLaneMark", Vector3.new(0.45, 0.09, 42), CFrame.new(x + offset, 4.11, -35), HANGAR.white)
+	-- Legacy distance duels stay available for future QA, without advertising
+	-- a second game or an unavailable player queue in the default battle lobby.
+	if lobbyDistanceMode then
+		for index, station in World.DUEL_STATIONS do
+			local x = (station.seats[1].X + station.seats[2].X) / 2
+			local accent = HANGAR.amber
+			part(lobby, "QueueApproach", Vector3.new(34, 0.06, 28), CFrame.new(x, 4.09, -29), HANGAR.lane)
+			for _, offset in { -17, 17 } do
+				part(lobby, "QueueLaneMark", Vector3.new(0.45, 0.09, 42), CFrame.new(x + offset, 4.11, -35), HANGAR.white)
+			end
+			part(lobby, "QueueBase", Vector3.new(38, 0.3, 22), CFrame.new(x, 4.15, -47), COLORS.navy)
+			for seatIndex, seat in station.seats do
+				part(lobby, station.id .. "Pad" .. seatIndex, Vector3.new(12, 0.3, 12), CFrame.new(seat), accent, nil, true)
+				local inset = part(lobby, "PadInset", Vector3.new(10.4, 0.08, 10.4), CFrame.new(seat + Vector3.new(0, 0.19, 0)), COLORS.navy)
+				local gui = Instance.new("SurfaceGui")
+				gui.Face = Enum.NormalId.Top
+				gui.CanvasSize = Vector2.new(300, 300)
+				gui.LightInfluence = 0
+				gui.Parent = inset
+				textLabel(gui, tostring(seatIndex), UDim2.fromScale(0.12, 0.12), UDim2.fromScale(0.76, 0.76), COLORS.cream)
+			end
+			for _, offset in { -20, 20 } do
+				part(lobby, "DepartureGatePost", Vector3.new(1.2, 15.5, 1.2), CFrame.new(x + offset, 11.75, -62), HANGAR.steel, Enum.Material.Metal, true)
+			end
+			part(lobby, "DepartureGateAccent", Vector3.new(41, 0.5, 1.1), CFrame.new(x, 19.5, -62), accent, Enum.Material.Neon)
+			local display = part(lobby, station.id .. "Display", Vector3.new(31, 7, 0.8), CFrame.new(x, 15.5, -62) * CFrame.Angles(0, math.pi, 0), COLORS.navy)
+			local gui = surface(display, station.name, "0 / 2 READY", accent)
+			queueLabels[station.id] = gui:FindFirstChild("Subtitle")
+			floorLabel(lobby, station.id .. "GroundLabel", Vector3.new(x, 4.17, -25), Vector2.new(28, 6), "CHALLENGE A FRIEND", HANGAR.white)
 		end
-		part(lobby, "QueueBase", Vector3.new(38, 0.3, 22), CFrame.new(x, 4.15, -47), COLORS.navy)
-		for seatIndex, seat in station.seats do
-			part(lobby, station.id .. "Pad" .. seatIndex, Vector3.new(12, 0.3, 12), CFrame.new(seat), accent, nil, true)
-			local inset = part(lobby, "PadInset", Vector3.new(10.4, 0.08, 10.4), CFrame.new(seat + Vector3.new(0, 0.19, 0)), COLORS.navy)
-			local gui = Instance.new("SurfaceGui")
-			gui.Face = Enum.NormalId.Top
-			gui.CanvasSize = Vector2.new(300, 300)
-			gui.LightInfluence = 0
-			gui.Parent = inset
-			textLabel(gui, tostring(seatIndex), UDim2.fromScale(0.12, 0.12), UDim2.fromScale(0.76, 0.76), COLORS.cream)
-		end
-		for _, offset in { -20, 20 } do
-			part(lobby, "DepartureGatePost", Vector3.new(1.2, 15.5, 1.2), CFrame.new(x + offset, 11.75, -62), HANGAR.steel, Enum.Material.Metal, true)
-		end
-		part(lobby, "DepartureGateAccent", Vector3.new(41, 0.5, 1.1), CFrame.new(x, 19.5, -62), accent, Enum.Material.Neon)
-		local display = part(lobby, station.id .. "Display", Vector3.new(31, 7, 0.8), CFrame.new(x, 15.5, -62) * CFrame.Angles(0, math.pi, 0), COLORS.navy)
-		local gui = surface(display, station.name, "0 / 2 READY", accent)
-		queueLabels[station.id] = gui:FindFirstChild("Subtitle")
-		floorLabel(lobby, station.id .. "GroundLabel", Vector3.new(x, 4.17, -25), Vector2.new(28, 6), "CHALLENGE A FRIEND", HANGAR.white)
 	end
 
 	-- Other pilots' planes line the walls. Clients park each pilot's current
@@ -822,10 +828,15 @@ function World.buildLobby()
 	return lobby
 end
 
--- `flying` is "PILOT vs PILOT" for one duel in the air; `best` is the longest
--- completed flight on this server, or nil before anyone has landed.
+-- Distance statistics are shown only while that mode is enabled. The default
+-- board explains the current solo setup against a simulated opponent.
 function World.updateLobbyBoard(flying, best)
 	local nowFlying, clubBest = boardLabels.flying, boardLabels.best
+	if not lobbyDistanceMode then
+		if nowFlying and nowFlying.Parent then nowFlying.Text = "PRESS PLAY  -  CHOOSE YOUR SETUP" end
+		if clubBest and clubBest.Parent then clubBest.Text = "PICK A POWER  -  FIGHT A SIMULATED OPPONENT" end
+		return
+	end
 	if nowFlying and nowFlying.Parent then
 		nowFlying.Text = flying and ("NOW FLYING   " .. string.upper(flying)) or "RUNWAY CLEAR  -  PRESS PLAY"
 	end
@@ -836,6 +847,7 @@ function World.updateLobbyBoard(flying, best)
 end
 
 function World.updateLobbyQueues(queueCounts)
+	if not lobbyDistanceMode then return end
 	for _, station in World.DUEL_STATIONS do
 		local entry = queueCounts and queueCounts[station.id]
 		local count = type(entry) == "table" and entry.count or entry

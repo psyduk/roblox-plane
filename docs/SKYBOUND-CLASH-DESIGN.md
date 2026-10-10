@@ -107,6 +107,10 @@ Meteor now spends 0.6 seconds arcing toward open space and 0.4 seconds aiming be
 
 A plane with zero armor falls, tumbles and lands on the visible arena floor after the authoritative outcome. This is presentation only: no extra damage, changed winner or altered rewards. Both planes crash after a simultaneous knockout; planes retaining armor at the time cap do not. The falling plane remains within the stable camera view. Ground impact gets one sound/effect, and retry or exit clears the entire sequence immediately.
 
+## Single game entrance
+
+The hangar’s main **PLAY** button now enters plane-battle setup. Remove the separate combat shortcut, Solo button, distance gates and automatic distance queues from the default player experience. Keep the distance implementation behind a server startup flag for possible later development and regression checks. The player-facing prototype remains explicitly a simulated opponent; this routing change does not introduce human combat matchmaking or combat rewards.
+
 ## First rivalry MVP
 
 The first multi-round target is **first to two wins**, with at most **one signature and one modifier** per player.

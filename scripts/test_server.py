@@ -19,7 +19,7 @@ except ImportError as error:
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def make_runtime(studio=True, published=False):
+def make_runtime(studio=True, published=False, distance_mode=None):
     L=LuaRuntime(unpack_returned_tuples=True)
     L.execute(r'''
     Harness={time=10,sent={},battleSent={},logs={},delays={}}
@@ -59,7 +59,7 @@ def make_runtime(studio=True, published=False):
     local battleSnapshots=obj('BattleSnapshot');shared.children.BattleSnapshot=battleSnapshots
     function battleSnapshots:FireClient(player,data)Harness.battleSent[player.UserId]=deepCopy(data)end
     workspace=obj('Workspace');function workspace:GetServerTimeNow()return Harness.time end
-    local world={LOBBY_SPAWN=Vector3.new(0,7,0),DUEL_STATIONS={},buildLobby=function()end,updateLobbyQueues=function(counts)Harness.queueCounts=counts end,
+    local world={LOBBY_SPAWN=Vector3.new(0,7,0),DUEL_STATIONS={},buildLobby=function(distanceMode)Harness.lobbyDistanceMode=distanceMode end,updateLobbyQueues=function(counts)Harness.queueCounts=counts end,
      LINEUP_BAYS={1,2,3,4},updateLobbyBoard=function(flying,best)Harness.board={flying=flying,best=best}end}
     for index,x in ipairs({-81,-27,27,81})do table.insert(world.DUEL_STATIONS,{id='duel'..index,name='DUEL '..index,seats={Vector3.new(x-8,4.3,-47),Vector3.new(x+8,4.3,-47)}})end
     shared.World={module=world}
@@ -124,6 +124,8 @@ def make_runtime(studio=True, published=False):
     ''')
     L.globals().Harness.studio = studio
     L.globals().game.GameId = 123 if published else 0
+    if distance_mode is not None:
+        L.globals().script.attributes.DistanceModeEnabled = distance_mode
     L.execute('function Harness.services.RunService:IsStudio()return Harness.studio end')
     simulation, catalog = load_simulation(L)
     L.globals().Harness.shared.Simulation.module=simulation
@@ -142,6 +144,84 @@ def make_runtime(studio=True, published=False):
     L.execute(source)
     return L
 
+DEFAULT_SCENARIOS = {
+    "default PLAY enters a labelled battle and repeated PLAY cannot restart it": r'''
+        local a=Harness.add(101)
+        assert(script:GetAttribute('DistanceModeEnabled')==nil,'default fixture unexpectedly opted in')
+        assert(Harness.shared:GetAttribute('DistanceModeEnabled')==false and Harness.lobbyDistanceMode==false)
+        Harness.send(a,'play')
+        local first=Harness.battleLatest(a)
+        assert(first.active and first.phase=='Configure' and first.simulatedOpponent==true)
+        assert(Harness.latest(a).phase=='BattleLab' and Harness.latest(a).matchId==0 and Harness.latest(a).queue==nil)
+        Harness.advance(.1);Harness.send(a,'play')
+        assert(Harness.battleLatest(a).roundId==first.roundId)
+        Harness.battleSend(a,'launch');Harness.advance(2.3)
+        Harness.send(a,'play')
+        assert(Harness.battleLatest(a).phase=='Fight' and Harness.battleLatest(a).roundId==first.roundId)
+        Harness.advance(38);Harness.send(a,'play')
+        assert(Harness.battleLatest(a).phase=='Results' and Harness.battleLatest(a).roundId==first.roundId)
+        Harness.battleSend(a,'restart');Harness.advance(.1)
+        assert(Harness.battleLatest(a).phase=='Countdown' and Harness.battleLatest(a).roundId~=first.roundId)
+        Harness.battleSend(a,'exit');Harness.advance(.1)
+        assert(Harness.latest(a).phase=='Lobby' and not a.Character.HumanoidRootPart.Anchored)
+        Harness.send(a,'play')
+        assert(Harness.battleLatest(a).active and Harness.battleLatest(a).phase=='Configure')
+        assert(Harness.battleLatest(a).simulation.elapsed==0 and Harness.shared:GetAttribute('ActiveDuels')==0)
+    ''',
+    "default mode cannot start distance racing through pads practice or Studio pairing": r'''
+        local a,b=Harness.add(101),Harness.add(102)
+        Harness.move(a,1,1);Harness.move(b,1,2);Harness.advance(8)
+        assert(Harness.latest(a).phase=='Lobby' and Harness.latest(b).phase=='Lobby')
+        assert(Harness.latest(a).queue==nil and Harness.queueCounts==nil,'legacy pad scans still ran')
+        Harness.send(a,'practice');Harness.advance(.1)
+        Harness.debug('practice',{userId=b.UserId})
+        assert(Harness.debug('forcePair',{ids={a.UserId,b.UserId}})==nil)
+        Harness.debug('launch',{userId=a.UserId});Harness.advance(8)
+        for _,p in ipairs({a,b})do
+            local s=Harness.latest(p)
+            assert(s.phase=='Lobby' and s.matchId==0 and s.queue==nil)
+            assert(s.stats.totalFlights==0 and not p.Character.HumanoidRootPart.Anchored)
+        end
+        assert(Harness.shared:GetAttribute('ActiveDuels')==0 and Harness.board==nil,'legacy match or board update escaped the gate')
+    ''',
+    "default PLAY keeps two pilots in independent clearly simulated battles": r'''
+        local a,b=Harness.add(101),Harness.add(102)
+        Harness.send(a,'play');Harness.send(b,'play')
+        local firstA,firstB=Harness.battleLatest(a),Harness.battleLatest(b)
+        assert(firstA.phase=='Configure' and firstB.phase=='Configure')
+        assert(firstA.simulatedOpponent==true and firstB.simulatedOpponent==true)
+        assert(firstA.roundId~=firstB.roundId)
+        Harness.battleSend(a,'configure',{settings={{powerId='Firework',angle=10},{powerId='Meteor',angle=55}}})
+        Harness.battleSend(a,'launch');Harness.advance(2.3)
+        assert(Harness.battleLatest(a).phase=='Fight')
+        assert(Harness.battleLatest(b).phase=='Configure' and Harness.battleLatest(b).settings[1].powerId=='Meteor')
+        Harness.advance(38)
+        assert(Harness.battleLatest(a).phase=='Results' and Harness.battleLatest(b).simulation.elapsed==0)
+        Harness.battleSend(a,'exit');Harness.advance(.1)
+        assert(Harness.latest(a).phase=='Lobby' and Harness.latest(b).phase=='BattleLab')
+        assert(Harness.battleLatest(b).active and Harness.shared:GetAttribute('ActiveDuels')==0)
+    ''',
+    "default battle routing retains lobby appearance configuration and cosmetics": r'''
+        local a=Harness.add(101)
+        assert(Harness.latest(a).economy.canShop)
+        Harness.send(a,'configure',{settings={planeId='dart',angle=30,gadget='Boost',color=4}})
+        Harness.send(a,'equipCosmetic',{itemId='classic'})
+        local configured=Harness.latest(a)
+        assert(configured.players[1].settings.planeId=='dart' and configured.players[1].settings.color==4)
+        assert(configured.cosmeticFeedback.ok and a:GetAttribute('SkyboundPlane')=='dart')
+        local bay=a:GetAttribute('SkyboundBay')
+        Harness.send(a,'play');Harness.advance(.1)
+        assert(not Harness.latest(a).economy.canShop and a:GetAttribute('SkyboundFlying')==true)
+        Harness.battleSend(a,'exit');Harness.advance(.1)
+        local returned=Harness.latest(a)
+        assert(returned.economy.canShop and a:GetAttribute('SkyboundFlying')==false)
+        assert(a:GetAttribute('SkyboundBay')==bay and a:GetAttribute('SkyboundPlane')=='dart')
+        assert(returned.players[1].settings.color==4 and returned.economy.equippedTrail=='classic')
+    ''',
+}
+
+# These scenarios deliberately opt into the preserved distance mode. The
+# default-mode suite above never sets the Script attribute at all.
 SCENARIOS = {
     "Battle Lab launch commits visible settings after a throttled setup burst": r'''
         local a=Harness.add(101)
@@ -946,21 +1026,31 @@ def main():
         ("CosmeticCatalog", runtime.globals().Harness.shared.CosmeticCatalog.module),
     ):
         print(runtime.execute((ROOT / f"tests/{name}.spec.luau").read_text())(module))
-    for name, scenario in SCENARIOS.items():
+    for name, scenario in DEFAULT_SCENARIOS.items():
         runtime = make_runtime()
         try:
             runtime.execute(scenario)
         except Exception as error:
             raise AssertionError(f"FAILED: {name}\n{error}") from error
         print(f"PASS: {name}")
-    for name, scenario in LIVE_SCENARIOS.items():
-        runtime = make_runtime(studio=False, published=True)
+    for name, scenario in SCENARIOS.items():
+        runtime = make_runtime(distance_mode=True)
+        assert runtime.globals().Harness.shared.attributes.DistanceModeEnabled is True
+        assert runtime.globals().Harness.lobbyDistanceMode is True
         try:
             runtime.execute(scenario)
         except Exception as error:
             raise AssertionError(f"FAILED: {name}\n{error}") from error
         print(f"PASS: {name}")
-    print(f"{len(SCENARIOS) + len(LIVE_SCENARIOS)} server scenarios passed")
+    for name, scenario in LIVE_SCENARIOS.items():
+        runtime = make_runtime(studio=False, published=True, distance_mode=True)
+        try:
+            runtime.execute(scenario)
+        except Exception as error:
+            raise AssertionError(f"FAILED: {name}\n{error}") from error
+        print(f"PASS: {name}")
+    print(f"{len(DEFAULT_SCENARIOS) + len(SCENARIOS) + len(LIVE_SCENARIOS)} server scenarios passed "
+          f"({len(DEFAULT_SCENARIOS)} default battle mode; {len(SCENARIOS) + len(LIVE_SCENARIOS)} explicit distance mode)")
 
 
 if __name__ == "__main__":
