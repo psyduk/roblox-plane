@@ -1,3 +1,11 @@
+# Results screen — October 10, 2026
+
+Audit item 19. The status pill and dark footer at the end of a fight are replaced by a results moment that waits for the knockout to play out (1.8s after a knockout, 0.6s after a timeout) and then takes the screen: a slammed-in VICTORY! / DEFEAT / DRAW! banner, one plain line saying how it ended, the winner's portrait under a crown, three stat chips (your hits, rival hits, time), and REMATCH as the large button between Change power and Hangar. A win gets falling confetti, APM's "Champion Fanfare" and a crowd roar; a loss gets a groan and a low thump. The battle loop drops to a murmur under the result.
+
+Checked: 47 server scenarios; no script errors in Studio. Seen on desktop: a real victory (3 hits to 1, 27.2s) with banner, crown, portrait, stats, buttons and confetti, then a real click on REMATCH, which went straight to a new countdown against a re-rolled rival. Not checked: the defeat and draw variants, the timeout wording, the stings by ear, phone and portrait layouts.
+
+---
+
 # Fighter bar — October 10, 2026
 
 The dark header strip is replaced, after the owner called it out, by a floating fighting-game bar: each pilot's portrait (the player's Roblox headshot; a robot for the bot), name, power pill and three outlined armor pips at the screen edges, with a large central clock that reads VS before the fight, counts down during it, turns red and pulses in the last ten seconds, and reads K.O. or TIME! at the end. Hangar and sound are two small icon buttons under the left portrait. The leftover hint strip during the countdown is gone.

@@ -91,4 +91,5 @@ Branch `battle-juice-pass`. "Built" means written and exercised by tests and scr
 | 24 | Last-five-seconds tick, thunder at pressure start | Partly built |
 | 9, 11, 12 | Meteor fireball, storm wall, bigger crash | Small improvements only |
 | 16, 17 | Armor and timer | Built as a fighter bar: portraits, names, chunky pips, central clock. Seen on desktop. Pips are in the bar, not over the planes |
-| 14, 19, 22, 25, 28–32 | Everything else | Open |
+| 19 | Results | Built: banner, winner portrait and crown, stats, REMATCH, confetti, win fanfare. Victory seen on desktop; defeat and draw unseen |
+| 14, 22, 25, 28–32 | Everything else | Open |

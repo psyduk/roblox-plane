@@ -147,9 +147,44 @@ function BattleLab.new(World,shared)
     self.fightButton.Font=Enum.Font.FredokaOne; self.fightButton.TextSize=32
     self.fightButton.BackgroundColor3=Color3.fromRGB(74,201,96)
     self.fightButton.Edge.Color=WHITE; self.fightButton.Edge.Transparency=0.1; self.fightButton.Edge.Thickness=3
-    self.replay=button(self.footer,"Replay","REMATCH",function() self:rematch() end)
-    self.replay.BackgroundColor3=Color3.fromRGB(74,201,96); self.replay.Font=Enum.Font.FredokaOne; self.replay.TextSize=22
-    self.edit=button(self.footer,"Edit","Change power",function() self.audio:ui(false); self:send("restart",{edit=true}) end)
+    -- The result is a moment of its own: a slammed-in banner, the winner's
+    -- face under a crown, three numbers, and REMATCH as the obvious next tap.
+    self.result=make("Frame",self.panel,"Result"); self.result.BorderSizePixel=0; self.result.ZIndex=20
+    self.result.BackgroundColor3=NAVY; self.result.Visible=false; self.result.ClipsDescendants=true
+    self.confetti={}
+    for index=1,40 do
+        local piece=make("Frame",self.result,"Confetti"); piece.BorderSizePixel=0; piece.ZIndex=20
+        piece.BackgroundColor3=({GOLD,ACCENTS[1],ACCENTS[2],WHITE,Color3.fromRGB(160,128,255)})[index%5+1]
+        self.confetti[index]={frame=piece,x=math.random(),speed=120+math.random()*200,offset=math.random(),spin=(math.random()-0.5)*500,sway=math.random()*6}
+    end
+    self.banner=label(self.result,"Banner",96,GOLD); self.banner.Font=Enum.Font.FredokaOne; self.banner.TextWrapped=false
+    self.banner.ZIndex=22; self.banner.Rotation=-3
+    local bannerEdge=make("UIStroke",self.banner,"Edge"); bannerEdge.Thickness=8; bannerEdge.Color=NAVY
+    self.bannerScale=make("UIScale",self.banner,"Slam")
+    self.resultLine=label(self.result,"Line",18,WHITE); self.resultLine.ZIndex=22
+    self.winnerRing=make("Frame",self.result,"Winner"); self.winnerRing.BackgroundColor3=NAVY; self.winnerRing.BorderSizePixel=0; self.winnerRing.ZIndex=21
+    make("UICorner",self.winnerRing,"Corner").CornerRadius=UDim.new(1,0)
+    self.winnerEdge=make("UIStroke",self.winnerRing,"Edge"); self.winnerEdge.Thickness=6
+    self.winnerFace=make("ImageLabel",self.winnerRing,"Face"); self.winnerFace.BackgroundTransparency=1
+    self.winnerFace.Size=UDim2.fromScale(1,1); self.winnerFace.ZIndex=21
+    make("UICorner",self.winnerFace,"Corner").CornerRadius=UDim.new(1,0)
+    self.winnerEmoji=label(self.winnerRing,"Emoji",48); self.winnerEmoji.Size=UDim2.fromScale(1,1); self.winnerEmoji.TextWrapped=false; self.winnerEmoji.ZIndex=22
+    self.crown=label(self.result,"Crown",44); self.crown.Text="👑"; self.crown.TextWrapped=false; self.crown.ZIndex=23; self.crown.Rotation=-12
+    self.stats={}
+    for index,caption in ipairs({"YOUR HITS","RIVAL HITS","TIME"}) do
+        local chip=make("Frame",self.result,"Stat"..index); chip.BackgroundColor3=Color3.fromRGB(30,46,72); chip.BorderSizePixel=0; chip.ZIndex=21
+        make("UICorner",chip,"Corner").CornerRadius=UDim.new(0,12)
+        local edge=make("UIStroke",chip,"Edge"); edge.Thickness=2; edge.Color=Color3.fromRGB(86,118,160)
+        local value=label(chip,"Value",28,WHITE); value.Font=Enum.Font.FredokaOne; value.ZIndex=22; value.TextWrapped=false
+        local name=label(chip,"Caption",11,MUTED); name.Text=caption; name.ZIndex=22; name.TextWrapped=false
+        self.stats[index]={frame=chip,value=value,caption=name,edge=edge}
+    end
+    self.replay=button(self.result,"Replay","REMATCH",function() self:rematch() end)
+    self.replay.BackgroundColor3=Color3.fromRGB(74,201,96); self.replay.Font=Enum.Font.FredokaOne; self.replay.TextSize=30
+    self.replay.Edge.Color=WHITE; self.replay.Edge.Transparency=0.1; self.replay.Edge.Thickness=3
+    self.edit=button(self.result,"Edit","Change power",function() self.audio:ui(false); self:send("restart",{edit=true}) end)
+    self.leave=button(self.result,"Leave","Hangar",function() self.audio:ui(false); self:send("exit") end)
+    for _,item in ipairs({self.replay,self.edit,self.leave}) do item.ZIndex=22 end
     self.footerHint=label(self.footer,"Hint",13,MUTED)
     -- Full-screen beats: a white impact flash and the 3-2-1-FIGHT call.
     self.flash=make("Frame",self.panel,"ImpactFlash")
@@ -234,6 +269,88 @@ function BattleLab:rematch()
     self.audio:ui(true)
     self:send("restart",{edit=true})
 end
+-- Waits for the knockout to play out in the arena, then takes the screen.
+function BattleLab:showResult(data,results,accents,width,height,headerHeight,compact,short)
+    if not results then self.result.Visible=false; self.resultRound=nil; return end
+    local sim=data.simulation
+    if self.resultRound~=data.roundId then
+        self.resultRound,self.resultAt,self.resultSounded=data.roundId,os.clock(),false
+    end
+    local age=os.clock()-self.resultAt-(sim.reason=="knockout" and 1.8 or 0.6)
+    self.result.Visible=age>0
+    if age<=0 then return end
+    local outcome=sim.winner==1 and "win" or (sim.winner==2 and "lose" or "draw")
+    if not self.resultSounded then self.resultSounded=true; self.audio:result(outcome) end
+    local area=height-headerHeight
+    place(self.result,0,headerHeight,width,area)
+    self.result.BackgroundTransparency=1-0.55*math.clamp(age/0.25,0,1)
+    local bannerHeight=compact and 60 or (short and 70 or 104)
+    local face=short and 0 or math.clamp(area*0.2,56,124)
+    local statHeight=short and 48 or 64
+    local stacked=compact
+    local buttonsHeight=stacked and 112 or 64
+    local total=bannerHeight+26+(face>0 and face+22 or 0)+statHeight+18+buttonsHeight+10
+    local y=math.max(4,(area-total)/2)
+    local tint=outcome=="win" and GOLD or (outcome=="lose" and Color3.fromRGB(150,170,205) or WHITE)
+    place(self.banner,0,y,width,bannerHeight)
+    self.banner.Text=outcome=="win" and "VICTORY!" or (outcome=="lose" and "DEFEAT" or "DRAW!")
+    self.banner.TextColor3=tint
+    self.banner.TextSize=math.min(bannerHeight*0.95,width*0.17)
+    self.bannerScale.Scale=1+1.6*math.max(0,1-age/0.2)^2
+    y=y+bannerHeight
+    place(self.resultLine,12,y,width-24,22)
+    self.resultLine.TextSize=compact and 13 or 18
+    self.resultLine.Text=sim.reason=="timeout"
+        and (outcome=="draw" and "Time ran out with armor level" or (outcome=="win" and "Time! You had more armor left" or "Time! The rival had more armor left"))
+        or (outcome=="draw" and "Both planes went down" or (outcome=="win" and "You knocked the rival out of the sky" or "You got knocked out of the sky"))
+    y=y+26
+    local settled=age>0.3
+    self.winnerRing.Visible=face>0 and settled; self.crown.Visible=face>0 and settled and outcome~="draw"
+    if face>0 then
+        y=y+14
+        place(self.winnerRing,(width-face)/2,y,face,face)
+        self.winnerEdge.Color=outcome=="draw" and WHITE or accents[sim.winner]
+        self.winnerFace.Image=outcome=="win" and self.fighters[1].face.Image or ""
+        self.winnerEmoji.Text=outcome=="lose" and "🤖" or (outcome=="draw" and "🤝" or "")
+        self.winnerEmoji.TextSize=face*0.55
+        place(self.crown,(width-face)/2-face*0.18,y-face*0.32,face*0.6,face*0.6)
+        self.crown.TextSize=face*0.46
+        y=y+face+8
+    end
+    local statWidth=math.min(170,(width-40)/3)
+    local values={tostring(sim.fighters[1].hits),tostring(sim.fighters[2].hits),string.format("%.1fs",sim.elapsed)}
+    for index,stat in ipairs(self.stats) do
+        stat.frame.Visible=settled
+        place(stat.frame,width/2-statWidth*1.5-8+(index-1)*(statWidth+8),y,statWidth,statHeight)
+        place(stat.value,0,2,statWidth,statHeight*0.6); stat.value.Text=values[index]; stat.value.TextSize=statHeight*0.46
+        place(stat.caption,0,statHeight*0.62,statWidth,statHeight*0.3); stat.caption.TextSize=compact and 9 or 11
+        stat.edge.Color=index<3 and accents[index] or Color3.fromRGB(86,118,160)
+    end
+    y=y+statHeight+18
+    for _,item in ipairs({self.replay,self.edit,self.leave}) do item.Visible=age>0.5 end
+    if stacked then
+        place(self.replay,16,y,width-32,56)
+        place(self.edit,16,y+62,(width-40)/2,44); place(self.leave,24+(width-40)/2,y+62,(width-40)/2,44)
+    else
+        local main=math.min(300,width*0.3)
+        local sideWidth=math.min(170,width*0.16)
+        local row=main+2*(sideWidth+10)
+        place(self.replay,(width-row)/2+sideWidth+10,y,main,64)
+        place(self.edit,(width-row)/2,y+10,sideWidth,46)
+        place(self.leave,(width-row)/2+sideWidth+10+main+10,y+10,sideWidth,46)
+    end
+    -- A gentle pulse keeps the eye on the next fight.
+    self.replay.TextSize=(stacked and 26 or 30)+2*math.sin(os.clock()*5)
+    for _,piece in ipairs(self.confetti) do
+        piece.frame.Visible=outcome=="win" and not self.reducedMotion
+        if piece.frame.Visible then
+            local fall=(age*piece.speed+piece.offset*area)%(area+40)-20
+            piece.frame.Size=UDim2.fromOffset(8,14)
+            piece.frame.Position=UDim2.fromOffset(piece.x*width+math.sin(age*2+piece.sway)*18,fall)
+            piece.frame.Rotation=age*piece.spin
+        end
+    end
+end
 function BattleLab:feedback(data)
     local sim=data.simulation
     if self.feedbackRound~=data.roundId then
@@ -276,7 +393,8 @@ function BattleLab:update(dt)
     local plainFight=data.phase=="Fight" and (data.settings[1].modifierId or "None")=="None"
         and (data.settings[2].modifierId or "None")=="None"
     local quiet=config or plainFight or data.phase=="Countdown"
-    local footerHeight=quiet and 0 or (results and 108 or 54)
+    quiet=quiet or results
+    local footerHeight=quiet and 0 or 54
     self.footer.Visible=not quiet
     place(self.header,0,0,width,headerHeight)
     place(self.exit,12,headerHeight+4,40,40)
@@ -325,7 +443,7 @@ function BattleLab:update(dt)
     self.status.TextSize=compact and 17 or 22
     place(self.help,12,statusTop+28,width-24,22)
     self.help.TextSize=compact and 11 or 14
-    self.help.Visible=not config; self.status.Visible=not config
+    self.help.Visible=not config and not results; self.status.Visible=not config and not results
     place(self.footer,0,height,width,footerHeight)
     -- A rematch passes through setup for a moment; roll the rival and go.
     local rematching=config and self.rematchUntil~=nil and os.clock()<self.rematchUntil
@@ -401,13 +519,10 @@ function BattleLab:update(dt)
         place(self.fightButton,(width-fightWidth)/2,y+8,fightWidth,fightHeight)
         self.fightButton.TextSize=short and 26 or 34
     end
-    self.replay.Visible=results; self.edit.Visible=results
-    local buttonWidth=math.min(260,(width-36)/2)
-    place(self.replay,width/2-buttonWidth-6,footerHeight-54,buttonWidth,44)
-    place(self.edit,width/2+6,footerHeight-54,buttonWidth,44)
     self.footerHint.Visible=not config
     self.footerHint.TextSize=compact and 12 or 13
-    place(self.footerHint,12,results and 5 or 7,width-24,results and 40 or 40)
+    place(self.footerHint,12,7,width-24,40)
+    self:showResult(data,results,accents,width,height,headerHeight,compact,short)
     self:feedback(data)
     self.status.TextColor3=WHITE
     self.statusEdge.Color=Color3.fromRGB(118,154,187)
@@ -419,11 +534,7 @@ function BattleLab:update(dt)
         self.help.Text="Watch the windup. The attack is committed."
         self.footerHint.Text="Meteor dives into a ram · Firework sends a rocket"
     elseif results then
-        self.status.Text=sim.winner==0 and "DRAW!" or (sim.winner==1 and "YOU WIN!" or "RIVAL WINS")
-        self.status.TextColor3=sim.winner==0 and WHITE or accents[sim.winner]
-        self.statusEdge.Color=self.status.TextColor3; self.statusEdge.Transparency=0.1
-        self.help.Text=string.format("%.1f seconds · %s",sim.elapsed,sim.reason=="timeout" and "armor at the time limit" or "armor depleted")
-        self.footerHint.Text=string.format("You landed %d hits · Rival landed %d",sim.fighters[1].hits,sim.fighters[2].hits)
+        self.status.Text=""; self.help.Text=""
     else
         self.status.Text=sim.pressure>0 and "WIND CLOSING IN" or "BATTLE!"
         if os.clock()<(self.feedbackUntil or 0) then

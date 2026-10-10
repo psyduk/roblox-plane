@@ -40,6 +40,8 @@ local SAMPLES = {
     gasp = "rbxassetid://9114013354",     -- Crowd Reaction 4
     thunder = "rbxassetid://9120018172",  -- Thunder Distant Boom Thud Rapid Hits 20
     click = "rbxassetid://9119717523",    -- Switch Click On Or Off Toggle Button 2
+    -- APM Music "Champion Fanfare" (Bruton, Big Heavy Horn Riffs), @APMOfficial.
+    fanfare = "rbxassetid://9043234711",
 }
 -- Beds. Music is APM Music's "Feel That Move" (30 second light version: 80s
 -- clavinet funk) from the official @APMOfficial channel, chosen after the
@@ -151,7 +153,8 @@ function BattleAudio:_ambience(snapshot)
     local elapsed=simulation and finite(simulation.elapsed) and simulation.elapsed or 0
     local fighting=phase=="Fight"
     local closing=fighting and pressure>0
-    self:_loop("music",active and ((fighting or phase=="Countdown") and 0.24 or (phase=="Results" and 0.15 or 0.13)) or 0,closing and 1.04 or 1)
+    -- The battle loop steps right back at the result so the sting can land.
+    self:_loop("music",active and ((fighting or phase=="Countdown") and 0.24 or (phase=="Results" and 0.05 or 0.13)) or 0,closing and 1.04 or 1)
     self:_loop("crowd",active and ((fighting or phase=="Countdown") and 0.22 or 0.1) or 0,1)
     self:_loop("storm",closing and 0.14+pressure*0.3 or 0,1)
     if phase=="Countdown" and finite(snapshot.endsAt) then
@@ -172,8 +175,20 @@ function BattleAudio:_ambience(snapshot)
     self.ambientPhase=phase
 end
 
+-- The result banner: horns and a roar for a win, a groan for a loss.
+function BattleAudio:result(outcome)
+    self:_stopShot("fanfare")
+    if outcome=="win" then self:_shot("fanfare",0.5,1); self:_shot("cheer",0.6,1)
+    elseif outcome=="lose" then self:_shot("gasp",0.55,0.85); self:_shot("thump",0.5,0.7)
+    else self:_shot("whistle",0.4,0.8); self:_shot("gasp",0.35,1) end
+end
+function BattleAudio:_stopShot(name)
+    for _,sound in ipairs(self.shots and self.shots[name] or {}) do sound:Stop() end
+end
+
 -- Menu feedback: a click for a choice, a whoosh for committing to the fight.
 function BattleAudio:ui(confirm)
+    self:_stopShot("fanfare")
     if confirm then self:_shot("whoosh",0.45,1.1); self:_shot("click",0.5,0.8)
     else self:_shot("click",0.5,1.15) end
 end
