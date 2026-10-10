@@ -1,3 +1,17 @@
+# Setup cards, calmer camera, lighter music — October 10, 2026
+
+Follow-up to the pass below, after the owner played it: liked the direction, found the music too dramatic, wanted zooms tied to attacks or reduced, and disliked the cycling setup footer.
+
+- **Setup:** the footer of cycling buttons is replaced by one screen about your own plane: two power cards, four twist chips and a FIGHT! button. The player no longer configures the opponent. The rival's power, twist and opening angle are rolled on the client when FIGHT! or REMATCH is pressed and revealed by the countdown; it never mirrors a Firework pick, because Firework mirrors still trade into draws. Opening-angle tuning is no longer exposed. The server still validates and owns the committed settings.
+- **Rematch** re-rolls the rival instead of replaying the identical fight (the round seed is still fixed at 731).
+- **Camera:** rests at a 126-stud-wide frame and closes to 94 only while a plane is winding up or attacking, or for a knockout. The hit punch-in is roughly halved.
+- **Music:** APM's "Feel That Move" (30-second light version, clavinet funk) replaces "Rival", about a third quieter. Menu clicks and a commit whoosh were added.
+- Player-facing "SIM" and "Battle Lab" wording is now "RIVAL" and "VS PRACTICE BOT"; the opponent is still labelled as a bot.
+
+Checked: 47 server scenarios; in Studio, 6 battle-view and 21 audio tests; no script errors. **Seen on desktop at about 2480×1030** through real clicks: the card screen, picking a twist, FIGHT!, the rival reveal, the 3-2 countdown and the opening Meteor-versus-Meteor exchange in the sky arena. Not checked: the new track by ear, a full fight to results with the new camera, REMATCH by click, phone and portrait layouts of the card screen.
+
+---
+
 # Battle look, sound and feel pass — October 10, 2026
 
 First pass on [the battle audit](docs/BATTLE-AUDIT.md), items 1–4, 6, 7, 15, 21 and 23, on branch `battle-juice-pass` (based on `codex/plane-battles-entry`). Presentation only: `BattleSimulation.luau` is untouched. The one server change is countdown length (launch 2.0s → 2.4s, quick retry 1.0s → 1.8s) so three evenly spaced beats fit.

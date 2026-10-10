@@ -31,7 +31,9 @@ local PLANE_COLORS = { COLORS.coral, COLORS.cyan, COLORS.yellow, COLORS.purple }
 local PLAYER_COLORS = { COLORS.coral, COLORS.cyan }
 local FAN_COLORS = { COLORS.coral, COLORS.cyan, COLORS.yellow, COLORS.cream, COLORS.purple }
 local FULL_WIDTH, FULL_HEIGHT = 172, 112
-local MIN_VIEW_WIDTH, MIN_VIEW_HEIGHT = 84, 54
+-- The lens rests fairly wide and only closes in while someone is attacking.
+local REST_VIEW_WIDTH, REST_VIEW_HEIGHT = 126, 80
+local ATTACK_VIEW_WIDTH, ATTACK_VIEW_HEIGHT = 94, 60
 local SMOKE_TEXTURE = "rbxasset://textures/particles/smoke_main.dds"
 local FIRE_TEXTURE = "rbxasset://textures/particles/fire_main.dds"
 local SPARK_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
@@ -1059,8 +1061,12 @@ function BattleView:_frame(simulation)
 		end
 	end
 	if minX > maxX then return 0, CENTER_Y, FULL_WIDTH, FULL_HEIGHT end
-	local width = math.clamp(maxX - minX + 58, MIN_VIEW_WIDTH, FULL_WIDTH)
-	local height = math.clamp(maxY - minY + 42, MIN_VIEW_HEIGHT, FULL_HEIGHT)
+	local attacking = knockout
+	for _, state in ipairs(simulation.fighters or {}) do
+		if state.phase == "Windup" or state.phase == "Attack" then attacking = true end
+	end
+	local width = math.clamp(maxX - minX + 58, attacking and ATTACK_VIEW_WIDTH or REST_VIEW_WIDTH, FULL_WIDTH)
+	local height = math.clamp(maxY - minY + 42, attacking and ATTACK_VIEW_HEIGHT or REST_VIEW_HEIGHT, FULL_HEIGHT)
 	local slackX, slackY = (FULL_WIDTH - width) / 2, (FULL_HEIGHT - height) / 2
 	return math.clamp((minX + maxX) / 2, -slackX, slackX),
 		math.clamp((minY + maxY) / 2, CENTER_Y - slackY, CENTER_Y + slackY), width, height
@@ -1085,12 +1091,12 @@ function BattleView:_camera(rect, simulation, dt)
 	end
 	-- Widen quickly so nobody leaves the frame; close in gently.
 	local follow = 1 - math.exp(-6 * dt)
-	local widen, tighten = 1 - math.exp(-10 * dt), 1 - math.exp(-2.4 * dt)
+	local widen, tighten = 1 - math.exp(-6 * dt), 1 - math.exp(-3 * dt)
 	view.x = view.x + (targetX - view.x) * follow
 	view.y = view.y + (targetY - view.y) * follow
 	view.width = view.width + (targetWidth - view.width) * (targetWidth > view.width and widen or tighten)
 	view.height = view.height + (targetHeight - view.height) * (targetHeight > view.height and widen or tighten)
-	local zoom = 1 - 0.13 * self.punch
+	local zoom = 1 - 0.07 * self.punch
 	local fullHeight = math.max(view.width * zoom / (regionWidth / width) / aspect, view.height * zoom / (regionHeight / height))
 	local fullWidth = fullHeight * aspect
 	local shakeX = math.sin(self.realClock * 83) * self.shake

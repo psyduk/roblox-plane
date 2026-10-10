@@ -70,20 +70,24 @@ This file is the reference list. Status is updated as items ship; evidence for s
 
 ## Status
 
-Branch `battle-juice-pass`. "Built" means written and exercised by tests and scripted fights; see VALIDATION.md for exactly what was and was not checked. **Nothing below has been looked at or listened to yet.**
+Branch `battle-juice-pass`. "Built" means written and exercised by tests and scripted fights; see VALIDATION.md for exactly what was and was not checked. The owner has played the first pass and likes the direction; rows say what has actually been seen.
 
 | # | Item | Status |
 | --- | --- | --- |
-| 1 | Dynamic camera | Built, unseen |
+| 1 | Dynamic camera | Built, seen briefly. Retuned after feedback: rests wide, closes in on attacks |
 | 2 | Hit weight (freeze, shake, flash, particles, knockout slow motion) | Built, unseen |
 | 3, 23 | Layered impact sounds, crowd, countdown beeps | Built, unheard |
 | 4 | Your paint, trail and pilot in battle | Built, unseen. Plane type still not shown |
-| 6, 7 | Sky stadium, bloom and grade | Built, unseen |
+| 6, 7 | Sky stadium, bloom and grade | Built, seen on desktop |
 | 8 | Damage smoke and fire | Built, unseen |
 | 10 | Rocket trail and firework burst | Partly built, unseen |
 | 13 | Comic callout words | Built, unseen |
-| 15 | 3-2-1-FIGHT countdown | Built, unseen |
-| 21 | Battle music | Built, unheard. No win/lose stings or hangar loop yet |
+| 15 | 3-2-1-FIGHT countdown | Built, seen on desktop |
+| 21 | Battle music | Swapped to a lighter funk track after "too dramatic" feedback; new track unheard. No stings or hangar loop yet |
+| 18 | Power select | Built: power cards, twist chips, FIGHT!; rival rolled at launch. Seen on desktop |
+| 20 | Lab wording | Partly: RIVAL / VS PRACTICE BOT. Header still looks like a tool |
+| 26 | UI sounds | Partly: setup clicks and commit whoosh |
+| 27 | Variety on rematch | Partly: rematch re-rolls the rival; the seed is still fixed |
 | 24 | Last-five-seconds tick, thunder at pressure start | Partly built |
 | 9, 11, 12 | Meteor fireball, storm wall, bigger crash | Small improvements only |
-| 14, 16–20, 22, 25–32 | Everything else | Open |
+| 14, 16, 17, 19, 22, 25, 28–32 | Everything else | Open |

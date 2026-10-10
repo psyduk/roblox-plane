@@ -39,11 +39,13 @@ local SAMPLES = {
     cheer = "rbxassetid://9120974378",    -- Wrestling Crowd 3
     gasp = "rbxassetid://9114013354",     -- Crowd Reaction 4
     thunder = "rbxassetid://9120018172",  -- Thunder Distant Boom Thud Rapid Hits 20
+    click = "rbxassetid://9119717523",    -- Switch Click On Or Off Toggle Button 2
 }
--- Beds. Music is APM Music's "Rival - 30 second" (ACTION CINEMA, Zak Alan
--- McNeil) from the official @APMOfficial channel; the rest are Pro Sound Effects.
+-- Beds. Music is APM Music's "Feel That Move" (30 second light version: 80s
+-- clavinet funk) from the official @APMOfficial channel, chosen after the
+-- cinematic "Rival" cue proved too dramatic; the rest are Pro Sound Effects.
 local LOOPS = {
-    music = "rbxassetid://87324071813778",
+    music = "rbxassetid://9044946334",
     crowd = "rbxassetid://9119562311",    -- Stadium Crowd 2
     storm = "rbxassetid://9125742262",    -- Plasma Trails Constant Airy Whooshing Windy
 }
@@ -149,7 +151,7 @@ function BattleAudio:_ambience(snapshot)
     local elapsed=simulation and finite(simulation.elapsed) and simulation.elapsed or 0
     local fighting=phase=="Fight"
     local closing=fighting and pressure>0
-    self:_loop("music",active and ((fighting or phase=="Countdown") and 0.36 or (phase=="Results" and 0.2 or 0.15)) or 0,closing and 1.07 or 1)
+    self:_loop("music",active and ((fighting or phase=="Countdown") and 0.24 or (phase=="Results" and 0.15 or 0.13)) or 0,closing and 1.04 or 1)
     self:_loop("crowd",active and ((fighting or phase=="Countdown") and 0.22 or 0.1) or 0,1)
     self:_loop("storm",closing and 0.14+pressure*0.3 or 0,1)
     if phase=="Countdown" and finite(snapshot.endsAt) then
@@ -168,6 +170,12 @@ function BattleAudio:_ambience(snapshot)
     end
     self.wasClosing=closing
     self.ambientPhase=phase
+end
+
+-- Menu feedback: a click for a choice, a whoosh for committing to the fight.
+function BattleAudio:ui(confirm)
+    if confirm then self:_shot("whoosh",0.45,1.1); self:_shot("click",0.5,0.8)
+    else self:_shot("click",0.5,1.15) end
 end
 
 function BattleAudio:setMuted(muted)
