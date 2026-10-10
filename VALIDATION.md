@@ -1,3 +1,13 @@
+# Limited-test publication — October 10, 2026
+
+**Skybound Test version 6 published successfully** to place `86507299893768`, universe `10770074500`, at **2026-10-10T18:14:58Z** (11:14:58 PDT). Native Studio confirmed publication and Playtester availability; Creator Dashboard showed version 6 at 11:14, following the version 5 autosave at 11:13. Access was confirmed **Limited**, **Playtesters enabled**, **Friends disabled**. Source commit **`a0c9d9eafa08a9bc5624641837ee59c824b3021d`** was committed and pushed before publication. [Publication details](docs/QA-2026-10-10.md#limited-test-publication--october-10-2026), [dashboard evidence](docs/validation/qa-2026-10-10/published-version-6.jpg), [manifest](docs/validation/sky-battle-build.json).
+
+The existing cloud place was updated and published directly after Publish As stalled before upload. All 35 script sources matched the verified candidate; remotes, clean gameplay attributes, empty authored world, Sensor orientation and native visual lighting properties were checked. Protected `RBX_OriginalTechnologyOnFileLoad` metadata remains cloud `1` versus reference `2`, so the published native artifact is not claimed byte-identical to the reference or local XML. The local XML SHA-256 remains `b0280d3c5a037e5364d260e488770a0bd84d5c73b1be7fa699c7c32c4f2d80db`.
+
+This publication update supersedes earlier “unpublished” or “no commit/push” handoff statements below. It does **not** convert local session-only tests into published gameplay or saving proof: physical phone, heard audio, two independent accounts, confirmed live persistence/rejoin and unfamiliar-player/balance gates remain open. `publishedAndRealPhoneVerified` remains `false`.
+
+---
+
 # Fresh visual, input and network QA — October 10, 2026
 
 **This entry supersedes the earlier candidate evidence below. Local QA passed after fixes; release approval remains open.** [Full QA report with screenshots and issue links](docs/QA-2026-10-10.md).
@@ -9,7 +19,7 @@ The apparent return to distance mode came from a running older worktree place (`
 - **200 native Studio checks passed**, plus **44 full-server scenarios** (11 current battle mode, 33 explicitly opted-in archived distance regressions). [Native](docs/validation/qa-2026-10-10/native.json), [server](docs/validation/qa-2026-10-10/server.txt), [simulation](docs/validation/qa-2026-10-10/simulation.txt).
 - **Fresh two-client network run: 10 checks passed in 74.66 seconds.** Two real Studio clients used programmatic production remotes, completed three rounds with mirrored 1–2/2–1 scores and 50/75 coins, then passed private picks/reveal, gift, mutual rematch, departure and challenge decline/accept. No captured game errors. [Raw report](docs/validation/qa-2026-10-10/network.json). Explicit `session_only`; no cloud confirmation claim.
 
-Final candidate is left running at the desktop PvP hangar with controls enabled and no game-script console errors. No commit, push or publication is claimed. AND-189/221/222 remain open for physical-phone touch/performance, heard audio, published two-account networking, confirmed live save/rejoin, unfamiliar-player replay and remaining balance/readability concerns. A normal draw and corrected timeout result still need final-build visual observation. See [the playtest checklist](docs/SKY-BATTLE-PLAYTEST.md).
+At the end of this local QA pass, the candidate was left at the desktop PvP hangar with controls enabled and no game-script console errors. Commit, push and publication happened afterward and are recorded above. AND-189/221/222 remain open for physical-phone touch/performance, heard audio, published two-account networking, confirmed live save/rejoin, unfamiliar-player replay and remaining balance/readability concerns. A normal draw and corrected timeout result still need final-build visual observation. See [the playtest checklist](docs/SKY-BATTLE-PLAYTEST.md).
 
 ---
 

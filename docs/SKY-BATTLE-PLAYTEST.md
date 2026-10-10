@@ -2,6 +2,8 @@
 
 This is a free playtest candidate. Milestones 3 and 4, monetization, extra skills, daily rewards and season passes are outside scope. Passing local tests does not close the published/phone or unfamiliar-player gates.
 
+**Current test build:** Skybound Test, place **86507299893768**, universe **10770074500**, published **version 6** at **2026-10-10 18:14:58 UTC** (11:14:58 PDT), from source commit **`a0c9d9e`**. Studio confirmed publication and Playtester availability; Creator Dashboard lists version 6. Access is **Limited**, with **Playtesters enabled** and **Friends disabled**. Publication is complete. The independent-account, physical-phone and live-save checks below are still unverified. [Publication record](QA-2026-10-10.md#limited-test-publication--october-10-2026), [dashboard proof](validation/qa-2026-10-10/published-version-6.jpg).
+
 ## Build and launch
 
 1. Run `build/testenv/bin/python scripts/sample_battle.py --tests-only` and `build/testenv/bin/python scripts/test_server.py` from the repository. The optional environment needs `lupa`.
@@ -18,7 +20,7 @@ The final candidate SHA-256 is **`b0280d3c5a037e5364d260e488770a0bd84d5c73b1be7f
 - **Mechanical checks:** 200 native Studio checks and 44 full-server scenarios passed. The latter comprise 11 current PvP scenarios and 33 explicitly opted-in archived distance regressions; those archived checks do not make distance mode the default.
 - **Networking:** a fresh 10-check run with two real Studio clients passed in **74.66 seconds**, including a three-round match and matching 50/75-coin session awards. Inputs crossed the production remotes programmatically. This is real local client/server evidence, not a two-human GUI playtest or cloud-save proof.
 
-All local progression above was **session-only**. Physical-phone touch/performance, heard audio, a published version with two independent accounts, live persistence/rejoin, and unfamiliar-player comprehension, fun and balance remain open. Emulation and automated tests do not close those gates. This pass also does not sign off every effect in [the presentation audit](BATTLE-AUDIT.md).
+All local progression above was **session-only**. Physical-phone touch/performance, heard audio, two independent accounts playing the published version, live persistence/rejoin, and unfamiliar-player comprehension, fun and balance remain open. Emulation and automated tests do not close those gates. This pass also does not sign off every effect in [the presentation audit](BATTLE-AUDIT.md).
 
 ## Local two-client check
 
@@ -26,9 +28,9 @@ In the Studio testing dropdown choose **Server & Clients**, select **2** clients
 
 The opt-in scripts in `scripts/qa/SkyBattleNetwork.server.luau` and `.client.luau` exercise real client/server remotes automatically. They are excluded from the packaged place. Temporarily install the server file as a Script in ServerScriptService and client file as a LocalScript in StarterPlayerScripts. From an Edit command bar run `print(game:GetService("StudioTestService"):ExecuteMultiplayerTestAsync(2,"SkyBattleNetworkV1"))`. The JSON report ends the test; remove both QA scripts before saving/publishing. This verifies networking with programmatic input, not human UI use or cloud saves. [StudioTestService reference](https://create.roblox.com/docs/reference/engine/classes/StudioTestService).
 
-## Publish the exact candidate to the existing limited test place
+## Published destination and future updates
 
-The recorded test destination is **Skybound Test**, start place `86507299893768`, universe `10770074500`. Verify the owner and current destination in Creator Dashboard before overwriting; do not create a public release. Open the generated candidate, use File → Publish to Roblox As, select that existing experience/start place and publish. Record the resulting place version and UTC time below. [Roblox publishing/access instructions](https://create.roblox.com/docs/production/publishing/publish-games-and-places). Keep the experience Limited/Playtesters and verify both test accounts have Playtest access; prior access records alone are not proof of today's permissions. No purchases or paid products are required.
+The existing limited test destination is **Skybound Test**, start place `86507299893768`, universe `10770074500`; version **6** contains the verified 35-script source from commit `a0c9d9e`. For future updates, verify the owner/destination, synchronize and compare the intended candidate, publish to this existing place, then record the new version and UTC time. Do not substitute an old open tab or create a public release. [Roblox publishing/access instructions](https://create.roblox.com/docs/production/publishing/publish-games-and-places). Keep the experience Limited/Playtesters and verify both test accounts have Playtest access; prior access records alone are not proof of today's permissions. No purchases or paid products are required.
 
 Restart existing game servers so both devices load that version. Record each account role, device model, OS, client version and network. Use one real phone and one independently connected desktop or second phone. A Studio client and the device emulator do not meet this gate.
 
@@ -65,7 +67,10 @@ Predeclared discovery targets: at least 80% reach a first fight within 20 second
 
 - Candidate source/build hash: `b0280d3c5a037e5364d260e488770a0bd84d5c73b1be7fa699c7c32c4f2d80db` (verify against manifest after any rebuild)
 - Local candidate path: `/Users/andrew/Documents/ChatGPT/color-switch/build/Sky-Battle-Playtest.rbxlx`
-- Published place version / UTC:
+- Published place / universe: `86507299893768` / `10770074500` (Skybound Test)
+- Published place version / UTC: **6** / **2026-10-10T18:14:58Z**; Studio success confirmation and Creator Dashboard version history observed
+- Published source commit: `a0c9d9eafa08a9bc5624641837ee59c824b3021d` (35 script sources matched; the local XML hash is not a published native-file hash)
+- Confirmed access: Limited; Playtesters enabled; Friends disabled ([publication proof](validation/qa-2026-10-10/published-version-6.jpg)); individual test-account access still to verify
 - Accounts / roles / fresh or progressed:
 - Phone and other device / OS / orientation / network:
 - Unfamiliar tester count / recruitment:
@@ -76,4 +81,4 @@ Predeclared discovery targets: at least 80% reach a first fight within 20 second
 - Heard audio judgement / frame stability / errors:
 - Largest drop-off / keep-change-drop / next experiment and threshold:
 
-Current observed evidence and remaining blockers are in [the October 10 QA round](QA-2026-10-10.md) and [VALIDATION.md](../VALIDATION.md). Local visual/input play and two-client programmatic checks passed within the scope above; the published fields remain empty intentionally. An empty field here is unverified, not a pass.
+Current observed evidence and remaining blockers are in [the October 10 QA round](QA-2026-10-10.md) and [VALIDATION.md](../VALIDATION.md). Local visual/input play, two-client programmatic checks and publication are recorded separately. The account/device/gameplay/save fields remain empty intentionally until the published test runs. An empty field here is unverified, not a pass.

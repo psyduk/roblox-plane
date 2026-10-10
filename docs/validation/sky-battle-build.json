@@ -42,6 +42,15 @@
   "scope": "Sky Battle Milestones 1 and 2; free playtest",
   "defaultMode": "plane_battle",
   "diagnosticOverridesAbsent": true,
-  "publishedVersion": null,
+  "publishedVersion": 6,
+  "publishedPlaceId": 86507299893768,
+  "publishedUniverseId": 10770074500,
+  "sourceCommit": "a0c9d9eafa08a9bc5624641837ee59c824b3021d",
+  "publishedAtUTC": "2026-10-10T18:14:58Z",
+  "publicationEvidence": "qa-2026-10-10/published-version-6.jpg",
+  "publishedAccess": {"audience": "Limited", "playtesters": true, "friends": false},
+  "publishedSourceParityVerified": true,
+  "publishedArtifactByteIdentical": false,
+  "publicationNote": "Published directly from the existing Skybound Test cloud place after verifying all 35 sources, remotes, clean gameplay flags, empty authored world, Sensor orientation and native visual lighting properties. Protected lighting migration metadata retains cloud originalTechnology=1 versus reference=2; the local place SHA-256 is not a hash of the published native artifact.",
   "publishedAndRealPhoneVerified": false
 }
