@@ -1,3 +1,15 @@
+# Battle Lab and hangar integration — October 9, 2026
+
+Integrated the current Battle Lab onto hangar redesign `ca25d3e`, using `76b18d5` as the reviewed resolution. The final Meteor, crash, audio and simulation modules were verified unchanged. The two entry paths remain separate: **PLAY PLANE BATTLES / BATTLE LAB** starts combat; the hangar's **PLAY / SOLO** starts distance flight.
+
+- The Battle Lab entrance uses `Hud:getHubStackTop()` above the new plane selector. It hides during PLAY search, the shop and the stats popup. The latter was fixed during this integration.
+- **43 server scenarios**, 30 player-stat checks and nine cosmetic checks pass. New integration tests cover PLAY then Lab in the same frame, Lab then PLAY, and preservation of hangar appearance/bay assignment through Lab entry, respawn and exit. They validate the `not p.quick` guard and prevent a pending ghost fallback or human reservation from overlapping the Lab.
+- **27 combat, 21 audio and six crash checks** pass in actual Studio Luau after integration. A complete native default battle still ends at **27.25 seconds**, Meteor winning 2–0 armor; Firework falls, rests on the floor and emits the ground-crash cue.
+- Native clicks verified stats-modal entry suppression, PLAY search and cancel, Lab entry, launch, Results and return to the redesigned hangar. While in the Lab, hangar visuals are empty, the flight HUD is disabled and `SkyboundFlying` is true. Returning restores the parked-plane/unlock visuals, normal camera, walk speed 16 and an unanchored character, removes the battle arena, and clears `SkyboundFlying`.
+- Desktop entry placement was inspected at **2075×856**. Rebuilt and checked source parity for all **30 packaged scripts**, including `HangarBay`. This integration does not add physical-phone or published-network evidence; earlier hangar and Battle Lab playtest limits remain below.
+
+---
+
 # Meteor charge and ground crash — October 9, 2026
 
 This revision intentionally changes Meteor preparation to create visible travel before a committed strike. Meteor spends 0.6 seconds arcing toward open space, then 0.4 seconds aiming. Ordinary approach/recovery, Firework attack rules, one damage per successful hit and three-hit armor remain unchanged. Earlier movement-preservation records below apply to their own revisions.
@@ -339,3 +351,39 @@ The final settings are a first balancing pass. Real-player tension, repeated pla
 - Completed two authoritative practice flights in one Studio session (diagnostics skipped setup waits; flight simulation and rewards were unchanged), including a real rematch button click. Awards advanced the bank 0 → 25 → 50; results and hangar switched from 15 more coins to ready to buy. Native UI purchase of Sky Blue debited 40 coins, ownership appeared with 10 remaining, and a separate Equip click set the equipped trail to Sky Blue. Studio session data resets when Play stops.
 - Temporary client-only module checks verified no payout replay on repeated snapshots, immediate reduced-motion final values, intermediate-width lobby title fit, and wallet/purchase-label bounds at 320/401/600/750/2075px widths including the maximum supported balance. A tied practice result exposed an existing misleading victory heading; it now shows DEAD HEAT, verified against a tied diagnostic snapshot. Temporary modules and GUIs were destroyed.
 - The final fresh Play logged client/server ready without runtime errors. One earlier inspection command used a wrong reward-frame name; that was an AssistantCommand diagnostic error, corrected during inspection, not a game script failure. `git diff --check` passed. Existing automated checks passed: 30 player-stats tests, 9 cosmetic-catalog tests, and 29 server scenarios. Published persistence and real-device input/performance were not revalidated by this UI pass.
+
+## Hangar redesign — October 9, 2026
+
+This pass rebuilt the hangar layout, added the PLAY quick match, the personal bay, the unlock stand, other pilots' bays, the flight board and runway departures, and made Fly Again skip the course vote. Preview: [hangar](previews/hangar-redesign.jpg).
+
+Checked in a single-client Studio Play session on desktop:
+
+- The place loads and plays with no script errors in the Output window, across two builds.
+- The spawn camera frames the parked plane, the unlock stand, both gates and the flight board.
+- The plane arrows and paint swatch change the parked plane (Cruiser to Skyhopper, coral to cyan).
+- PLAY shows the search status with a countdown, Cancel returns to the hub, and after six seconds alone it starts a practice flight against the ghost.
+- Fly Again after a practice flight opens directly on the power choice with the same course type.
+- Returning with 50 coins sent coins from the plane to the stand, which turned green with "Ready - claim it!". Pressing E at the stand bought and equipped Sky Blue, left 10 coins, recolored the plane's ribbons and advanced the stand to Afterburner.
+- The flight board showed the club best after the first landing, and a departure was visible on the runway.
+
+Also checked outside Studio: `scripts/test_server.py` passes 33 scenarios with mocked Roblox services. Four are new (PLAY pairing two pilots, the ghost fallback and in-place cancel, PLAY joining a pad waiter, the flight board), and two rematch scenarios now expect the Configure phase.
+
+Checked in a Studio Server & Clients session with two players (each client viewport about 494x228, a short landscape size):
+
+- Player2 pressed PLAY alone and, after the fallback, flew the ghost. Player1's hangar showed Player2's wall bay as "Flying now" and the flight board read "Now flying Player2 vs Practice · Skipper".
+- Both players pressed PLAY within the search window and entered the same human duel immediately; the flight HUD labelled the opponent as Rival, and results paid the 50-coin draw reward to each.
+- After both returned, Player1 saw Player2's plane parked in a wall bay labelled "In the hangar", showing the Skyhopper Player2 had just switched to.
+- The hub stack, coin pill and results layout fit the short landscape viewport. Player1's Output showed no script errors. Player2's Output showed one Roblox CoreScript chat error (`ChatScript: SetCore CoreGuiChatConnections has not been registered`), which is Studio's own script, not Skybound's.
+
+Preview: [two pilots](previews/hangar-redesign-two-pilots.jpg).
+
+Still to validate: portrait phones and the mobile jump-button clearance; gamepad navigation of the new buttons; reduced-motion mode; more than four other pilots (only four wall bays exist, so later arrivals are not shown).
+
+## Battle Lab on the redesigned hangar — October 9, 2026
+
+Integration of the Battle Lab work (as it stood in the working tree at 23:18) onto the hangar redesign. Conflicts were in the README, `build.py`, `Hud.luau`, `Main.client.luau` and `Main.server.luau`. The hangar's PLAY stack is kept; the Battle Lab entry button now sits directly above the plane selector instead of over it. A pilot searching through PLAY cannot enter the lab, a pilot in the lab shows as "Flying now" in other pilots' wall bays, and the hangar's local visuals are cleared while the lab is open.
+
+- `scripts/test_server.py`: 40 scenarios pass (33 hangar, 7 Battle Lab). `scripts/sample_battle.py --tests-only`: 27 pass.
+- Single-client Studio Play: no script errors. Entered the lab from the hangar, launched a Meteor vs Firework battle, returned with the Hangar button, then PLAY showed the rival search and Cancel returned to the hub.
+
+Not checked: Battle Lab results screens after this merge, and two clients with one in the lab.

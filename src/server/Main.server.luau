@@ -21,6 +21,10 @@ local DURATIONS = {Voting=8, Configure=25, Aim=20, Countdown=3, Flight=45, Resul
 local VARIANTS = {"Coast", "Skyline", "Storm"}
 local GADGETS = {Shield=true, Magnet=true, Boost=true}
 local profiles, matches, queues = {}, {}, {}
+-- PLAY searches briefly for a human rival, then starts a labelled ghost flight.
+local QUICK_FALLBACK = 6
+local quickQueue, baySlots = {}, {}
+local clubBest = nil
 local shuttingDown = false
 local serverSession = HttpService:GenerateGUID(false)
 -- Local Studio deliberately never touches the live player-data store.
@@ -96,12 +100,29 @@ local function moveCharacter(p, inMatch)
     root.AssemblyAngularVelocity=Vector3.zero
     character:PivotTo(CFrame.new(inMatch and Vector3.new(0,1000,-3500) or World.LOBBY_SPAWN))
 end
+local function clearQuick(p)
+    if p.quick then
+        local index=table.find(quickQueue,p.player.UserId)
+        if index then table.remove(quickQueue,index) end
+        p.quick=nil
+    end
+end
 local function clearQueue(p)
+    clearQuick(p)
     if p.queue then
         local q=queues[p.queue.stationId]
         if q and q.seats[p.queue.seat]==p.player.UserId then q.seats[p.queue.seat]=false; q.fullSince=nil end
         p.queue=nil
     end
+end
+-- Replicated look attributes let every client render the club's parked planes.
+local function publishLook(p)
+    local player=p.player
+    player:SetAttribute("SkyboundPlane",p.settings.planeId)
+    player:SetAttribute("SkyboundColor",p.settings.color)
+    player:SetAttribute("SkyboundTrail",p.settings.trailId)
+    player:SetAttribute("SkyboundFlying",p.matchId~=nil or p.inBattleLab==true)
+    player:SetAttribute("SkyboundBay",p.bay or 0)
 end
 local function release(p, message)
     clearQueue(p)
@@ -161,18 +182,20 @@ local function snapshot(p)
     end
     local personalStats,saveStatus=statsService:get(p.statsHandle)
     local economy=statsService:getEconomy(p.statsHandle)
-    economy.canShop=economy.canShop and not m and not p.queue and not p.inBattleLab
-    return {phase=p.inBattleLab and "BattleLab" or (m and m.phase or (p.queue and "Queued" or "Lobby")),
+    economy.canShop=economy.canShop and not m and not p.queue and not p.quick and not p.inBattleLab
+    local queue=p.queue
+    if not queue and p.quick then queue={quick=true,stationName="QUICK MATCH",fallbackAt=p.quick.fallbackAt} end
+    return {phase=p.inBattleLab and "BattleLab" or (m and m.phase or (queue and "Queued" or "Lobby")),
         matchId=m and m.id or 0,roundId=m and m.round or 0,
         endsAt=m and m.endsAt or 0,courseName=m and m.courseName or "Coast",
         courseSeed=m and m.course.seed or 104729,votes=m and voteCounts(m) or {},players=list,
         results=m and m.results or {},message=m and m.message or p.message,
         elapsed=m and m.elapsed or 0,serverTime=now(),prototype=true,stats=personalStats,saveStatus=saveStatus,
         economy=economy,cosmeticFeedback=p.cosmeticFeedback,
-        queue=p.queue,queues=queueSnapshot(),canRematch=m and canRematch(m) or false}
+        queue=queue,queues=queueSnapshot(),canRematch=m and canRematch(m) or false}
 end
 local function broadcast()
-    for _,p in pairs(profiles) do snapshots:FireClient(p.player,snapshot(p)) end
+    for _,p in pairs(profiles) do publishLook(p); snapshots:FireClient(p.player,snapshot(p)) end
     local count=0
     for _ in pairs(matches) do count+=1 end
     shared:SetAttribute("ActiveDuels",count)
@@ -190,7 +213,19 @@ local function beginVoting(m)
     end
     setPhase(m,"Voting","Pick the landscape for your duel. Both pilots face the same course.")
 end
-local function configure(m)
+local configure
+-- Fly Again keeps the course type both pilots just flew and skips the vote;
+-- the seed still changes, and powers can be changed before aiming.
+local function beginRematch(m)
+    local courseName=m.courseName
+    beginVoting(m)
+    for _,e in ipairs(m.entrants) do
+        if not e.bot then m.votes[e.userId]=courseName end
+    end
+    configure(m)
+    m.votes={}
+end
+function configure(m)
     local counts=voteCounts(m)
     local highest,tied=-1,{}
     for _,name in ipairs(VARIANTS) do
@@ -276,6 +311,7 @@ local function finish(m)
             r.creditsEarned=credits or 0
             if r.completed and not r.forfeit then
                 p.best=math.max(p.best,r.distance); p.player:SetAttribute("SessionBest",p.best)
+                if not clubBest or r.distance>clubBest.distance then clubBest={name=r.name,distance=r.distance} end
             end
             telemetry:matchComplete(p.player,r.forfeit and "forfeit" or (outcome=="draw" and "tie" or outcome),m.practice)
             task.spawn(function() statsService:save(p.statsHandle,false) end)
@@ -312,7 +348,7 @@ local function createMatch(ids, practice)
 end
 local function leaveMatch(p)
     local m=p.matchId and matches[p.matchId]
-    local abandonedPhase=m and m.phase or (p.queue and "Queued" or "Lobby")
+    local abandonedPhase=m and m.phase or ((p.queue or p.quick) and "Queued" or "Lobby")
     release(p)
     if not m then
         if abandonedPhase=="Queued" then telemetry:phaseAbandoned(p.player,abandonedPhase) end
@@ -356,7 +392,7 @@ local function scanQueues()
         for seat,position in ipairs(station.seats) do
             if not q.seats[seat] then
                 for id,p in pairs(profiles) do
-                    if not p.queue and onPad(p,position) then
+                    if not p.queue and not p.quick and onPad(p,position) then
                         q.seats[seat]=id; p.queue={stationId=station.id,stationName=station.name,seat=seat}
                         telemetry:queueStart(p.player); break
                     end
@@ -372,10 +408,61 @@ local function scanQueues()
     for id,q in pairs(queues) do counts[id]=(q.seats[1] and 1 or 0)+(q.seats[2] and 1 or 0) end
     World.updateLobbyQueues(counts)
 end
+-- A pilot alone on a pad is also a valid rival for PLAY, so a small
+-- population is never divided between the pads and the quick queue.
+local function padWaiter(excludeId)
+    for _,station in ipairs(World.DUEL_STATIONS) do
+        local q=queues[station.id]
+        local first,second=q.seats[1],q.seats[2]
+        if first and not second and first~=excludeId and profiles[first] then return first end
+        if second and not first and second~=excludeId and profiles[second] then return second end
+    end
+    return nil
+end
+local function quickRival(excludeId)
+    for _,id in ipairs(quickQueue) do
+        if id~=excludeId and profiles[id] and not profiles[id].matchId then return id end
+    end
+    return padWaiter(excludeId)
+end
+local function startQuick(p)
+    if p.matchId or p.queue or p.quick then return end
+    local id=p.player.UserId
+    local rival=quickRival(id)
+    if rival then createMatch({rival,id},false); return end
+    p.quick={since=now(),fallbackAt=now()+QUICK_FALLBACK}
+    table.insert(quickQueue,id)
+    telemetry:queueStart(p.player)
+end
+local function scanQuick()
+    for index=#quickQueue,1,-1 do
+        local id=quickQueue[index]
+        local p=profiles[id]
+        if not p or not p.quick or p.matchId then
+            table.remove(quickQueue,index)
+            if p then p.quick=nil end
+        else
+            local rival=padWaiter(id)
+            if rival then createMatch({rival,id},false)
+            elseif now()>=p.quick.fallbackAt then createMatch({id},true) end
+        end
+    end
+end
+local function updateBoard()
+    if not World.updateLobbyBoard then return end
+    local flying=nil
+    local lowest=math.huge
+    for matchId,m in pairs(matches) do
+        if (m.phase=="Flight" or m.phase=="Countdown") and matchId<lowest and m.entrants[2] then
+            lowest=matchId; flying=m.entrants[1].name.."  vs  "..m.entrants[2].name
+        end
+    end
+    World.updateLobbyBoard(flying,clubBest)
+end
 local battleLab=BattleLab.new({simulation=BattleSimulation,now=now,
     canEnter=function(player)
         local p=profiles[player.UserId]
-        return not shuttingDown and p~=nil and not p.matchId and not p.queue and not p.inBattleLab
+        return not shuttingDown and p~=nil and not p.matchId and not p.queue and not p.quick and not p.inBattleLab
     end,
     entered=function(player)
         local p=profiles[player.UserId]
@@ -395,6 +482,9 @@ local function joined(player)
     local p={player=player,settings=copySettings({planeId=PlaneCatalog.DEFAULT_ID,gadget="Shield",color=1}),ready=false,best=0,
         lastCommand={},message="Walk onto a 1v1 pad with another pilot."}
     profiles[player.UserId]=p
+    for slot=1,#(World.LINEUP_BAYS or {}) do
+        if not baySlots[slot] then baySlots[slot]=player.UserId; p.bay=slot; break end
+    end
     p.statsHandle=statsService:open(player.UserId)
     player:SetAttribute("SessionBest",0)
     player:SetAttribute("StatsSaveStatus",p.statsHandle.status)
@@ -415,6 +505,7 @@ Players.PlayerRemoving:Connect(function(player)
     if p then
         if not shuttingDown then leaveMatch(p) end
         telemetry:sessionEnd(player)
+        if p.bay then baySlots[p.bay]=nil end
         profiles[player.UserId]=nil
         task.spawn(function() statsService:close(p.statsHandle) end)
     end
@@ -422,7 +513,7 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 for _,player in ipairs(Players:GetPlayers()) do joined(player) end
 
-local ALLOWED={request=true,vote=true,configure=true,ready=true,practice=true,leaveQueue=true,returnLobby=true,rematch=true,
+local ALLOWED={request=true,vote=true,configure=true,ready=true,practice=true,play=true,leaveQueue=true,returnLobby=true,rematch=true,
     buyCosmetic=true,equipCosmetic=true}
 local function cosmeticFeedback(p,result)
     p.cosmeticFeedbackSequence=(p.cosmeticFeedbackSequence or 0)+1
@@ -441,7 +532,7 @@ local function handleCommand(p,payload)
         -- One shared limit prevents alternating buy/equip from bypassing it.
         if now()-(p.lastCosmeticCommand or -math.huge)<0.25 then return end
         p.lastCosmeticCommand=now()
-        if m or p.queue then
+        if m or p.queue or p.quick then
             cosmeticFeedback(p,{ok=false,code="not_in_lobby",message="Return to the hangar before changing your collection."})
         else
             local result
@@ -456,14 +547,17 @@ local function handleCommand(p,payload)
         snapshots:FireClient(p.player,snapshot(p)); return
     end
     if payload.kind=="practice" and not m then createMatch({p.player.UserId},true)
-    elseif payload.kind=="leaveQueue" and not m then leaveMatch(p)
+    elseif payload.kind=="play" and not m then startQuick(p)
+    elseif payload.kind=="leaveQueue" and not m then
+        -- Cancelling a search leaves the pilot standing where they are.
+        if p.quick then clearQuick(p); telemetry:phaseAbandoned(p.player,"Queued") else leaveMatch(p) end
     elseif payload.kind=="returnLobby" then leaveMatch(p)
     elseif m and payload.kind=="rematch" and m.phase=="Results" and canRematch(m) then
         m.rematchVotes[p.player.UserId]=true
         telemetry:rematch(p.player)
         local ready=true
         for _,e in ipairs(m.entrants) do if not e.bot and not m.rematchVotes[e.userId] then ready=false end end
-        if ready then beginVoting(m) end
+        if ready then beginRematch(m) end
     elseif m and payload.kind=="vote" and m.phase=="Voting" and table.find(VARIANTS,payload.variant) then
         m.votes[p.player.UserId]=payload.variant
     elseif payload.kind=="configure" and (not m or m.phase=="Configure" or m.phase=="Voting" or m.phase=="Aim") then
@@ -489,7 +583,7 @@ RunService.Heartbeat:Connect(function(dt)
     statsService:step()
     battleLab:step(dt)
     queueAccumulator+=dt
-    if queueAccumulator>=0.15 then queueAccumulator=0; scanQueues() end
+    if queueAccumulator>=0.15 then queueAccumulator=0; scanQueues(); scanQuick(); updateBoard() end
     for id,m in pairs(matches) do
         local attached=false
         for _,e in ipairs(m.entrants) do if profiles[e.userId] and profiles[e.userId].matchId==id then attached=true end end

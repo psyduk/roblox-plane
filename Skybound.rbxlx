@@ -1106,11 +1106,12 @@ local PLANE_COLORS = { COLORS.coral, COLORS.cyan, COLORS.yellow, COLORS.purple }
 local planeData = setmetatable({}, { __mode = "k" })
 
 local THEMES = {
+	-- Late-afternoon light: a warm tint instead of flat grey midday.
 	Hub = {
-		clock = 14, brightness = 1.7, exposure = -0.2,
-		ambient = Color3.fromRGB(80, 85, 100), outdoor = Color3.fromRGB(100, 105, 120),
-		tint = Color3.new(1, 1, 1), saturation = 0, contrast = 0,
-		fog = Color3.fromRGB(190, 216, 236),
+		clock = 16.3, brightness = 1.9, exposure = -0.1,
+		ambient = Color3.fromRGB(100, 96, 100), outdoor = Color3.fromRGB(136, 128, 124),
+		tint = Color3.fromRGB(255, 249, 240), saturation = 0.06, contrast = 0.04,
+		fog = Color3.fromRGB(236, 208, 182),
 	},
 	Coast = {
 		clock = 13.5, brightness = 1.8, exposure = -0.12,
@@ -1156,7 +1157,7 @@ function World.setArenaTheme(name)
 		correction.Name = "FlightArenaColor"
 		correction.Parent = Lighting
 	end
-	correction.Enabled = theme ~= THEMES.Hub
+	correction.Enabled = true
 	correction.TintColor = theme.tint
 	correction.Saturation = theme.saturation
 	correction.Contrast = theme.contrast
@@ -1167,14 +1168,24 @@ function World.resetTheme()
 	World.setArenaTheme("Hub")
 end
 
-World.LOBBY_SPAWN = Vector3.new(0, 7, 62)
+World.LOBBY_SPAWN = Vector3.new(9, 7, 32)
+-- Floor positions. The hero bay holds the local pilot's own plane, nose toward
+-- the doors; line-up bays show other pilots; the stand shows the next unlock.
+World.HERO_BAY = { position = Vector3.new(0, 4, 10), rotation = math.pi / 2, scale = 2 }
+World.UNLOCK_STAND = Vector3.new(30, 4, 20)
+World.LINEUP_BAYS = {
+	{ position = Vector3.new(-74, 4, 42), rotation = 0, scale = 1.3 },
+	{ position = Vector3.new(-74, 4, 14), rotation = 0, scale = 1.3 },
+	{ position = Vector3.new(-74, 4, -14), rotation = 0, scale = 1.3 },
+	{ position = Vector3.new(74, 4, -14), rotation = math.pi, scale = 1.3 },
+}
 World.COURSE_ORIGIN = Vector3.new(0, 0, -5000)
 World.LOBBY_CAMERA = {
-	position = Vector3.new(16, 25, 86),
-	lookAt = Vector3.new(0, 8, 62),
+	position = Vector3.new(8, 17, 60),
+	lookAt = Vector3.new(0, 9, 10),
 }
 World.DUEL_STATIONS = {}
-for index, x in { -81, -27, 27, 81 } do
+for index, x in { -27, 27 } do
 	table.insert(World.DUEL_STATIONS, {
 		id = "duel" .. index,
 		name = "DUEL " .. index,
@@ -1540,7 +1551,7 @@ local HANGAR = {
 	steel = Color3.fromRGB(48, 67, 83),
 	wall = Color3.fromRGB(133, 151, 157),
 	roof = Color3.fromRGB(182, 191, 188),
-	concrete = Color3.fromRGB(163, 172, 168),
+	concrete = Color3.fromRGB(160, 164, 162),
 	lane = Color3.fromRGB(88, 105, 112),
 	white = Color3.fromRGB(238, 236, 216),
 	amber = Color3.fromRGB(250, 185, 65),
@@ -1576,7 +1587,8 @@ local function floorLabel(parent, name, position, size, title, color)
 	return plate
 end
 
-local function parkedPlane(parent, name, colorIndex, planeId, position, rotation, scale, trailId)
+-- `floor` is the point on the ground beneath the aircraft's pivot.
+local function parkedPlane(parent, name, colorIndex, planeId, floor, rotation, scale, trailId)
 	local model = World.createPlane(parent, name, colorIndex, planeId, trailId)
 	model:ScaleTo(scale)
 	-- Parked aircraft have landing gear, so the fleet reads as a working
@@ -1591,8 +1603,25 @@ local function parkedPlane(parent, name, colorIndex, planeId, position, rotation
 	part(model, "TailWheel", Vector3.new(0.4, 0.8, 0.8) * scale,
 		CFrame.new(-3.25 * scale, -2.4 * scale, 0) * CFrame.Angles(0, math.pi / 2, 0),
 		COLORS.deep, Enum.Material.SmoothPlastic, false, Enum.PartType.Cylinder)
-	model:PivotTo(CFrame.new(position) * CFrame.Angles(0, rotation, 0))
+	model:PivotTo(CFrame.new(floor + Vector3.new(0, 2.8 * scale + 0.08, 0)) * CFrame.Angles(0, rotation, 0))
 	return model
+end
+World.createParkedPlane = parkedPlane
+
+-- Parked planes keep their engine ticking over; only the propeller moves.
+-- Pass `moving` for a plane that is being flown along a path, so its real
+-- Trail draws; leave it nil for a plane standing in a bay.
+function World.idlePlane(model, dt, moving)
+	local data = planeData[model]
+	if not data then return end
+	if moving ~= nil then data.trail.Enabled = moving end
+	data.phase = (data.phase + dt * 26) % (math.pi * 2)
+	data.propeller:PivotTo(model:GetPivot() * CFrame.new(5.1 * model:GetScale(), 0, 0) * CFrame.Angles(data.phase, 0, 0))
+end
+
+function World.trailLook(trailId)
+	local entry = CosmeticCatalog.get(trailId) or CosmeticCatalog.get(CosmeticCatalog.DEFAULT_ID)
+	return cosmeticColor(entry.color), cosmeticColor(entry.secondaryColor), entry
 end
 
 local function maintenanceCart(parent, position, accent)
@@ -1606,35 +1635,41 @@ local function maintenanceCart(parent, position, accent)
 	end
 end
 
+-- A neon outline on the floor marks a destination in its zone color.
+local function floorOutline(parent, name, center, size, color)
+	for _, side in { -1, 1 } do
+		part(parent, name, Vector3.new(size.X, 0.12, 0.45), CFrame.new(center + Vector3.new(0, 0.1, side * size.Y / 2)), color, Enum.Material.Neon)
+		part(parent, name, Vector3.new(0.45, 0.12, size.Y), CFrame.new(center + Vector3.new(side * size.X / 2, 0.1, 0)), color, Enum.Material.Neon)
+	end
+end
+
+local boardLabels = {}
+
 function World.buildLobby()
 	World.resetTheme()
 	local existing = Workspace:FindFirstChild("FlightLobby")
 	if existing then existing:Destroy() end
 	queueLabels = {}
+	boardLabels = {}
 	local lobby = Instance.new("Folder")
 	lobby.Name = "FlightLobby"
 	lobby.Parent = Workspace
-	-- The established spawn and queue coordinates remain inside one real
-	-- hangar. A clear center aisle connects arrivals to the four duel gates.
+	-- A compact hangar: the pilot's own bay sits in the middle, with every
+	-- other destination a few seconds' walk away. Each zone has one color:
+	-- cyan for the pilot's bay, violet for flight effects, amber for duels.
+	local HALF, FRONT, BACK = 100, -99, 64
+	local MID, DEPTH = (FRONT + BACK) / 2, BACK - FRONT
+	local hero = World.HERO_BAY.position
 	part(lobby, "AirfieldGround", Vector3.new(1200, 8, 1400), CFrame.new(0, -6, -280), Color3.fromRGB(111, 154, 119), Enum.Material.Grass, true)
-	part(lobby, "HangarFoundation", Vector3.new(258, 8, 210), CFrame.new(0, -2, 2), HANGAR.steel, Enum.Material.Concrete, true)
-	local slab = part(lobby, "PolishedConcrete", Vector3.new(252, 2, 204), CFrame.new(0, 3, 2), HANGAR.concrete, Enum.Material.Concrete, true)
+	part(lobby, "HangarFoundation", Vector3.new(HALF * 2 + 8, 8, DEPTH + 7), CFrame.new(0, -2, MID), HANGAR.steel, Enum.Material.Concrete, true)
+	local slab = part(lobby, "PolishedConcrete", Vector3.new(HALF * 2 + 2, 2, DEPTH + 1), CFrame.new(0, 3, MID), HANGAR.concrete, Enum.Material.Concrete, true)
 	slab.Reflectance = 0.045
-	for _, x in { -84, -42, 0, 42, 84 } do
-		part(lobby, "ConcreteJoint", Vector3.new(0.08, 0.035, 202), CFrame.new(x, 4.025, 2), HANGAR.lane)
+	for _, x in { -66, -33, 33, 66 } do
+		part(lobby, "ConcreteJoint", Vector3.new(0.08, 0.035, DEPTH - 2), CFrame.new(x, 4.025, MID), HANGAR.lane)
 	end
-	for _, z in { -64, -22, 20, 62 } do
-		part(lobby, "ConcreteJoint", Vector3.new(250, 0.035, 0.08), CFrame.new(0, 4.025, z), HANGAR.lane)
+	for _, z in { -70, -20, 40 } do
+		part(lobby, "ConcreteJoint", Vector3.new(HALF * 2 - 2, 0.035, 0.08), CFrame.new(0, 4.025, z), HANGAR.lane)
 	end
-	part(lobby, "CentralTaxiway", Vector3.new(28, 0.05, 132), CFrame.new(0, 4.05, 24), HANGAR.lane)
-	for _, x in { -14.5, 14.5 } do
-		part(lobby, "TaxiwayEdge", Vector3.new(0.45, 0.06, 132), CFrame.new(x, 4.09, 24), HANGAR.amber)
-	end
-	for z = -27, 84, 17 do
-		part(lobby, "TaxiwayDash", Vector3.new(0.65, 0.06, 7), CFrame.new(0, 4.1, z), HANGAR.amber)
-	end
-	floorLabel(lobby, "DepartureWayfinding", Vector3.new(0, 4.16, 12), Vector2.new(24, 7), "DEPARTURES", HANGAR.white)
-	floorLabel(lobby, "ArrivalsWayfinding", Vector3.new(0, 4.16, 72), Vector2.new(24, 7), "HANGAR 01", HANGAR.white)
 
 	local spawn = Instance.new("SpawnLocation")
 	spawn.Name = "LobbySpawn"
@@ -1650,39 +1685,39 @@ function World.buildLobby()
 	-- Corrugated sidewalls, a back wall, and a faceted barrel roof establish
 	-- an aircraft-scale interior. Skylight strips break up the metal roof.
 	for _, side in { -1, 1 } do
-		local wall = part(lobby, "HangarSideWall", Vector3.new(2, 30, 204), CFrame.new(side * 126, 19, 2), HANGAR.wall, Enum.Material.Metal, true)
+		local wall = part(lobby, "HangarSideWall", Vector3.new(2, 30, DEPTH + 1), CFrame.new(side * (HALF + 1), 19, MID), HANGAR.wall, Enum.Material.Metal, true)
 		wall.CastShadow = true
-		part(lobby, "WallWainscot", Vector3.new(2.3, 7, 204), CFrame.new(side * 124.7, 7.5, 2), HANGAR.steel, Enum.Material.Metal, true)
-		part(lobby, "WallSafetyStripe", Vector3.new(2.4, 0.7, 204), CFrame.new(side * 124.5, 11.3, 2), HANGAR.amber)
-		for z = -90, 100, 19 do
-			part(lobby, "WallRib", Vector3.new(0.65, 23, 0.8), CFrame.new(side * 124.6, 22.5, z), HANGAR.roof, Enum.Material.Metal)
+		part(lobby, "WallWainscot", Vector3.new(2.3, 7, DEPTH + 1), CFrame.new(side * (HALF - 0.3), 7.5, MID), HANGAR.steel, Enum.Material.Metal, true)
+		part(lobby, "WallSafetyStripe", Vector3.new(2.4, 0.7, DEPTH + 1), CFrame.new(side * (HALF - 0.5), 11.3, MID), HANGAR.amber)
+		for z = FRONT + 9, BACK - 4, 19 do
+			part(lobby, "WallRib", Vector3.new(0.65, 23, 0.8), CFrame.new(side * (HALF - 0.4), 22.5, z), HANGAR.roof, Enum.Material.Metal)
 		end
 	end
-	local backWall = part(lobby, "HangarBackWall", Vector3.new(254, 30, 2), CFrame.new(0, 19, 104), HANGAR.wall, Enum.Material.Metal, true)
+	local backWall = part(lobby, "HangarBackWall", Vector3.new(HALF * 2 + 4, 30, 2), CFrame.new(0, 19, BACK + 1), HANGAR.wall, Enum.Material.Metal, true)
 	backWall.CastShadow = true
-	part(lobby, "BackWainscot", Vector3.new(251, 7, 2), CFrame.new(0, 7.5, 102.8), HANGAR.steel, Enum.Material.Metal)
-	part(lobby, "BackSafetyStripe", Vector3.new(251, 0.7, 0.5), CFrame.new(0, 11.3, 102.5), HANGAR.amber)
+	part(lobby, "BackWainscot", Vector3.new(HALF * 2, 7, 2), CFrame.new(0, 7.5, BACK - 0.2), HANGAR.steel, Enum.Material.Metal)
+	part(lobby, "BackSafetyStripe", Vector3.new(HALF * 2, 0.7, 0.5), CFrame.new(0, 11.3, BACK - 0.5), HANGAR.amber)
 	local roofProfile = {
-		Vector2.new(-127, 34), Vector2.new(-98, 47), Vector2.new(-62, 56),
-		Vector2.new(0, 62), Vector2.new(62, 56), Vector2.new(98, 47), Vector2.new(127, 34),
+		Vector2.new(-HALF - 1, 34), Vector2.new(-78, 46), Vector2.new(-49, 54),
+		Vector2.new(0, 59), Vector2.new(49, 54), Vector2.new(78, 46), Vector2.new(HALF + 1, 34),
 	}
-	local roofRuns = { -100, -78, -48, -4, 26, 64, 86, 105 }
+	local roofRuns = { FRONT - 1, -78, -48, -14, 16, 44, BACK + 2 }
 	for index = 1, #roofProfile - 1 do
 		local a, b = roofProfile[index], roofProfile[index + 1]
 		local angle = math.atan2(b.Y - a.Y, b.X - a.X)
 		for run = 1, #roofRuns - 1 do
 			local first, last = roofRuns[run], roofRuns[run + 1]
-			local skylight = (index == 3 or index == 4) and (run == 2 or run == 4 or run == 6)
+			local skylight = (index == 3 or index == 4) and (run == 2 or run == 4)
 			local panel = part(lobby, skylight and "RoofSkylight" or "RoofPanel",
 				Vector3.new((b - a).Magnitude + 0.5, 0.8, last - first + 0.1),
 				CFrame.new((a.X + b.X) / 2, (a.Y + b.Y) / 2, (first + last) / 2) * CFrame.Angles(0, 0, angle),
-				skylight and Color3.fromRGB(185, 225, 228) or HANGAR.roof,
+				skylight and Color3.fromRGB(255, 232, 196) or HANGAR.roof,
 				skylight and Enum.Material.Glass or Enum.Material.Metal, true)
 			panel.Transparency = skylight and 0.68 or 0
 			panel.CastShadow = not skylight
 		end
 	end
-	for _, z in { -98, -32, 36, 103 } do
+	for _, z in { FRONT + 1, -44, 10, BACK - 1 } do
 		for index = 1, #roofProfile - 1 do
 			local a, b = roofProfile[index], roofProfile[index + 1]
 			local upperA, upperB = Vector3.new(a.X, a.Y - 0.8, z), Vector3.new(b.X, b.Y - 0.8, z)
@@ -1692,13 +1727,13 @@ function World.buildLobby()
 			beam(lobby, "RoofTrussBrace", index % 2 == 0 and upperA or lowerA, index % 2 == 0 and lowerB or upperB, 0.55, HANGAR.steel)
 		end
 		for _, side in { -1, 1 } do
-			part(lobby, "StructuralColumn", Vector3.new(2.1, 30, 2.1), CFrame.new(side * 122, 19, z), HANGAR.steel, Enum.Material.Metal, true)
-			part(lobby, "ColumnGuard", Vector3.new(2.4, 5, 2.4), CFrame.new(side * 122, 6.5, z), HANGAR.amber, Enum.Material.Metal)
+			part(lobby, "StructuralColumn", Vector3.new(2.1, 30, 2.1), CFrame.new(side * (HALF - 4), 19, z), HANGAR.steel, Enum.Material.Metal, true)
+			part(lobby, "ColumnGuard", Vector3.new(2.4, 5, 2.4), CFrame.new(side * (HALF - 4), 6.5, z), HANGAR.amber, Enum.Material.Metal)
 		end
 	end
-	for _, x in { -98, -62, 0, 62, 98 } do
-		local height = x == 0 and 60.8 or (math.abs(x) == 62 and 54.8 or 45.8)
-		part(lobby, "RoofPurlin", Vector3.new(0.7, 0.9, 204), CFrame.new(x, height, 2), HANGAR.steel, Enum.Material.Metal)
+	for index = 2, #roofProfile - 1 do
+		local point = roofProfile[index]
+		part(lobby, "RoofPurlin", Vector3.new(0.7, 0.9, DEPTH), CFrame.new(point.X, point.Y - 1.2, MID), HANGAR.steel, Enum.Material.Metal)
 	end
 	-- End infill closes the roof above the entrance and rear wall without
 	-- lowering the open doorway or obstructing the central view to the runway.
@@ -1706,12 +1741,12 @@ function World.buildLobby()
 		local a, b = roofProfile[index], roofProfile[index + 1]
 		local bottom, top = 34, math.min(a.Y, b.Y)
 		if top &gt; bottom then
-			for _, z in { -99, 104 } do
+			for _, z in { FRONT, BACK + 1 } do
 				local infill = part(lobby, "GableInfill", Vector3.new(b.X - a.X, top - bottom, 1.5), CFrame.new((a.X + b.X) / 2, (top + bottom) / 2, z), HANGAR.wall, Enum.Material.Metal, true)
 				infill.CastShadow = true
 			end
 		end
-		for _, z in { -99, 104 } do
+		for _, z in { FRONT, BACK + 1 } do
 			local infill = Instance.new("WedgePart")
 			infill.Name = "SlopedGableInfill"
 			infill.Size = Vector3.new(1.5, math.abs(b.Y - a.Y), b.X - a.X)
@@ -1723,28 +1758,46 @@ function World.buildLobby()
 			infill.Parent = lobby
 		end
 	end
-	for _, x in { -43, 43 } do
-		for _, z in { -62, 12, 78 } do
-			beam(lobby, "LightSuspension", Vector3.new(x, 54, z), Vector3.new(x, 29.5, z), 0.15, HANGAR.steel)
+	for _, x in { -36, 36 } do
+		for _, z in { -60, -8, 42 } do
+			beam(lobby, "LightSuspension", Vector3.new(x, 52, z), Vector3.new(x, 29.5, z), 0.15, HANGAR.steel)
 			part(lobby, "LightHousing", Vector3.new(17, 0.65, 2.5), CFrame.new(x, 29.5, z), HANGAR.steel, Enum.Material.Metal)
-			local fixture = part(lobby, "HangarWorkLight", Vector3.new(15.8, 0.18, 1.8), CFrame.new(x, 29.08, z), HANGAR.white, Enum.Material.Neon)
+			local fixture = part(lobby, "HangarWorkLight", Vector3.new(15.8, 0.18, 1.8), CFrame.new(x, 29.08, z), Color3.fromRGB(255, 236, 200), Enum.Material.Neon)
 			local light = Instance.new("PointLight")
-			light.Color = Color3.fromRGB(255, 240, 210)
-			light.Brightness = 1.2
+			light.Color = Color3.fromRGB(255, 226, 180)
+			light.Brightness = 1.3
 			light.Range = 60
 			light.Shadows = false
 			light.Parent = fixture
 		end
 	end
 	for _, side in { -1, 1 } do
-		part(lobby, "OpenDoorStack", Vector3.new(12, 30, 4), CFrame.new(side * 118, 19, -99), HANGAR.steel, Enum.Material.Metal, true)
+		part(lobby, "OpenDoorStack", Vector3.new(12, 30, 4), CFrame.new(side * (HALF - 7), 19, FRONT), HANGAR.steel, Enum.Material.Metal, true)
 		for _, offset in { -3.7, 0, 3.7 } do
-			part(lobby, "DoorPanelSeam", Vector3.new(0.18, 29, 0.2), CFrame.new(side * 118 + offset, 19, -96.8), HANGAR.wall)
+			part(lobby, "DoorPanelSeam", Vector3.new(0.18, 29, 0.2), CFrame.new(side * (HALF - 7) + offset, 19, FRONT + 2.2), HANGAR.wall)
 		end
 	end
-	part(lobby, "DoorLintel", Vector3.new(250, 2, 4), CFrame.new(0, 34.1, -99), HANGAR.steel, Enum.Material.Metal)
-	part(lobby, "DoorTrack", Vector3.new(226, 0.07, 1), CFrame.new(0, 4.08, -97), HANGAR.steel, Enum.Material.Metal)
-	sign(lobby, "ClubSign", Vector3.new(0, 38, -96), Vector3.new(94, 8, 0.7), "SKYBOUND", "F L I G H T   C L U B", COLORS.cyan, math.pi)
+	part(lobby, "DoorLintel", Vector3.new(HALF * 2, 2, 4), CFrame.new(0, 34.1, FRONT), HANGAR.steel, Enum.Material.Metal)
+	part(lobby, "DoorTrack", Vector3.new(HALF * 2 - 24, 0.07, 1), CFrame.new(0, 4.08, FRONT + 2), HANGAR.steel, Enum.Material.Metal)
+
+	-- The flight board over the doors is the club's shared scoreboard: who is
+	-- in the air right now and the longest landing of this server session.
+	local boardPose = CFrame.new(0, 43, FRONT + 3) * CFrame.Angles(0, math.pi, 0)
+	part(lobby, "FlightBoardFrame", Vector3.new(112, 15, 0.9), boardPose, COLORS.cyan)
+	local board = part(lobby, "FlightBoard", Vector3.new(110, 13, 0.9), boardPose * CFrame.new(0, 0, -0.2), COLORS.navy)
+	local boardGui = Instance.new("SurfaceGui")
+	boardGui.Name = "Board"
+	boardGui.Face = Enum.NormalId.Front
+	boardGui.LightInfluence = 0
+	boardGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	boardGui.PixelsPerStud = 20
+	boardGui.Parent = board
+	textLabel(boardGui, "SKYBOUND  FLIGHT  CLUB", UDim2.fromScale(0.04, 0.06), UDim2.fromScale(0.92, 0.3), COLORS.cyan).Name = "Title"
+	boardLabels.flying = textLabel(boardGui, "", UDim2.fromScale(0.04, 0.4), UDim2.fromScale(0.92, 0.27), COLORS.yellow)
+	boardLabels.flying.Name = "NowFlying"
+	boardLabels.best = textLabel(boardGui, "", UDim2.fromScale(0.04, 0.7), UDim2.fromScale(0.92, 0.22), COLORS.cream, Enum.Font.GothamBold)
+	boardLabels.best.Name = "ClubBest"
+	World.updateLobbyBoard(nil, nil)
 
 	-- The broad apron and runway are visible through the open hangar doors.
 	part(lobby, "AircraftApron", Vector3.new(360, 6, 220), CFrame.new(0, 1, -210), Color3.fromRGB(126, 141, 143), Enum.Material.Concrete, true)
@@ -1761,18 +1814,41 @@ function World.buildLobby()
 	for _, x in { -30, -22, -14, 14, 22, 30 } do
 		part(lobby, "RunwayThreshold", Vector3.new(3.5, 0.08, 22), CFrame.new(x, 4.08, -124), HANGAR.white)
 	end
-	parkedPlane(lobby, "ApronAircraftLeft", 1, "skyhopper", Vector3.new(-88, 9.1, -152), math.pi / 2, 1.8)
-	parkedPlane(lobby, "ApronAircraftRight", 3, "dart", Vector3.new(89, 9.1, -170), math.pi / 2, 1.8)
+	parkedPlane(lobby, "ApronAircraftLeft", 1, "skyhopper", Vector3.new(-88, 4, -152), math.pi / 2, 1.8)
+	parkedPlane(lobby, "ApronAircraftRight", 3, "dart", Vector3.new(89, 4, -170), math.pi / 2, 1.8)
 	for _, x in { -93, 93 } do
 		for _, z in { -182, -118 } do
 			part(lobby, "ApronBayMark", Vector3.new(45, 0.08, 0.4), CFrame.new(x, 4.08, z), HANGAR.amber)
 		end
 	end
 
-	-- All four existing queue stations retain their exact pad coordinates.
+	-- The pilot's own bay. Each client parks its selected plane here, so the
+	-- first thing every pilot sees is the aircraft they are about to fly.
+	part(lobby, "HeroBayFloor", Vector3.new(40, 0.08, 36), CFrame.new(hero + Vector3.new(0, 0.06, 0)), COLORS.navy)
+	floorOutline(lobby, "HeroBayOutline", hero, Vector2.new(40, 36), COLORS.cyan)
+	for _, side in { -1, 1 } do
+		part(lobby, "WheelChock", Vector3.new(2, 0.6, 1.4), CFrame.new(hero + Vector3.new(side * 3, 0.4, -3.2)), HANGAR.amber)
+	end
+	-- A taxi line runs from the bay nose straight out of the doors.
+	for z = hero.Z - 24, FRONT + 4, -11 do
+		part(lobby, "TaxiDash", Vector3.new(0.7, 0.06, 6), CFrame.new(0, 4.1, z), HANGAR.amber)
+	end
+	local console = part(lobby, "HeroBayConsole", Vector3.new(4, 5, 4), CFrame.new(hero + Vector3.new(-17, 2.5, 13)), HANGAR.steel, Enum.Material.Metal, true)
+	part(lobby, "HeroBayConsoleScreen", Vector3.new(3.2, 2, 0.15), CFrame.new(hero + Vector3.new(-17, 3.6, 15.1)), COLORS.cyan, Enum.Material.Neon)
+	lobbyPrompt(console, "HeroBayPrompt", "Next plane", "YOUR BAY", 12)
+
+	-- The next unlock stands beside the bay. Each client fills the display.
+	local stand = World.UNLOCK_STAND
+	local pedestal = part(lobby, "UnlockPedestal", Vector3.new(3.2, 11, 11), CFrame.new(stand + Vector3.new(0, 1.6, 0)) * CFrame.Angles(0, 0, math.pi / 2), HANGAR.steel, Enum.Material.Metal, true, Enum.PartType.Cylinder)
+	part(lobby, "UnlockPedestalTop", Vector3.new(0.3, 10, 10), CFrame.new(stand + Vector3.new(0, 3.3, 0)) * CFrame.Angles(0, 0, math.pi / 2), COLORS.navy, nil, false, Enum.PartType.Cylinder)
+	floorOutline(lobby, "UnlockStandOutline", stand, Vector2.new(18, 18), COLORS.purple)
+	lobbyPrompt(pedestal, "UnlockStandPrompt", "View effect", "NEXT UNLOCK", 14)
+
+	-- Two duel gates keep a small club together. PLAY reaches the same queue;
+	-- the pads remain for challenging the pilot standing next to you.
 	for index, station in World.DUEL_STATIONS do
 		local x = (station.seats[1].X + station.seats[2].X) / 2
-		local accent = PLANE_COLORS[index]
+		local accent = HANGAR.amber
 		part(lobby, "QueueApproach", Vector3.new(34, 0.06, 28), CFrame.new(x, 4.09, -29), HANGAR.lane)
 		for _, offset in { -17, 17 } do
 			part(lobby, "QueueLaneMark", Vector3.new(0.45, 0.09, 42), CFrame.new(x + offset, 4.11, -35), HANGAR.white)
@@ -1795,72 +1871,52 @@ function World.buildLobby()
 		local display = part(lobby, station.id .. "Display", Vector3.new(31, 7, 0.8), CFrame.new(x, 15.5, -62) * CFrame.Angles(0, math.pi, 0), COLORS.navy)
 		local gui = surface(display, station.name, "0 / 2 READY", accent)
 		queueLabels[station.id] = gui:FindFirstChild("Subtitle")
-		floorLabel(lobby, station.id .. "GroundLabel", Vector3.new(x, 4.17, -25), Vector2.new(28, 6), "1v1  /  STEP ON A PAD", HANGAR.white)
+		floorLabel(lobby, station.id .. "GroundLabel", Vector3.new(x, 4.17, -25), Vector2.new(28, 6), "CHALLENGE A FRIEND", HANGAR.white)
 	end
 
-	-- Aircraft are parked nose-out in three service bays along the left wall.
-	part(lobby, "FleetServiceFloor", Vector3.new(71, 0.1, 95), CFrame.new(-85, 4.12, 49), HANGAR.lane)
-	for _, z in { 2, 33, 64, 96 } do
-		part(lobby, "FleetBayLine", Vector3.new(67, 0.1, 0.4), CFrame.new(-85, 4.21, z), HANGAR.amber)
+	-- Other pilots' planes line the walls. Clients park each pilot's current
+	-- plane and trail in the bay the server assigned to them.
+	sign(lobby, "LineupTitle", Vector3.new(-HALF + 0.9, 24, 16), Vector3.new(62, 7, 0.6), "PILOTS IN THE CLUB", "", COLORS.cyan, -math.pi / 2)
+	for index, bay in World.LINEUP_BAYS do
+		part(lobby, "LineupBayFloor", Vector3.new(26, 0.08, 22), CFrame.new(bay.position + Vector3.new(0, 0.06, 0)), HANGAR.lane)
+		floorOutline(lobby, "LineupBayOutline", bay.position, Vector2.new(26, 22), HANGAR.white)
 	end
-	part(lobby, "FleetAisleEdge", Vector3.new(0.45, 0.1, 94), CFrame.new(-49.5, 4.21, 49), HANGAR.amber)
-	sign(lobby, "FleetTitle", Vector3.new(-119, 23, 50), Vector3.new(78, 8, 0.6), "THE FLEET", "THREE PLANES. FIND YOUR FLIGHT STYLE.", COLORS.yellow, -math.pi / 2)
-	for index, planeId in PlaneCatalog.ORDER do
-		local z = 17 + (index - 1) * 31
-		local entry = PlaneCatalog.get(planeId)
-		parkedPlane(lobby, "ShowroomPlane" .. index, index, planeId, Vector3.new(-85, 8.95, z), 0, 1.65)
-		local fleetStand = sign(lobby, "FleetLabel" .. index, Vector3.new(-53, 8, z), Vector3.new(24, 5.5, 0.6), string.upper(entry.name), "FREE TO FLY", PLANE_COLORS[index], -math.pi / 2)
-		local prompt = lobbyPrompt(fleetStand, "FleetPrompt", "Select plane", entry.name)
-		prompt:SetAttribute("PlaneId", planeId)
-		for _, side in { -1, 1 } do
-			part(lobby, "WheelChock", Vector3.new(1.3, 0.55, 2), CFrame.new(-83.7 + side * 1.7, 4.4, z - 2.5), HANGAR.amber)
-		end
-	end
-	local fleetConsole = part(lobby, "FleetSelectionConsole", Vector3.new(4, 5, 6), CFrame.new(-46, 6.5, 49), HANGAR.steel, Enum.Material.Metal, true)
-	part(lobby, "FleetConsoleScreen", Vector3.new(0.15, 2.2, 4.8), CFrame.new(-43.9, 7.4, 49), COLORS.cyan, Enum.Material.Neon)
-	maintenanceCart(lobby, Vector3.new(-112, 6.75, 91), COLORS.coral)
+	maintenanceCart(lobby, Vector3.new(-88, 6.75, 58), COLORS.coral)
 
-	-- A staffed-looking service counter and three trail demonstrations make
-	-- effects a destination that can be understood from the spawn aisle.
-	part(lobby, "EffectsServiceFloor", Vector3.new(72, 0.1, 95), CFrame.new(86, 4.12, 49), HANGAR.lane)
-	part(lobby, "EffectsAisleEdge", Vector3.new(0.45, 0.1, 94), CFrame.new(50, 4.21, 49), COLORS.cyan)
-	part(lobby, "EffectsBackboard", Vector3.new(1.2, 20, 82), CFrame.new(120, 18, 49), COLORS.navy, Enum.Material.Metal)
-	sign(lobby, "EffectsShopTitle", Vector3.new(118.7, 24, 49), Vector3.new(73, 9, 0.6), "FLIGHT EFFECTS", "FLY. EARN COINS. MAKE IT YOURS.", COLORS.cyan, math.pi / 2)
-	local counter = part(lobby, "EffectsShopCounter", Vector3.new(6, 4.2, 66), CFrame.new(59, 6.1, 50), HANGAR.steel, Enum.Material.Metal, true)
-	part(lobby, "EffectsCountertop", Vector3.new(7.4, 0.55, 67), CFrame.new(59, 8.5, 50), HANGAR.white, Enum.Material.SmoothPlastic, true)
-	part(lobby, "EffectsCounterLight", Vector3.new(0.2, 0.4, 62), CFrame.new(55.9, 7.1, 50), COLORS.cyan, Enum.Material.Neon)
-	sign(lobby, "EffectsCounterLabel", Vector3.new(55.8, 6.1, 50), Vector3.new(29, 3.1, 0.2), "BROWSE EFFECTS", "", COLORS.cyan, math.pi / 2)
+	-- Flight effects keep one violet corner: a counter that opens the shop
+	-- and a banner for every trail in the catalog.
+	part(lobby, "EffectsServiceFloor", Vector3.new(38, 0.1, 44), CFrame.new(80, 4.12, 36), HANGAR.lane)
+	floorOutline(lobby, "EffectsOutline", Vector3.new(80, 4.12, 36), Vector2.new(38, 44), COLORS.purple)
+	part(lobby, "EffectsBackboard", Vector3.new(1.2, 20, 44), CFrame.new(HALF - 1.2, 18, 36), COLORS.navy, Enum.Material.Metal)
+	sign(lobby, "EffectsShopTitle", Vector3.new(HALF - 2.1, 24.5, 36), Vector3.new(40, 6, 0.6), "FLIGHT EFFECTS", "", COLORS.purple, math.pi / 2)
+	local counter = part(lobby, "EffectsShopCounter", Vector3.new(6, 4.2, 34), CFrame.new(72, 6.1, 36), HANGAR.steel, Enum.Material.Metal, true)
+	part(lobby, "EffectsCountertop", Vector3.new(7.4, 0.55, 35), CFrame.new(72, 8.5, 36), HANGAR.white, Enum.Material.SmoothPlastic, true)
+	part(lobby, "EffectsCounterLight", Vector3.new(0.2, 0.4, 32), CFrame.new(68.9, 7.1, 36), COLORS.purple, Enum.Material.Neon)
 	lobbyPrompt(counter, "EffectsShopPrompt", "Browse effects", "FLIGHT EFFECTS", 16)
-	local terminal = part(lobby, "EffectsShopTerminal", Vector3.new(0.5, 2.8, 3.8), CFrame.new(57.4, 10, 48) * CFrame.Angles(0, 0, -0.13), COLORS.navy, Enum.Material.Metal)
+	local terminal = part(lobby, "EffectsShopTerminal", Vector3.new(0.5, 2.8, 3.8), CFrame.new(70.4, 10, 36) * CFrame.Angles(0, 0, -0.13), COLORS.navy, Enum.Material.Metal)
 	terminal:SetAttribute("ShopTerminal", true)
-	for index, trailId in { "skyblue", "ember", "violet" } do
-		local entry = CosmeticCatalog.get(trailId)
-		local color, second = cosmeticColor(entry.color), cosmeticColor(entry.secondaryColor)
-		local z = 20 + (index - 1) * 29
-		part(lobby, "EffectsDisplayMark", Vector3.new(46, 0.1, 25), CFrame.new(93, 4.22, z), COLORS.navy)
-		part(lobby, "EffectsDisplayAccent", Vector3.new(0.35, 0.15, 25), CFrame.new(70, 4.3, z), color, Enum.Material.Neon)
-		parkedPlane(lobby, "EffectsDisplayPlane" .. index, index, PlaneCatalog.ORDER[index], Vector3.new(86, 7.55, z), math.pi, 1.2, trailId)
-		-- Static translucent ribbons remain visible without moving the parked
-		-- aircraft; real trails on match planes use the same catalog colors.
-		for ribbon = 1, 3 do
-			local segment = part(lobby, "TrailSampleRibbon", Vector3.new(7.6, 0.45, 1.6 + ribbon * 0.35),
-				CFrame.new(93 + ribbon * 6.8, 7.85 + math.sin(ribbon) * 0.3, z), color:Lerp(second, (ribbon - 1) / 2), Enum.Material.Neon)
-			segment.Transparency = 0.16 + (ribbon - 1) * 0.2
-		end
-		sign(lobby, "EffectsDisplayLabel" .. index, Vector3.new(119, 12.7, z), Vector3.new(25, 5, 0.4), string.upper(entry.name), tostring(entry.price) .. " COINS", color, math.pi / 2)
+	for index, trailId in CosmeticCatalog.ORDER do
+		local color, second = World.trailLook(trailId)
+		local z = 19.5 + (index - 1) * 6.6
+		part(lobby, "TrailBannerTop", Vector3.new(0.3, 4.5, 4.6), CFrame.new(HALF - 2, 16.5, z), color, Enum.Material.Neon)
+		part(lobby, "TrailBannerTail", Vector3.new(0.3, 4.5, 4.6), CFrame.new(HALF - 2, 12, z), color:Lerp(second, 0.75), Enum.Material.Neon).Transparency = 0.2
 	end
-	maintenanceCart(lobby, Vector3.new(109, 6.75, 94), HANGAR.amber)
-
-	-- A compact dispatch corner gives solo players the same return-to-lobby
-	-- loop, with no obstruction between the arrivals mark and the duel pads.
-	local practiceDesk = part(lobby, "PracticeDispatchDesk", Vector3.new(16, 4, 6), CFrame.new(31, 6, 88), HANGAR.steel, Enum.Material.Metal, true)
-	part(lobby, "PracticeDeskTop", Vector3.new(17, 0.5, 7), CFrame.new(31, 8.25, 88), HANGAR.white, nil, true)
-	part(lobby, "PracticeDisplay", Vector3.new(9, 4, 0.6), CFrame.new(31, 10.5, 90), COLORS.navy)
-	sign(lobby, "PracticeSign", Vector3.new(31, 19, 101), Vector3.new(32, 9, 0.7), "SOLO FLIGHT", "PRACTICE + EARN COINS", COLORS.lime)
-	lobbyPrompt(practiceDesk, "PracticePrompt", "Practice flight", "SOLO DISPATCH", 14)
-	sign(lobby, "ArrivalsSign", Vector3.new(-12, 23, 101), Vector3.new(43, 9, 0.7), "WELCOME, PILOT", "FLEET LEFT  /  EFFECTS RIGHT  /  DUELS AHEAD", HANGAR.white)
+	maintenanceCart(lobby, Vector3.new(88, 6.75, 4), HANGAR.amber)
 	World.updateLobbyQueues({})
 	return lobby
+end
+
+-- `flying` is "PILOT vs PILOT" for one duel in the air; `best` is the longest
+-- completed flight on this server, or nil before anyone has landed.
+function World.updateLobbyBoard(flying, best)
+	local nowFlying, clubBest = boardLabels.flying, boardLabels.best
+	if nowFlying and nowFlying.Parent then
+		nowFlying.Text = flying and ("NOW FLYING   " .. string.upper(flying)) or "RUNWAY CLEAR  -  PRESS PLAY"
+	end
+	if clubBest and clubBest.Parent then
+		clubBest.Text = best and string.format("CLUB BEST TODAY   %s   %.1f M", string.upper(best.name), best.distance)
+			or "CLUB BEST TODAY   BE THE FIRST TO LAND"
+	end
 end
 
 function World.updateLobbyQueues(queueCounts)
@@ -2485,6 +2541,10 @@ local DURATIONS = {Voting=8, Configure=25, Aim=20, Countdown=3, Flight=45, Resul
 local VARIANTS = {"Coast", "Skyline", "Storm"}
 local GADGETS = {Shield=true, Magnet=true, Boost=true}
 local profiles, matches, queues = {}, {}, {}
+-- PLAY searches briefly for a human rival, then starts a labelled ghost flight.
+local QUICK_FALLBACK = 6
+local quickQueue, baySlots = {}, {}
+local clubBest = nil
 local shuttingDown = false
 local serverSession = HttpService:GenerateGUID(false)
 -- Local Studio deliberately never touches the live player-data store.
@@ -2560,12 +2620,29 @@ local function moveCharacter(p, inMatch)
     root.AssemblyAngularVelocity=Vector3.zero
     character:PivotTo(CFrame.new(inMatch and Vector3.new(0,1000,-3500) or World.LOBBY_SPAWN))
 end
+local function clearQuick(p)
+    if p.quick then
+        local index=table.find(quickQueue,p.player.UserId)
+        if index then table.remove(quickQueue,index) end
+        p.quick=nil
+    end
+end
 local function clearQueue(p)
+    clearQuick(p)
     if p.queue then
         local q=queues[p.queue.stationId]
         if q and q.seats[p.queue.seat]==p.player.UserId then q.seats[p.queue.seat]=false; q.fullSince=nil end
         p.queue=nil
     end
+end
+-- Replicated look attributes let every client render the club's parked planes.
+local function publishLook(p)
+    local player=p.player
+    player:SetAttribute("SkyboundPlane",p.settings.planeId)
+    player:SetAttribute("SkyboundColor",p.settings.color)
+    player:SetAttribute("SkyboundTrail",p.settings.trailId)
+    player:SetAttribute("SkyboundFlying",p.matchId~=nil or p.inBattleLab==true)
+    player:SetAttribute("SkyboundBay",p.bay or 0)
 end
 local function release(p, message)
     clearQueue(p)
@@ -2625,18 +2702,20 @@ local function snapshot(p)
     end
     local personalStats,saveStatus=statsService:get(p.statsHandle)
     local economy=statsService:getEconomy(p.statsHandle)
-    economy.canShop=economy.canShop and not m and not p.queue and not p.inBattleLab
-    return {phase=p.inBattleLab and "BattleLab" or (m and m.phase or (p.queue and "Queued" or "Lobby")),
+    economy.canShop=economy.canShop and not m and not p.queue and not p.quick and not p.inBattleLab
+    local queue=p.queue
+    if not queue and p.quick then queue={quick=true,stationName="QUICK MATCH",fallbackAt=p.quick.fallbackAt} end
+    return {phase=p.inBattleLab and "BattleLab" or (m and m.phase or (queue and "Queued" or "Lobby")),
         matchId=m and m.id or 0,roundId=m and m.round or 0,
         endsAt=m and m.endsAt or 0,courseName=m and m.courseName or "Coast",
         courseSeed=m and m.course.seed or 104729,votes=m and voteCounts(m) or {},players=list,
         results=m and m.results or {},message=m and m.message or p.message,
         elapsed=m and m.elapsed or 0,serverTime=now(),prototype=true,stats=personalStats,saveStatus=saveStatus,
         economy=economy,cosmeticFeedback=p.cosmeticFeedback,
-        queue=p.queue,queues=queueSnapshot(),canRematch=m and canRematch(m) or false}
+        queue=queue,queues=queueSnapshot(),canRematch=m and canRematch(m) or false}
 end
 local function broadcast()
-    for _,p in pairs(profiles) do snapshots:FireClient(p.player,snapshot(p)) end
+    for _,p in pairs(profiles) do publishLook(p); snapshots:FireClient(p.player,snapshot(p)) end
     local count=0
     for _ in pairs(matches) do count+=1 end
     shared:SetAttribute("ActiveDuels",count)
@@ -2654,7 +2733,19 @@ local function beginVoting(m)
     end
     setPhase(m,"Voting","Pick the landscape for your duel. Both pilots face the same course.")
 end
-local function configure(m)
+local configure
+-- Fly Again keeps the course type both pilots just flew and skips the vote;
+-- the seed still changes, and powers can be changed before aiming.
+local function beginRematch(m)
+    local courseName=m.courseName
+    beginVoting(m)
+    for _,e in ipairs(m.entrants) do
+        if not e.bot then m.votes[e.userId]=courseName end
+    end
+    configure(m)
+    m.votes={}
+end
+function configure(m)
     local counts=voteCounts(m)
     local highest,tied=-1,{}
     for _,name in ipairs(VARIANTS) do
@@ -2740,6 +2831,7 @@ local function finish(m)
             r.creditsEarned=credits or 0
             if r.completed and not r.forfeit then
                 p.best=math.max(p.best,r.distance); p.player:SetAttribute("SessionBest",p.best)
+                if not clubBest or r.distance&gt;clubBest.distance then clubBest={name=r.name,distance=r.distance} end
             end
             telemetry:matchComplete(p.player,r.forfeit and "forfeit" or (outcome=="draw" and "tie" or outcome),m.practice)
             task.spawn(function() statsService:save(p.statsHandle,false) end)
@@ -2776,7 +2868,7 @@ local function createMatch(ids, practice)
 end
 local function leaveMatch(p)
     local m=p.matchId and matches[p.matchId]
-    local abandonedPhase=m and m.phase or (p.queue and "Queued" or "Lobby")
+    local abandonedPhase=m and m.phase or ((p.queue or p.quick) and "Queued" or "Lobby")
     release(p)
     if not m then
         if abandonedPhase=="Queued" then telemetry:phaseAbandoned(p.player,abandonedPhase) end
@@ -2820,7 +2912,7 @@ local function scanQueues()
         for seat,position in ipairs(station.seats) do
             if not q.seats[seat] then
                 for id,p in pairs(profiles) do
-                    if not p.queue and onPad(p,position) then
+                    if not p.queue and not p.quick and onPad(p,position) then
                         q.seats[seat]=id; p.queue={stationId=station.id,stationName=station.name,seat=seat}
                         telemetry:queueStart(p.player); break
                     end
@@ -2836,10 +2928,61 @@ local function scanQueues()
     for id,q in pairs(queues) do counts[id]=(q.seats[1] and 1 or 0)+(q.seats[2] and 1 or 0) end
     World.updateLobbyQueues(counts)
 end
+-- A pilot alone on a pad is also a valid rival for PLAY, so a small
+-- population is never divided between the pads and the quick queue.
+local function padWaiter(excludeId)
+    for _,station in ipairs(World.DUEL_STATIONS) do
+        local q=queues[station.id]
+        local first,second=q.seats[1],q.seats[2]
+        if first and not second and first~=excludeId and profiles[first] then return first end
+        if second and not first and second~=excludeId and profiles[second] then return second end
+    end
+    return nil
+end
+local function quickRival(excludeId)
+    for _,id in ipairs(quickQueue) do
+        if id~=excludeId and profiles[id] and not profiles[id].matchId then return id end
+    end
+    return padWaiter(excludeId)
+end
+local function startQuick(p)
+    if p.matchId or p.queue or p.quick then return end
+    local id=p.player.UserId
+    local rival=quickRival(id)
+    if rival then createMatch({rival,id},false); return end
+    p.quick={since=now(),fallbackAt=now()+QUICK_FALLBACK}
+    table.insert(quickQueue,id)
+    telemetry:queueStart(p.player)
+end
+local function scanQuick()
+    for index=#quickQueue,1,-1 do
+        local id=quickQueue[index]
+        local p=profiles[id]
+        if not p or not p.quick or p.matchId then
+            table.remove(quickQueue,index)
+            if p then p.quick=nil end
+        else
+            local rival=padWaiter(id)
+            if rival then createMatch({rival,id},false)
+            elseif now()&gt;=p.quick.fallbackAt then createMatch({id},true) end
+        end
+    end
+end
+local function updateBoard()
+    if not World.updateLobbyBoard then return end
+    local flying=nil
+    local lowest=math.huge
+    for matchId,m in pairs(matches) do
+        if (m.phase=="Flight" or m.phase=="Countdown") and matchId&lt;lowest and m.entrants[2] then
+            lowest=matchId; flying=m.entrants[1].name.."  vs  "..m.entrants[2].name
+        end
+    end
+    World.updateLobbyBoard(flying,clubBest)
+end
 local battleLab=BattleLab.new({simulation=BattleSimulation,now=now,
     canEnter=function(player)
         local p=profiles[player.UserId]
-        return not shuttingDown and p~=nil and not p.matchId and not p.queue and not p.inBattleLab
+        return not shuttingDown and p~=nil and not p.matchId and not p.queue and not p.quick and not p.inBattleLab
     end,
     entered=function(player)
         local p=profiles[player.UserId]
@@ -2859,6 +3002,9 @@ local function joined(player)
     local p={player=player,settings=copySettings({planeId=PlaneCatalog.DEFAULT_ID,gadget="Shield",color=1}),ready=false,best=0,
         lastCommand={},message="Walk onto a 1v1 pad with another pilot."}
     profiles[player.UserId]=p
+    for slot=1,#(World.LINEUP_BAYS or {}) do
+        if not baySlots[slot] then baySlots[slot]=player.UserId; p.bay=slot; break end
+    end
     p.statsHandle=statsService:open(player.UserId)
     player:SetAttribute("SessionBest",0)
     player:SetAttribute("StatsSaveStatus",p.statsHandle.status)
@@ -2879,6 +3025,7 @@ Players.PlayerRemoving:Connect(function(player)
     if p then
         if not shuttingDown then leaveMatch(p) end
         telemetry:sessionEnd(player)
+        if p.bay then baySlots[p.bay]=nil end
         profiles[player.UserId]=nil
         task.spawn(function() statsService:close(p.statsHandle) end)
     end
@@ -2886,7 +3033,7 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 for _,player in ipairs(Players:GetPlayers()) do joined(player) end
 
-local ALLOWED={request=true,vote=true,configure=true,ready=true,practice=true,leaveQueue=true,returnLobby=true,rematch=true,
+local ALLOWED={request=true,vote=true,configure=true,ready=true,practice=true,play=true,leaveQueue=true,returnLobby=true,rematch=true,
     buyCosmetic=true,equipCosmetic=true}
 local function cosmeticFeedback(p,result)
     p.cosmeticFeedbackSequence=(p.cosmeticFeedbackSequence or 0)+1
@@ -2905,7 +3052,7 @@ local function handleCommand(p,payload)
         -- One shared limit prevents alternating buy/equip from bypassing it.
         if now()-(p.lastCosmeticCommand or -math.huge)&lt;0.25 then return end
         p.lastCosmeticCommand=now()
-        if m or p.queue then
+        if m or p.queue or p.quick then
             cosmeticFeedback(p,{ok=false,code="not_in_lobby",message="Return to the hangar before changing your collection."})
         else
             local result
@@ -2920,14 +3067,17 @@ local function handleCommand(p,payload)
         snapshots:FireClient(p.player,snapshot(p)); return
     end
     if payload.kind=="practice" and not m then createMatch({p.player.UserId},true)
-    elseif payload.kind=="leaveQueue" and not m then leaveMatch(p)
+    elseif payload.kind=="play" and not m then startQuick(p)
+    elseif payload.kind=="leaveQueue" and not m then
+        -- Cancelling a search leaves the pilot standing where they are.
+        if p.quick then clearQuick(p); telemetry:phaseAbandoned(p.player,"Queued") else leaveMatch(p) end
     elseif payload.kind=="returnLobby" then leaveMatch(p)
     elseif m and payload.kind=="rematch" and m.phase=="Results" and canRematch(m) then
         m.rematchVotes[p.player.UserId]=true
         telemetry:rematch(p.player)
         local ready=true
         for _,e in ipairs(m.entrants) do if not e.bot and not m.rematchVotes[e.userId] then ready=false end end
-        if ready then beginVoting(m) end
+        if ready then beginRematch(m) end
     elseif m and payload.kind=="vote" and m.phase=="Voting" and table.find(VARIANTS,payload.variant) then
         m.votes[p.player.UserId]=payload.variant
     elseif payload.kind=="configure" and (not m or m.phase=="Configure" or m.phase=="Voting" or m.phase=="Aim") then
@@ -2953,7 +3103,7 @@ RunService.Heartbeat:Connect(function(dt)
     statsService:step()
     battleLab:step(dt)
     queueAccumulator+=dt
-    if queueAccumulator&gt;=0.15 then queueAccumulator=0; scanQueues() end
+    if queueAccumulator&gt;=0.15 then queueAccumulator=0; scanQueues(); scanQuick(); updateBoard() end
     for id,m in pairs(matches) do
         local attached=false
         for _,e in ipairs(m.entrants) do if profiles[e.userId] and profiles[e.userId].matchId==id then attached=true end end
@@ -5986,6 +6136,7 @@ local Hud = require(script.Parent:WaitForChild("Hud"))
 local EffectsShop = require(script.Parent:WaitForChild("EffectsShop"))
 local FlightAudio = require(script.Parent:WaitForChild("FlightAudio"))
 local PilotAvatar = require(script.Parent:WaitForChild("PilotAvatar"))
+local HangarBay = require(script.Parent:WaitForChild("HangarBay"))
 local BattleLab = require(script.Parent:WaitForChild("BattleLab"))
 local battleLab = BattleLab.new(World,shared)
 local audio = FlightAudio.new()
@@ -6032,23 +6183,35 @@ local function send(kind, values)
     command:FireServer(payload)
 end
 local effectsShop=EffectsShop.new(send)
-game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt,player)
-    if player and player~=localPlayer then return end
-    if prompt.Name=="EffectsShopPrompt" then effectsShop:open()
-    elseif prompt.Name=="PracticePrompt" and latest and latest.phase=="Lobby" and not effectsShop:isOpen() then send("practice")
-    elseif prompt.Name=="FleetPrompt" and latest and latest.phase=="Lobby" and not effectsShop:isOpen() then
-        local plane=PlaneCatalog.get(prompt:GetAttribute("PlaneId"))
-        if plane then
-            for _,entry in ipairs(latest.players) do
-                if entry.userId==localPlayer.UserId then
-                    local settings=table.clone(entry.settings)
-                    settings.planeId=plane.id; settings.angle=plane.defaultAngle; settings.speed=nil
-                    send("configure",{settings=settings})
-                    break
-                end
-            end
+local hangarBay=HangarBay.new({send=send,openShop=function(itemId) effectsShop:openAt(itemId) end})
+-- The plane in the pilot's bay is changed in place, from the HUD or the bay console.
+local function changeLook(change)
+    if not latest or latest.phase~="Lobby" or effectsShop:isOpen() then return end
+    for _,entry in ipairs(latest.players) do
+        if entry.userId==localPlayer.UserId then
+            local settings=table.clone(entry.settings)
+            change(settings); settings.speed=nil
+            send("configure",{settings=settings})
+            break
         end
     end
+end
+local function cyclePlane(delta)
+    changeLook(function(settings)
+        local index=table.find(PlaneCatalog.ORDER,settings.planeId) or 1
+        local plane=PlaneCatalog.get(PlaneCatalog.ORDER[(index-1+delta)%#PlaneCatalog.ORDER+1])
+        settings.planeId=plane.id; settings.angle=plane.defaultAngle
+    end)
+end
+local function cyclePaint()
+    changeLook(function(settings) settings.color=(settings.color or 1)%4+1 end)
+end
+game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt,player)
+    if player and player~=localPlayer then return end
+    if effectsShop:isOpen() then return end
+    if prompt.Name=="EffectsShopPrompt" then effectsShop:openAt(nil)
+    elseif prompt.Name=="UnlockStandPrompt" then hangarBay:activateStand()
+    elseif prompt.Name=="HeroBayPrompt" then cyclePlane(1) end
 end)
 local function cycleSpectate(delta)
     if not latest then return end
@@ -6067,6 +6230,9 @@ hud=Hud.new({
     ready=function(ready) send("ready",{ready=ready,settings=hud:getLocalSettings()}) end,
     spectate=cycleSpectate,
     practice=function() send("practice") end,
+    play=function() send("play") end,
+    cyclePlane=cyclePlane,
+    cyclePaint=cyclePaint,
     leaveQueue=function() send("leaveQueue") end,
     returnLobby=function() send("returnLobby") end,
     rematch=function() send("rematch") end,
@@ -6243,10 +6409,12 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
     if inLab or phase=="BattleLab" then
         if effectsShop:isOpen() then effectsShop:close() end
         audio:update({},"battle-lab",localPlayer.UserId,false)
+        hangarBay:update(latest,nil,false,dt)
         battleLab:update(dt,false)
         return
     end
-    battleLab:update(dt,phase=="Lobby" and not effectsShop:isOpen())
+    battleLab.entryBottom=hud:getHubStackTop()
+    battleLab:update(dt,phase=="Lobby" and not effectsShop:isOpen() and not hud.statsOverlay.Visible)
     local active=phase=="Flight" or phase=="Results"
     local target=getEntry(watchedUserId)
     if active and (not target or not target.flight) then
@@ -6341,7 +6509,8 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
             local focus=character.HumanoidRootPart.Position+Vector3.new(0,2,0)
             localPlayer.CameraMinZoomDistance=32
             localPlayer.CameraMaxZoomDistance=70
-            camera.CFrame=CFrame.lookAt(focus+Vector3.new(8,10,29),focus)
+            -- Behind the pilot, looking over their plane toward the open doors.
+            camera.CFrame=CFrame.lookAt(focus+Vector3.new(7,10,29),focus)
             camera.Focus=CFrame.new(focus)
             lobbyCameraReset=false; restoreZoomAt=os.clock()+0.2
         elseif restoreZoomAt&gt;0 and os.clock()&gt;=restoreZoomAt then
@@ -6454,6 +6623,7 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
     if hud.setLobbyView then hud:setLobbyView(lobbyView) end
     hud:update(latest,localPlayer.UserId,watchedUserId)
     effectsShop:update(latest,own and own.settings)
+    hangarBay:update(latest,own and own.settings,lobbyView,dt)
     if (phase=="Aim" or phase=="Countdown") and previewPlane then
         local origin,visible=camera:WorldToViewportPoint(previewPlane:GetPivot().Position)
         local points=table.create(#aimTrajectory)
@@ -7103,14 +7273,39 @@ function Hud.new(callbacks)
 	create("UITextSizeConstraint", { MinTextSize = 16, MaxTextSize = 27 }, self.hubTitle)
 	self.hubInstruction = label(self.hubCard, "Instruction", "Walk onto a 1v1 pad with an opponent.", 14, 34, 292, 31, 12, COLORS.white)
 	self.hubInstruction.TextWrapped = true
-	self.hubAction = button(self.gui, "HubAction", "DISTANCE FLIGHT · SOLO", 0, 0, 198, 48, COLORS.cyan)
-	self.hubAction.AnchorPoint = Vector2.new(1, 1)
-	self.hubAction.Position = UDim2.new(1, -16, 1, -28)
-	self.hubAction.TextSize = 14
+	self.hubCard.AnchorPoint = Vector2.new(0.5, 1)
+	self.hubTitle.TextXAlignment = Enum.TextXAlignment.Center
+	self.hubInstruction.TextXAlignment = Enum.TextXAlignment.Center
+	-- One primary action: PLAY finds a rival, or flies a ghost if nobody is around.
+	self.hubAction = button(self.gui, "HubAction", "PLAY", 0, 0, 280, 76, COLORS.green)
+	self.hubAction.AnchorPoint = Vector2.new(0, 1)
 	self:_connect(self.hubAction.Activated, function()
 		if self.phase == "Queued" then self:_call("leaveQueue")
-		elseif self.phase == "Lobby" then self:_call("practice") end
+		elseif self.phase == "Lobby" then self:_call("play") end
 	end)
+	self.practiceButton = button(self.gui, "SoloPractice", "SOLO", 0, 0, 128, 76, COLORS.cyan)
+	self.practiceButton.AnchorPoint = Vector2.new(0, 1)
+	self:_connect(self.practiceButton.Activated, function()
+		if self.phase == "Lobby" then self:_call("practice") end
+	end)
+	-- The plane parked in the bay is swapped in place, without walking anywhere.
+	self.planeRow = frame(self.gui, "PlaneSelect", 0, 0, 420, 50, COLORS.ink)
+	self.planeRow.AnchorPoint = Vector2.new(0.5, 1)
+	self.planeRow.BackgroundTransparency = 0.12
+	corner(self.planeRow, 14)
+	stroke(self.planeRow, COLORS.ink, 2)
+	self.planePrevious = button(self.planeRow, "PreviousPlane", "&lt;", 4, 4, 42, 42, COLORS.blue)
+	self.planeNext = button(self.planeRow, "NextPlane", "&gt;", 0, 4, 42, 42, COLORS.blue)
+	self.paintButton = button(self.planeRow, "Paint", "", 0, 4, 42, 42, PAINTS[1])
+	self.planeName = label(self.planeRow, "Name", "CRUISER", 52, 2, 200, 28, 22, COLORS.white, true)
+	self.planeName.TextXAlignment = Enum.TextXAlignment.Center
+	self.planeName.TextScaled = true
+	create("UITextSizeConstraint", { MinTextSize = 12, MaxTextSize = 22 }, self.planeName)
+	self.planeDetail = label(self.planeRow, "Detail", "", 52, 28, 200, 16, 11, COLORS.soft, true)
+	self.planeDetail.TextXAlignment = Enum.TextXAlignment.Center
+	self:_connect(self.planePrevious.Activated, function() if self.phase == "Lobby" then self:_call("cyclePlane", -1) end end)
+	self:_connect(self.planeNext.Activated, function() if self.phase == "Lobby" then self:_call("cyclePlane", 1) end end)
+	self:_connect(self.paintButton.Activated, function() if self.phase == "Lobby" then self:_call("cyclePaint") end end)
 
 	self.waitingPanel = self:_panel("Waiting", 200)
 	label(self.waitingPanel, "Title", "YOUR NEXT FLIGHT AWAITS", 24, 28, 422, 35, 24, COLORS.ink, true)
@@ -7444,7 +7639,7 @@ function Hud.new(callbacks)
 	self.resultActions.Visible = false
 	corner(self.resultActions, 14)
 	stroke(self.resultActions, COLORS.ink, 3)
-	self.rematchButton = button(self.resultActions, "Rematch", "REMATCH", 8, 8, 219, 48, COLORS.green)
+	self.rematchButton = button(self.resultActions, "Rematch", "FLY AGAIN", 8, 8, 219, 48, COLORS.green)
 	self.returnButton = button(self.resultActions, "ReturnLobby", "RETURN TO LOBBY", 239, 8, 223, 48, COLORS.soft)
 	self:_connect(self.rematchButton.Activated, function()
 		local now = workspace:GetServerTimeNow()
@@ -7538,22 +7733,44 @@ function Hud:_layoutDuel(viewport, height)
 	end
 	local portrait = viewport.X &lt; 600
 	local short = not portrait and height &lt; 430
-	local actionWidth = short and 260 or 280
-	local rewardWidth = short and 252 or 318
-	local hubWidth = portrait and viewport.X - 24 or math.min(short and 340 or 420, viewport.X - math.max(actionWidth, rewardWidth) - 48)
-	local hubHeight = short and 82 or 100
-	place(self.hubCard, portrait and 12 or 16, short and 6 or 10, hubWidth, hubHeight)
-	place(self.hubTitle, 16, 9, hubWidth - 32, 31)
-	self.hubTitle.TextSize = portrait and 22 or (hubWidth &lt; 350 and 20 or 27)
-	place(self.hubInstruction, 16, short and 39 or 44, hubWidth - 32, short and 34 or 43)
-	self.hubInstruction.TextSize = hubWidth &lt; 350 and 13 or 15
-	self.hubAction.AnchorPoint = Vector2.new(1, 0)
-	self.hubAction.Position = UDim2.new(1, portrait and -12 or -16, 0, portrait and 122 or (short and 8 or 10))
-	self.hubAction.Size = UDim2.fromOffset(portrait and viewport.X - 24 or (short and 260 or 280), portrait and 52 or (short and 50 or 58))
-	self.hubAction.TextSize = portrait and 21 or 23
-	local utilityY = portrait and 184 or (short and 100 or 122)
-	local utilityWidth = portrait and (viewport.X - 36) / 2 or math.min(short and 142 or 166, (hubWidth - 12) / 2)
-	place(self.statsButton, portrait and 12 or 16, utilityY, utilityWidth, short and 44 or 46)
+	-- Hub: one centered stack at the bottom. PLAY and SOLO share a row; the
+	-- plane selector sits above it and gives way to the queue status.
+	local margin = portrait and 12 or 16
+	local blockWidth = math.min(420, viewport.X - margin * 2)
+	local soloWidth = portrait and 96 or 128
+	local playWidth = blockWidth - soloWidth - 8
+	self.hubPlayWidth, self.hubBlockWidth = playWidth, blockWidth
+	local playHeight = short and 54 or (portrait and 64 or 76)
+	local blockLeft = (viewport.X - blockWidth) / 2
+	-- Portrait phones keep Roblox's jump button in the bottom-right corner.
+	local bottom = (short and -8 or -14) - ((portrait and UserInputService.TouchEnabled) and 104 or 0)
+	self.hubAction.Position = UDim2.new(0, blockLeft, 1, bottom)
+	self.hubAction.Size = UDim2.fromOffset(playWidth, playHeight)
+	self.hubAction.TextSize = short and 32 or (portrait and 36 or 44)
+	self.practiceButton.Position = UDim2.new(0, blockLeft + playWidth + 8, 1, bottom)
+	self.practiceButton.Size = UDim2.fromOffset(soloWidth, playHeight)
+	self.practiceButton.TextSize = short and 20 or 22
+	local rowHeight = short and 44 or 50
+	local rowBottom = bottom - playHeight - 8
+	local arrow = rowHeight - 8
+	self.planeRow.Position = UDim2.new(0.5, 0, 1, rowBottom)
+	self.planeRow.Size = UDim2.fromOffset(blockWidth, rowHeight)
+	place(self.planePrevious, 4, 4, arrow, arrow)
+	place(self.planeNext, blockWidth - arrow * 2 - 10, 4, arrow, arrow)
+	place(self.paintButton, blockWidth - arrow - 4, 4, arrow, arrow)
+	local nameWidth = blockWidth - arrow * 3 - 26
+	place(self.planeName, arrow + 10, 2, nameWidth, math.floor(rowHeight * 0.56))
+	place(self.planeDetail, arrow + 10, math.floor(rowHeight * 0.58), nameWidth, math.floor(rowHeight * 0.34))
+	self.planeDetail.TextSize = short and 10 or 11
+	local hubHeight = short and 54 or 64
+	self.hubCard.Position = UDim2.new(0.5, 0, 1, rowBottom)
+	self.hubCard.Size = UDim2.fromOffset(blockWidth, hubHeight)
+	place(self.hubTitle, 14, 5, blockWidth - 28, math.floor(hubHeight * 0.5))
+	place(self.hubInstruction, 14, math.floor(hubHeight * 0.55), blockWidth - 28, math.floor(hubHeight * 0.38))
+	self.hubInstruction.TextSize = blockWidth &lt; 350 and 12 or 13
+	local utilityY = short and 6 or 10
+	local utilityWidth = portrait and (viewport.X - 36) / 2 or (short and 132 or 148)
+	place(self.statsButton, margin, utilityY, utilityWidth, short and 44 or 46)
 	self.statsButton.TextSize = short and 17 or 19
 	self.hubSoundPosition = UDim2.fromOffset((portrait and 12 or 16) + utilityWidth + 12, utilityY)
 	self.hubSoundSize = UDim2.fromOffset(utilityWidth, short and 44 or 46)
@@ -7984,6 +8201,13 @@ function Hud:getFlightViewport()
 	return { left = 18, right = viewport.X - 18, top = top, bottom = math.max(top + 40, bottom) }
 end
 
+-- Offset from the bottom edge to just above the hub's plane selector, for
+-- other hub controls that stack on top of it.
+function Hud:getHubStackTop()
+	self:_resize()
+	return self.planeRow.Position.Y.Offset - self.planeRow.Size.Y.Offset - 8
+end
+
 function Hud:getAimViewport()
 	self:_resize()
 	local topInset = GuiService:GetGuiInset()
@@ -8095,7 +8319,7 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		self.rematchRequested = false
 		self.rematchPendingUntil = 0
 		self.canRematch = false
-		self.rematchButton.Text = "REMATCH"
+		self.rematchButton.Text = "FLY AGAIN"
 		self.rematchButton.Active = true
 		self.pendingSettings = nil
 		self.pendingReady = nil
@@ -8163,8 +8387,11 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		unavailable = "Cloud save unavailable · this session may not be saved." }
 	self.statsSave.Text = saveCopy[snapshot.saveStatus] or "Loading your record…"
 	self.header.Visible = not inHub and phase ~= "Flight"
-	self.hubCard.Visible = inHub
+	self.hubCard.Visible = phase == "Queued"
 	self.hubAction.Visible = inHub
+	self.practiceButton.Visible = phase == "Lobby"
+	self.planeRow.Visible = phase == "Lobby"
+	self.footer.Visible = not inHub
 	self.waitingPanel.Visible = phase == "Waiting"
 	self.votePanel.Visible = phase == "Voting"
 	self.configPanel.Visible = phase == "Configure"
@@ -8197,17 +8424,28 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	end
 	self.waitingMessage.Text = snapshot.message or "Getting the runway ready…"
 	if phase == "Lobby" then
-        self.hubTitle.Text = "SKYBOUND / THE HANGAR"
-		self.hubInstruction.Text = self.hubCard.Size.X.Offset &lt; 350 and "Plane battles: PLAY button below.\nDistance flight: gates ahead."
-			or (PlaneCatalog.get(self.settings.planeId).name.." selected · Distance gates ahead.\nPlane battles: PLAY button below.")
-		self.hubAction.Text = "DISTANCE FLIGHT · SOLO"
-		self.hubAction.Visible = self.callbacks.practice ~= nil
+		local plane = PlaneCatalog.get(self.settings.planeId) or PlaneCatalog.get(PlaneCatalog.DEFAULT_ID)
+		self.planeName.Text = string.upper(plane.name)
+		self.planeDetail.Text = tostring(plane.speed) .. " M/S  ·  " .. tostring(plane.defaultAngle) .. "° START"
+		self.paintButton.BackgroundColor3 = PAINTS[self.settings.color] or PAINTS[1]
+		self.hubAction.Text = "PLAY"
+		self.hubAction.BackgroundColor3 = COLORS.green
+		self.hubAction.Size = UDim2.fromOffset(self.hubPlayWidth, self.hubAction.Size.Y.Offset)
 	elseif phase == "Queued" then
-		self.hubTitle.Text = "WAITING FOR OPPONENT"
 		local queue = snapshot.queue or {}
-		local station = queue.stationName or (queue.stationId and "Pad " .. tostring(queue.stationId)) or "1v1 pad"
-		self.hubInstruction.Text = station .. " · walk off the pad to leave."
-		self.hubAction.Text = "LEAVE QUEUE"
+		if queue.quick then
+			local wait = math.max(0, math.ceil((queue.fallbackAt or now) - now))
+			self.hubTitle.Text = "FINDING A RIVAL…"
+			self.hubInstruction.Text = wait &gt; 0 and ("Nobody around? You fly a practice ghost in " .. wait .. "s.")
+				or "Starting your flight…"
+		else
+			local station = queue.stationName or (queue.stationId and "Pad " .. tostring(queue.stationId)) or "1v1 pad"
+			self.hubTitle.Text = "WAITING FOR A RIVAL"
+			self.hubInstruction.Text = station .. " · walk off the pad to leave."
+		end
+		self.hubAction.Text = "CANCEL"
+		self.hubAction.BackgroundColor3 = COLORS.coral
+		self.hubAction.Size = UDim2.fromOffset(self.hubBlockWidth, self.hubAction.Size.Y.Offset)
 	elseif phase == "Voting" then
 		for name, votes in pairs(self.voteCounts) do
 			votes.Text = tostring((snapshot.votes or {})[name] or 0)
@@ -8318,7 +8556,7 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		self.resultsPanel.Title.Text = firstPlaces &gt; 1 and "DEAD HEAT!"
 			or (yourResult and yourResult.rank == 1
 			and (hasForfeit and "YOU WIN THE DUEL." or "YOU WENT FURTHEST.") or "ONE MORE FLIGHT?")
-        self.nextRoundLabel.Text = (snapshot.endsAt or 0) &gt; 0 and ("Return to lobby in " .. remaining .. "s") or "Request a rematch or head back to the club."
+        self.nextRoundLabel.Text = (snapshot.endsAt or 0) &gt; 0 and ("Back to the hangar in " .. remaining .. "s") or "Request a rematch or head back to the club."
 		self:_refreshReward(snapshot, yourResult, now)
 		self.canRematch = snapshot.canRematch == true
 		self.rematchRequested = localPlayer ~= nil and localPlayer.rematchReady == true
@@ -8332,7 +8570,7 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		elseif now &lt; self.rematchPendingUntil then
 			self.rematchButton.Text = "REQUESTING…"
 		else
-			self.rematchButton.Text = opponent and opponent.rematchReady and "ACCEPT REMATCH" or "REMATCH"
+			self.rematchButton.Text = opponent and opponent.rematchReady and not opponent.bot and "ACCEPT REMATCH" or "FLY AGAIN"
 		end
 		local rematchEnabled = self.canRematch and not self.rematchRequested and now &gt;= self.rematchPendingUntil
 		self.rematchButton.Active = rematchEnabled
@@ -8501,22 +8739,8 @@ function Shop.new(send)
     self.wallet.TextScaled=true
     create("UITextSizeConstraint",{MinTextSize=14,MaxTextSize=42},self.wallet)
     self.walletCaption=text(self.openButton,"CoinLabel","COINS",12,C.muted)
-    self.nextPreview,self.nextWorld,self.nextCamera=viewport(self.openButton,"NextEffectPreview")
-    self.nextCaption=text(self.openButton,"NextCaption","NEXT FLIGHT EFFECT",11,C.muted)
-    self.nextName=display(self.openButton,"NextName","SKY BLUE",23,C.white); self.nextName.TextWrapped=true
-    self.nextName.TextScaled=true
-    self.nextNameSize=create("UITextSizeConstraint",{MinTextSize=12,MaxTextSize=23},self.nextName)
-    self.goal=text(self.openButton,"NextUnlock","40 more coins",14,C.ink)
-    self.progress=box(self.openButton,"RewardProgress",C.tile); round(self.progress,8); stroke(self.progress,C.ink,1.5)
-    self.progressFill=box(self.progress,"Fill",C.gold); round(self.progressFill,8)
-    self.progressFill.Size=UDim2.fromScale(0,1)
-    self.progressLabel=text(self.progress,"ProgressLabel","0 / 40",13,C.ink)
-    self.progressLabel.Size=UDim2.fromScale(1,1); self.progressLabel.TextXAlignment=Enum.TextXAlignment.Center
-    self.rewardHint=text(self.openButton,"RewardHint","Finish flights. Collect your favorite trail.",11,C.muted)
-    self.rewardCTA=box(self.openButton,"BrowseAction",C.gold); round(self.rewardCTA,10); stroke(self.rewardCTA)
-    self.rewardCTALabel=text(self.rewardCTA,"Label","BROWSE FLIGHT EFFECTS",18,C.ink)
-    self.rewardCTALabel.Font=Enum.Font.FredokaOne
-    self.rewardCTALabel.Size=UDim2.fromScale(1,1); self.rewardCTALabel.TextXAlignment=Enum.TextXAlignment.Center
+    self.browseLabel=text(self.openButton,"Browse","EFFECTS",15,C.ink)
+    self.browseLabel.Font=Enum.Font.FredokaOne; self.browseLabel.TextXAlignment=Enum.TextXAlignment.Right
     self.overlay=box(self.gui,"ShopOverlay",C.ink)
     self.overlay.Size=UDim2.fromScale(1,1); self.overlay.BackgroundTransparency=0.18
     self.overlay.Visible=false; self.overlay.Active=true
@@ -8552,11 +8776,7 @@ function Shop.new(send)
     self.action=button(self.card,"PurchaseOrEquip","EQUIPPED",C.teal); self.action.TextColor3=C.ink
     self.action.TextWrapped=true
     self.saveLabel=text(self.card,"SaveStatus","",11,C.muted)
-    table.insert(self.connections,self.openButton.Activated:Connect(function()
-        self.selected=self.nextItemId or (self.economy and self.economy.equippedTrail) or Catalog.DEFAULT_ID
-        self.onlyOwned=false
-        self:open()
-    end))
+    table.insert(self.connections,self.openButton.Activated:Connect(function() self:openAt(self.nextItemId) end))
     table.insert(self.connections,self.closeButton.Activated:Connect(function() self:close() end))
     table.insert(self.connections,self.filter.Activated:Connect(function()
         self.onlyOwned=not self.onlyOwned
@@ -8593,58 +8813,20 @@ function Shop:_layout()
     self.lastSize=size
     local portrait=size.X&lt;600
     local short=not portrait and size.Y&lt;500
-    local rw=short and 252 or (portrait and math.min(286,size.X-24) or 318)
-    local smallPortrait=portrait and size.Y&lt;540
-    local rh=short and 176 or (smallPortrait and 140 or (portrait and 246 or 258))
+    -- The wallet is a compact pill; the next unlock lives on its stand in the hangar.
+    local rw=portrait and size.X-24 or (short and 190 or 214)
+    local rh=short and 44 or 46
     self.openButton.AnchorPoint=portrait and Vector2.zero or Vector2.new(1,0)
-    self.openButton.Position=portrait and UDim2.fromOffset(12,242) or UDim2.new(1,short and -12 or -18,0,short and 76 or 84)
+    self.openButton.Position=portrait and UDim2.fromOffset(12,64) or UDim2.new(1,-16,0,short and 6 or 10)
     self.openButton.Size=UDim2.fromOffset(rw,rh)
-    local coinSize=short and 34 or 44
-    place(self.coin,14,12,coinSize,coinSize)
-    self.coinMark.TextSize=short and 24 or 30
-    place(self.wallet,coinSize+24,short and 6 or 5,rw-coinSize-38,short and 35 or 48)
-    self.wallet.TextSize=short and 31 or 42
-    place(self.walletCaption,coinSize+26,short and 38 or 48,rw-coinSize-38,14)
-    self.walletCaption.TextSize=short and 10 or 12
-    local rewardY=short and 56 or 76
-    local previewWidth=short and 86 or 112
-    local previewHeight=short and 46 or (portrait and 60 or 72)
-    place(self.nextPreview,12,rewardY,previewWidth,previewHeight)
-    self.nextCamera.FieldOfView=short and 40 or 38
-    local tx=previewWidth+22
-    local tw=rw-tx-12
-    place(self.nextCaption,tx,rewardY-3,tw,14)
-    self.nextCaption.TextSize=short and 9 or 10
-    place(self.nextName,tx,rewardY+11,tw,short and 22 or 36)
-    self.nextName.TextSize=short and 17 or 21
-    self.nextNameSize.MaxTextSize=short and 17 or 21
-    place(self.goal,tx,rewardY+(short and 34 or 49),tw,short and 16 or 19)
-    self.goal.TextSize=short and 11 or 12
-    self.goal.TextWrapped=true
-    local barY=short and 110 or (portrait and 151 or 160)
-    place(self.progress,14,barY,rw-28,short and 20 or 24)
-    self.progressLabel.TextSize=short and 12 or 14
-    place(self.rewardHint,14,barY+27,rw-28,17)
-    self.rewardHint.Visible=not short
-    self.rewardHint.TextSize=portrait and 10 or 11
-    place(self.rewardCTA,12,rh-(short and 38 or 50),rw-24,short and 30 or 38)
-    self.rewardCTALabel.TextSize=short and 15 or 18
-    self.nextPreview.Visible=not smallPortrait
-    self.nextCaption.Visible=not smallPortrait
-    if smallPortrait then
-        -- Keep the wallet usable below the lobby controls even in a short portrait window.
-        place(self.coin,12,10,32,32); self.coinMark.TextSize=23
-        place(self.wallet,54,4,80,34); self.wallet.TextSize=29
-        place(self.walletCaption,56,35,80,14); self.walletCaption.TextSize=10
-        place(self.nextName,136,8,rw-148,28); self.nextName.TextSize=16
-        self.nextNameSize.MaxTextSize=16
-        place(self.goal,136,36,rw-148,20); self.goal.TextSize=11
-        place(self.progress,12,64,rw-24,22)
-        self.rewardHint.Visible=false
-        place(self.rewardCTA,12,99,rw-24,30); self.rewardCTALabel.TextSize=15
-        local available=math.max(80,size.Y-254)
-        self.rewardBaseScale=math.min(1,available/rh)
-    else self.rewardBaseScale=1 end
+    local coinSize=rh-14
+    place(self.coin,10,7,coinSize,coinSize)
+    self.coinMark.TextSize=22
+    place(self.wallet,coinSize+18,2,rw-coinSize-108,rh-16)
+    place(self.walletCaption,coinSize+19,rh-16,60,12)
+    self.walletCaption.TextSize=9
+    place(self.browseLabel,rw-96,0,84,rh)
+    self.rewardBaseScale=1
     if not self.rewardTween or self.rewardTween.PlaybackState~=Enum.PlaybackState.Playing then
         self.rewardScale.Scale=self.rewardBaseScale
     end
@@ -8732,6 +8914,13 @@ function Shop:open()
     if UserInputService.GamepadEnabled then GuiService.SelectedObject=self.cards[self.selected].button end
 end
 
+-- Open on a particular effect, defaulting to the trail currently equipped.
+function Shop:openAt(itemId)
+    self.selected=Catalog.get(itemId) and itemId or (self.economy and self.economy.equippedTrail) or Catalog.DEFAULT_ID
+    self.onlyOwned=false
+    self:open()
+end
+
 function Shop:close()
     self.overlay.Visible=false
     if GuiService.SelectedObject and GuiService.SelectedObject:IsDescendantOf(self.overlay) then GuiService.SelectedObject=nil end
@@ -8761,40 +8950,20 @@ function Shop:_refresh()
     self.collection.Text=tostring(count).." / "..#Catalog.ORDER.." OWNED"
     self.filter.Text=self.onlyOwned and "MY COLLECTION" or "ALL EFFECTS"
     self.nextItemId=nextItem and nextItem.id or nil
-    local target=nextItem or Catalog.get(economy.equippedTrail) or Catalog.get(Catalog.DEFAULT_ID)
-    local settings=self.settings or {}
-    local previewKey=target.id..":"..tostring(settings.color)..":"..tostring(settings.planeId)
-    if previewKey~=self.nextPreviewKey then
-        self.nextPreviewKey=previewKey
-        previewPlane(self.nextWorld,target,settings)
-    end
     local canAfford=nextItem and credits&gt;=nextItem.price
     if self.lastNextId~=self.nextItemId then self.pendingRewardPulse=nil end
     if self.lastNextId==self.nextItemId and self.lastAffordable==false and canAfford then
         self.pendingRewardPulse=self.nextItemId
     end
     self.lastNextId=self.nextItemId; self.lastAffordable=canAfford==true
-    self.nextCaption.Text=nextItem and "NEXT FLIGHT EFFECT" or "YOUR COLLECTION"
-    self.nextName.Text=string.upper(target.name)
-    self.goal.Text=nextItem and (canAfford and "Ready to buy!" or ((nextItem.price-credits).." more coins")) or "All effects owned!"
-    self.progressFill.Size=UDim2.fromScale(nextItem and nextItem.price&gt;0 and math.clamp(credits/nextItem.price,0,1) or 1,1)
-    self.progressFill.BackgroundColor3=canAfford and C.green or C.gold
-    self.progressLabel.Text=nextItem and (math.min(credits,nextItem.price).." / "..nextItem.price.." COINS") or "COMPLETE COLLECTION"
-    self.rewardHint.Text=nextItem and (canAfford and "Choose your new look in the shop."
-        or (nextItem.price-credits&lt;=Catalog.PRACTICE_REWARD and "One more finished flight to afford it!" or "Every finished flight brings it closer."))
-        or "Fly your signature trail."
-    self.rewardCTALabel.Text=canAfford and "VIEW NEW FLIGHT EFFECT" or "BROWSE FLIGHT EFFECTS"
-    self.rewardCTA.BackgroundColor3=canAfford and C.green or C.gold
-    if not self.economy then
-        self.goal.Text="Loading collection…"; self.rewardHint.Text="Your flight effects will appear here."
-        self.progressLabel.Text="LOADING…"
-    end
+    self.browseLabel.Text=canAfford and "NEW!" or "EFFECTS"
+    self.openButton.BackgroundColor3=canAfford and C.gold or C.panel
     if self.pendingRewardPulse==self.nextItemId and canAfford and self.openButton.Visible and not self.overlay.Visible then
         self.pendingRewardPulse=false
         if not self.reducedMotion then
             if self.rewardTween then self.rewardTween:Cancel() end
             self.rewardScale.Scale=self.rewardBaseScale or 1
-            self.rewardTween=TweenService:Create(self.rewardScale,TweenInfo.new(0.24,Enum.EasingStyle.Back,Enum.EasingDirection.Out,0,true),{Scale=(self.rewardBaseScale or 1)*1.035})
+            self.rewardTween=TweenService:Create(self.rewardScale,TweenInfo.new(0.24,Enum.EasingStyle.Back,Enum.EasingDirection.Out,0,true),{Scale=(self.rewardBaseScale or 1)*1.06})
             self.rewardTween:Play()
         end
     end
@@ -8857,6 +9026,409 @@ return Shop
         </Properties>
       </Item>
       <Item class="ModuleScript" referent="RBX36">
+        <Properties>
+          <string name="Name">HangarBay</string>
+          <ProtectedString name="Source">-- The living parts of the hangar that differ for every pilot, built locally:
+-- your own plane in the centre bay, the next unlock on its stand, the other
+-- pilots' planes along the wall, and departures on the runway outside.
+-- Everything here is presentation. Coins and ownership come from snapshots.
+local Players = game:GetService("Players")
+local GuiService = game:GetService("GuiService")
+local shared = game:GetService("ReplicatedStorage"):WaitForChild("FlightGame")
+local Catalog = require(shared:WaitForChild("CosmeticCatalog"))
+local PlaneCatalog = require(shared:WaitForChild("PlaneCatalog"))
+local World = require(shared:WaitForChild("World"))
+
+local Bay = {}
+Bay.__index = Bay
+
+local INK = Color3.fromRGB(23, 39, 77)
+local CREAM = Color3.fromRGB(255, 245, 217)
+local GOLD = Color3.fromRGB(255, 217, 65)
+local GREEN = Color3.fromRGB(105, 226, 66)
+local CYAN = Color3.fromRGB(66, 225, 239)
+local STEEL = Color3.fromRGB(48, 67, 83)
+local PIPS = 12
+
+local function block(parent, name, size, color, neon, shape)
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Size = size
+	part.Color = color
+	part.Material = neon and Enum.Material.Neon or Enum.Material.SmoothPlastic
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanTouch = false
+	part.CanQuery = false
+	part.CastShadow = false
+	if shape then part.Shape = shape end
+	part.Parent = parent
+	return part
+end
+
+-- A camera-facing caption sized in studs, so it reads as part of the hangar.
+local function caption(adornee, offset, width, height)
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "Caption"
+	gui.Adornee = adornee
+	gui.Size = UDim2.fromScale(width, height)
+	gui.StudsOffsetWorldSpace = offset
+	gui.LightInfluence = 0
+	gui.MaxDistance = 260
+	gui.Parent = adornee
+	return gui
+end
+
+local function line(gui, name, y, height, color)
+	local label = Instance.new("TextLabel")
+	label.Name = name
+	label.BackgroundTransparency = 1
+	label.Position = UDim2.fromScale(0, y)
+	label.Size = UDim2.fromScale(1, height)
+	label.Font = Enum.Font.FredokaOne
+	label.Text = ""
+	label.TextScaled = true
+	label.TextColor3 = color
+	label.TextStrokeColor3 = INK
+	label.TextStrokeTransparency = 0
+	label.Parent = gui
+	return label
+end
+
+local function makeRibbons(parent, count)
+	local set = table.create(count)
+	for index = 1, count do
+		set[index] = block(parent, "TrailRibbon", Vector3.one, CREAM, true)
+	end
+	return set
+end
+
+-- A parked plane cannot draw a real Trail, so a tapered ribbon streams back
+-- from the tail in the trail's catalog colors, as if in a wind tunnel.
+local function flowRibbons(set, pose, scale, color, second, width, length, clock)
+	local count = #set
+	for index, segment in ipairs(set) do
+		local t = (clock * 0.55 + (index - 1) / count) % 1
+		local sway = math.sin(t * 5 + clock * 2.4) * 0.35 * t * scale
+		segment.Size = Vector3.new(length / count * 1.25, 0.14 * scale, 1.4 * scale * width * (1 - t * 0.55))
+		segment.CFrame = pose * CFrame.new(-3.8 * scale - t * length, 0.3 * scale + sway, 0)
+		segment.Color = color:Lerp(second, t)
+		-- Fade in at the tail so a wrapping segment never pops into view.
+		segment.Transparency = 1 - (0.88 - t * 0.88) * math.min(1, t / 0.08)
+	end
+end
+
+local function nextUnlock(economy)
+	for _, id in ipairs(Catalog.ORDER) do
+		local item = Catalog.get(id)
+		if item.price &gt; 0 and not economy.owned[id] then return item end
+	end
+	return nil
+end
+
+function Bay.new(callbacks)
+	local self = setmetatable({}, Bay)
+	self.send = callbacks.send
+	self.openShop = callbacks.openShop
+	self.reducedMotion = false
+	pcall(function() self.reducedMotion = GuiService.ReducedMotionEnabled end)
+	self.folder = Instance.new("Folder")
+	self.folder.Name = "HangarBayVisuals"
+	self.folder.Parent = workspace
+	self.clock = 0
+	self.lineup = {}
+	self.coins = {}
+	self.lineupTimer = 0
+	self.celebrateUntil = 0
+	self.nextDeparture = os.clock() + 5
+	return self
+end
+
+function Bay:_clear()
+	self.folder:ClearAllChildren()
+	self.hero, self.stand, self.departure = nil, nil, nil
+	self.lineup, self.coins = {}, {}
+	self.lineupTimer = 0
+	self.active = false
+end
+
+function Bay:_updateHero(snapshot, settings, dt)
+	local bay = World.HERO_BAY
+	local key = settings.planeId .. ":" .. tostring(settings.color) .. ":" .. tostring(settings.trailId)
+	local hero = self.hero
+	if not hero or hero.key ~= key then
+		local previous = hero
+		if previous then previous.holder:Destroy() end
+		local holder = Instance.new("Folder")
+		holder.Name = "HeroBay"
+		holder.Parent = self.folder
+		local model = World.createParkedPlane(holder, "HeroPlane", settings.color, settings.planeId,
+			bay.position, bay.rotation, bay.scale, settings.trailId)
+		local gui = caption(model.PrimaryPart, Vector3.new(0, 8.6, 0), 21, 4.8)
+		hero = { key = key, holder = holder, model = model, rest = model:GetPivot(),
+			ribbons = makeRibbons(holder, 9), trailId = settings.trailId, droppedAt = os.clock(),
+			name = line(gui, "PlaneName", 0, 0.58, CREAM), record = line(gui, "Record", 0.6, 0.4, GOLD) }
+		local plane = PlaneCatalog.get(settings.planeId) or PlaneCatalog.get(PlaneCatalog.DEFAULT_ID)
+		hero.name.Text = string.upper(plane.name)
+		-- A newly claimed or equipped trail flares for a moment.
+		if previous and previous.trailId ~= settings.trailId then self.celebrateUntil = os.clock() + 1.2 end
+		self.hero = hero
+	end
+	-- A swapped plane settles onto its wheels rather than appearing in place.
+	local drop = self.reducedMotion and 1 or math.clamp((os.clock() - hero.droppedAt) / 0.28, 0, 1)
+	if drop &lt; 1 or hero.settled ~= true then
+		hero.model:PivotTo(hero.rest + Vector3.new(0, (1 - drop) ^ 2 * 2.4, 0))
+		hero.settled = drop &gt;= 1
+	end
+	World.idlePlane(hero.model, dt)
+	local color, second, entry = World.trailLook(settings.trailId)
+	local flare = 1 + math.max(0, self.celebrateUntil - os.clock()) * 0.9
+	flowRibbons(hero.ribbons, hero.model:GetPivot(), bay.scale, color, second, entry.width * flare, 15, self.clock)
+	local best = snapshot.stats and tonumber(snapshot.stats.bestDistance) or 0
+	hero.record.Text = best &gt; 0 and string.format("YOUR BEST  %.1f M", best) or "FLY TO SET YOUR RECORD"
+end
+
+function Bay:_buildStand(item, settings, key)
+	if self.stand then self.stand.holder:Destroy() end
+	local origin = World.UNLOCK_STAND
+	local holder = Instance.new("Folder")
+	holder.Name = "UnlockStand"
+	holder.Parent = self.folder
+	local shown = item or Catalog.get(settings.trailId) or Catalog.get(Catalog.DEFAULT_ID)
+	local model = World.createPlane(holder, "UnlockPlane", settings.color, settings.planeId, shown.id)
+	model:ScaleTo(0.85)
+	local anchor = block(holder, "CaptionAnchor", Vector3.one, CREAM)
+	anchor.Transparency = 1
+	anchor.CFrame = CFrame.new(origin + Vector3.new(0, 7.6, 0))
+	local color, second = World.trailLook(shown.id)
+	local gui = caption(anchor, Vector3.new(0, 5.6, 0), 19, 6)
+	local stand = { key = key, holder = holder, model = model, item = item, shown = shown,
+		ribbons = makeRibbons(holder, 5), pips = table.create(PIPS), color = color, second = second,
+		heading = line(gui, "Heading", 0, 0.24, CREAM), name = line(gui, "EffectName", 0.24, 0.44, color),
+		progress = line(gui, "Progress", 0.7, 0.3, GOLD) }
+	for index = 1, PIPS do
+		local pip = block(holder, "ProgressPip", Vector3.new(2.2, 1, 0.8), STEEL, true)
+		pip.CFrame = CFrame.new(origin + Vector3.new(0, 3.9, 0)) * CFrame.Angles(0, (index - 1) / PIPS * math.pi * 2, 0) * CFrame.new(0, 0, -6.4)
+		stand.pips[index] = pip
+	end
+	stand.heading.Text = item and "NEXT UNLOCK" or "COLLECTION COMPLETE"
+	stand.name.Text = string.upper(shown.name)
+	self.stand = stand
+	return stand
+end
+
+function Bay:_updateStand(snapshot, settings, dt)
+	local economy = snapshot.economy
+	self.economy = economy
+	if not economy then return end
+	local item = nextUnlock(economy)
+	local key = (item and item.id or "complete") .. ":" .. settings.planeId .. ":" .. tostring(settings.color)
+	local stand = self.stand
+	if not stand or stand.key ~= key then stand = self:_buildStand(item, settings, key) end
+
+	-- Coins earned since the pilot was last in the hangar fly from the plane to
+	-- the stand. The balance shown only ever catches up to the server's value.
+	local credits = math.max(0, tonumber(economy.credits) or 0)
+	if self.lastCredits == nil or credits &lt; self.lastCredits or self.reducedMotion or not self.hero then
+		self.shownCredits = credits
+	elseif credits &gt; self.lastCredits then
+		local gain = credits - self.lastCredits
+		local count = math.clamp(math.ceil(gain / 5), 3, 12)
+		local from = self.hero.model:GetPivot().Position + Vector3.new(0, 2, 0)
+		for index = 1, count do
+			local coin = block(self.folder, "FlyingCoin", Vector3.new(0.4, 1.7, 1.7), GOLD, true, Enum.PartType.Cylinder)
+			coin.Transparency = 1
+			table.insert(self.coins, { part = coin, from = from, to = World.UNLOCK_STAND + Vector3.new(0, 6.5, 0),
+				age = -(index - 1) * 0.09, value = gain / count })
+		end
+	end
+	self.lastCredits = credits
+	if #self.coins == 0 then self.shownCredits = credits end
+	local shown = math.min(credits, math.floor(self.shownCredits + 0.5))
+
+	local affordable = item ~= nil and credits &gt;= item.price
+	local fraction = item and math.clamp(shown / item.price, 0, 1) or 1
+	local lit = math.floor(fraction * PIPS + 0.001)
+	local pulse = affordable and (0.5 + 0.5 * math.sin(self.clock * 6)) or 0
+	for index, pip in ipairs(stand.pips) do
+		local on = index &lt;= lit
+		pip.Color = on and (affordable and GREEN or stand.color) or STEEL
+		pip.Material = on and Enum.Material.Neon or Enum.Material.Metal
+		pip.Transparency = on and pulse * 0.35 or 0
+	end
+	if item then
+		stand.progress.Text = affordable and "READY  -  CLAIM IT!" or (tostring(shown) .. " / " .. tostring(item.price) .. " COINS")
+		stand.progress.TextColor3 = affordable and GREEN or GOLD
+	else
+		stand.progress.Text = "FLY YOUR SIGNATURE TRAIL"
+	end
+	stand.angle = ((stand.angle or 0) + dt * (affordable and 1.5 or 0.5) * (self.reducedMotion and 0 or 1)) % (math.pi * 2)
+	local pose = CFrame.new(World.UNLOCK_STAND + Vector3.new(0, 7.6 + math.sin(self.clock * 1.6) * 0.3, 0))
+		* CFrame.Angles(0, stand.angle, 0) * CFrame.Angles(0, 0, 0.14)
+	stand.model:PivotTo(pose)
+	World.idlePlane(stand.model, dt)
+	local _, _, entry = World.trailLook(stand.shown.id)
+	flowRibbons(stand.ribbons, pose, 0.85, stand.color, stand.second, entry.width, 8, self.clock)
+
+	local lobby = workspace:FindFirstChild("FlightLobby")
+	local pedestal = lobby and lobby:FindFirstChild("UnlockPedestal")
+	local prompt = pedestal and pedestal:FindFirstChild("UnlockStandPrompt")
+	if prompt then
+		prompt.ActionText = affordable and economy.canShop and ("Claim " .. item.name) or (item and "View effect" or "Browse effects")
+		prompt.ObjectText = item and "NEXT UNLOCK" or "FLIGHT EFFECTS"
+	end
+
+	-- A claim buys the effect, then equips it once the server confirms ownership.
+	local pending = self.pendingEquip
+	if pending then
+		if economy.equippedTrail == pending then
+			self.pendingEquip = nil
+		elseif economy.owned[pending] then
+			if os.clock() &gt;= self.equipAt then
+				self.equipAt = os.clock() + 1
+				self.send("equipCosmetic", { itemId = pending })
+			end
+		elseif os.clock() &gt; self.claimLockUntil + 1 then
+			self.pendingEquip = nil
+		end
+	end
+end
+
+function Bay:activateStand()
+	local economy = self.economy
+	local item = economy and nextUnlock(economy)
+	if item and economy.canShop and economy.credits &gt;= item.price then
+		if os.clock() &lt; (self.claimLockUntil or 0) then return end
+		self.claimLockUntil = os.clock() + 2
+		self.pendingEquip, self.equipAt = item.id, os.clock() + 0.4
+		self.send("buyCosmetic", { itemId = item.id })
+	else
+		self.openShop(item and item.id or nil)
+	end
+end
+
+function Bay:_updateCoins(dt)
+	for index = #self.coins, 1, -1 do
+		local coin = self.coins[index]
+		coin.age += dt
+		local t = coin.age / 0.8
+		if t &gt;= 1 then
+			coin.part:Destroy()
+			table.remove(self.coins, index)
+			self.shownCredits = (self.shownCredits or 0) + coin.value
+		elseif t &gt; 0 then
+			local eased = t * t * (3 - 2 * t)
+			coin.part.Transparency = 0
+			coin.part.CFrame = CFrame.new(coin.from:Lerp(coin.to, eased) + Vector3.new(0, math.sin(eased * math.pi) * 9, 0))
+				* CFrame.Angles(0, coin.age * 9, 0)
+		end
+	end
+end
+
+function Bay:_updateLineup(dt)
+	self.lineupTimer -= dt
+	if self.lineupTimer &lt;= 0 then
+		self.lineupTimer = 0.5
+		local seen = {}
+		for _, player in ipairs(Players:GetPlayers()) do
+			local slot = player:GetAttribute("SkyboundBay")
+			local bay = player ~= Players.LocalPlayer and type(slot) == "number" and World.LINEUP_BAYS[slot] or nil
+			if bay then
+				seen[slot] = true
+				local planeId = player:GetAttribute("SkyboundPlane") or PlaneCatalog.DEFAULT_ID
+				local color = player:GetAttribute("SkyboundColor") or 1
+				local trailId = player:GetAttribute("SkyboundTrail") or Catalog.DEFAULT_ID
+				local flying = player:GetAttribute("SkyboundFlying") == true
+				local key = table.concat({ tostring(player.UserId), tostring(planeId), tostring(color), tostring(trailId), tostring(flying) }, ":")
+				local entry = self.lineup[slot]
+				if not entry or entry.key ~= key then
+					if entry then entry.holder:Destroy() end
+					local holder = Instance.new("Folder")
+					holder.Name = "ClubBay" .. tostring(slot)
+					holder.Parent = self.folder
+					local anchor = block(holder, "CaptionAnchor", Vector3.one, CREAM)
+					anchor.Transparency = 1
+					anchor.CFrame = CFrame.new(bay.position + Vector3.new(0, 4, 0))
+					local gui = caption(anchor, Vector3.new(0, 7, 0), 20, 5)
+					line(gui, "Pilot", 0, 0.58, CREAM).Text = string.upper(player.DisplayName)
+					line(gui, "Status", 0.6, 0.4, flying and GOLD or CYAN).Text = flying and "FLYING NOW" or "IN THE HANGAR"
+					entry = { key = key, holder = holder, bay = bay, trailId = trailId }
+					-- A pilot who is in a duel has taken their plane with them.
+					if not flying then
+						entry.model = World.createParkedPlane(holder, "ClubPlane", color, planeId, bay.position, bay.rotation, bay.scale, trailId)
+						entry.ribbons = makeRibbons(holder, 5)
+					end
+					self.lineup[slot] = entry
+				end
+			end
+		end
+		for slot, entry in pairs(self.lineup) do
+			if not seen[slot] then entry.holder:Destroy(); self.lineup[slot] = nil end
+		end
+	end
+	for _, entry in pairs(self.lineup) do
+		if entry.model then
+			World.idlePlane(entry.model, dt)
+			local color, second, trail = World.trailLook(entry.trailId)
+			flowRibbons(entry.ribbons, entry.model:GetPivot(), entry.bay.scale, color, second, trail.width, 9, self.clock)
+		end
+	end
+end
+
+-- Planes leave from the runway outside the doors: on a timer, and promptly
+-- whenever another duel starts on this server.
+function Bay:_updateDeparture(dt)
+	if self.reducedMotion then return end
+	local duels = shared:GetAttribute("ActiveDuels") or 0
+	if duels &gt; (self.lastDuels or 0) then self.nextDeparture = math.min(self.nextDeparture, os.clock() + 0.5) end
+	self.lastDuels = duels
+	local flight = self.departure
+	if not flight then
+		if os.clock() &lt; self.nextDeparture then return end
+		local planeId = PlaneCatalog.ORDER[math.random(1, #PlaneCatalog.ORDER)]
+		local trailId = Catalog.ORDER[math.random(1, #Catalog.ORDER)]
+		local model = World.createParkedPlane(self.folder, "DepartingPlane", math.random(1, 4), planeId,
+			Vector3.new(0, 4, -150), math.pi / 2, 1.8, trailId)
+		self.departure = { model = model, age = 0, height = model:GetPivot().Position.Y }
+		return
+	end
+	flight.age += dt
+	local roll = 17 * flight.age * flight.age
+	local climb = math.max(0, flight.age - 3.2)
+	flight.model:PivotTo(CFrame.new(0, flight.height + climb * climb * 9, -150 - roll)
+		* CFrame.Angles(0, math.pi / 2, 0) * CFrame.Angles(0, 0, math.min(0.38, climb * 0.3)))
+	World.idlePlane(flight.model, dt, true)
+	if flight.age &gt; 7 then
+		flight.model:Destroy()
+		self.departure = nil
+		self.nextDeparture = os.clock() + 12 + math.random() * 8
+	end
+end
+
+-- `settings` is the local pilot's authoritative loadout from the snapshot.
+function Bay:update(snapshot, settings, inHub, dt)
+	if not inHub or not settings then
+		if self.active then self:_clear() end
+		return
+	end
+	self.active = true
+	if not self.reducedMotion then self.clock += dt end
+	self:_updateHero(snapshot, settings, dt)
+	self:_updateStand(snapshot, settings, dt)
+	self:_updateCoins(dt)
+	self:_updateLineup(dt)
+	self:_updateDeparture(dt)
+end
+
+function Bay:destroy()
+	self.folder:Destroy()
+end
+
+return Bay
+</ProtectedString>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="RBX37">
         <Properties>
           <string name="Name">FlightAudio</string>
           <ProtectedString name="Source">-- Local presentation only: both duel pilots share a bounded mix. Each pilot
@@ -9066,7 +9638,7 @@ return Audio
 </ProtectedString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="RBX37">
+      <Item class="ModuleScript" referent="RBX38">
         <Properties>
           <string name="Name">PilotAvatar</string>
           <ProtectedString name="Source">-- Decorative, client-only seated pilots. The real character is never reparented
@@ -9365,7 +9937,7 @@ return PilotAvatar
 </ProtectedString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="RBX38">
+      <Item class="ModuleScript" referent="RBX39">
         <Properties>
           <string name="Name">BattleLab</string>
           <ProtectedString name="Source">-- A deliberately small control surface for the first combat playtest.
@@ -9571,8 +10143,9 @@ end
 function BattleLab:update(dt,canEnter)
     local width,height=self.root.AbsoluteSize.X,self.root.AbsoluteSize.Y
     self.entry.Visible=not self.active and canEnter==true
-    self.entry.Position=UDim2.new(0.5,0,1,-78)
-    self.entry.Size=UDim2.fromOffset(math.min(width-24,440),56)
+    -- The hub HUD reports where its bottom stack ends so the two never overlap.
+    self.entry.Position=UDim2.new(0.5,0,1,self.entryBottom or -78)
+    self.entry.Size=UDim2.fromOffset(math.min(width-24,420),height&lt;430 and 40 or 48)
     local muted=Players.LocalPlayer:GetAttribute("SkyboundSoundMuted")==true
     if self.muted~=muted then self.audio:setMuted(muted); self.muted=muted end
     self.audio:update(self.data or {active=false})
@@ -9717,7 +10290,7 @@ return BattleLab
 </ProtectedString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="RBX39">
+      <Item class="ModuleScript" referent="RBX40">
         <Properties>
           <string name="Name">BattleView</string>
           <ProtectedString name="Source">--!nonstrict
@@ -10778,7 +11351,7 @@ return BattleView
 </ProtectedString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="RBX40">
+      <Item class="ModuleScript" referent="RBX41">
         <Properties>
           <string name="Name">BattleAudio</string>
           <ProtectedString name="Source">-- Local presentation only. Authoritative events decide which impacts are heard.
@@ -11071,7 +11644,7 @@ return BattleAudio
       </Item>
     </Item>
   </Item>
-  <Item class="Lighting" referent="RBX41">
+  <Item class="Lighting" referent="RBX42">
     <Properties>
       <string name="Name">Lighting</string>
       <float name="ClockTime">14</float>

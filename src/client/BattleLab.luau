@@ -201,8 +201,9 @@ end
 function BattleLab:update(dt,canEnter)
     local width,height=self.root.AbsoluteSize.X,self.root.AbsoluteSize.Y
     self.entry.Visible=not self.active and canEnter==true
-    self.entry.Position=UDim2.new(0.5,0,1,-78)
-    self.entry.Size=UDim2.fromOffset(math.min(width-24,440),56)
+    -- The hub HUD reports where its bottom stack ends so the two never overlap.
+    self.entry.Position=UDim2.new(0.5,0,1,self.entryBottom or -78)
+    self.entry.Size=UDim2.fromOffset(math.min(width-24,420),height<430 and 40 or 48)
     local muted=Players.LocalPlayer:GetAttribute("SkyboundSoundMuted")==true
     if self.muted~=muted then self.audio:setMuted(muted); self.muted=muted end
     self.audio:update(self.data or {active=false})

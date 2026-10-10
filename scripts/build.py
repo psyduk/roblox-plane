@@ -41,7 +41,7 @@ def build(output: Path):
     starter,_=item(doc,"StarterPlayer","StarterPlayer")
     player_scripts,_=item(starter,"StarterPlayerScripts","StarterPlayerScripts")
     source(player_scripts,"LocalScript","FlightClient","src/client/Main.client.luau")
-    for filename in ("Hud", "EffectsShop", "FlightAudio", "PilotAvatar", "BattleLab", "BattleView", "BattleAudio"):
+    for filename in ("Hud", "EffectsShop", "HangarBay", "FlightAudio", "PilotAvatar", "BattleLab", "BattleView", "BattleAudio"):
         source(player_scripts,"ModuleScript",filename,f"src/client/{filename}.luau")
     lighting,props=item(doc,"Lighting","Lighting")
     ET.SubElement(props,"float",{"name":"ClockTime"}).text="14"

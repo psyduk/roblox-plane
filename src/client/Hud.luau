@@ -617,14 +617,39 @@ function Hud.new(callbacks)
 	create("UITextSizeConstraint", { MinTextSize = 16, MaxTextSize = 27 }, self.hubTitle)
 	self.hubInstruction = label(self.hubCard, "Instruction", "Walk onto a 1v1 pad with an opponent.", 14, 34, 292, 31, 12, COLORS.white)
 	self.hubInstruction.TextWrapped = true
-	self.hubAction = button(self.gui, "HubAction", "DISTANCE FLIGHT · SOLO", 0, 0, 198, 48, COLORS.cyan)
-	self.hubAction.AnchorPoint = Vector2.new(1, 1)
-	self.hubAction.Position = UDim2.new(1, -16, 1, -28)
-	self.hubAction.TextSize = 14
+	self.hubCard.AnchorPoint = Vector2.new(0.5, 1)
+	self.hubTitle.TextXAlignment = Enum.TextXAlignment.Center
+	self.hubInstruction.TextXAlignment = Enum.TextXAlignment.Center
+	-- One primary action: PLAY finds a rival, or flies a ghost if nobody is around.
+	self.hubAction = button(self.gui, "HubAction", "PLAY", 0, 0, 280, 76, COLORS.green)
+	self.hubAction.AnchorPoint = Vector2.new(0, 1)
 	self:_connect(self.hubAction.Activated, function()
 		if self.phase == "Queued" then self:_call("leaveQueue")
-		elseif self.phase == "Lobby" then self:_call("practice") end
+		elseif self.phase == "Lobby" then self:_call("play") end
 	end)
+	self.practiceButton = button(self.gui, "SoloPractice", "SOLO", 0, 0, 128, 76, COLORS.cyan)
+	self.practiceButton.AnchorPoint = Vector2.new(0, 1)
+	self:_connect(self.practiceButton.Activated, function()
+		if self.phase == "Lobby" then self:_call("practice") end
+	end)
+	-- The plane parked in the bay is swapped in place, without walking anywhere.
+	self.planeRow = frame(self.gui, "PlaneSelect", 0, 0, 420, 50, COLORS.ink)
+	self.planeRow.AnchorPoint = Vector2.new(0.5, 1)
+	self.planeRow.BackgroundTransparency = 0.12
+	corner(self.planeRow, 14)
+	stroke(self.planeRow, COLORS.ink, 2)
+	self.planePrevious = button(self.planeRow, "PreviousPlane", "<", 4, 4, 42, 42, COLORS.blue)
+	self.planeNext = button(self.planeRow, "NextPlane", ">", 0, 4, 42, 42, COLORS.blue)
+	self.paintButton = button(self.planeRow, "Paint", "", 0, 4, 42, 42, PAINTS[1])
+	self.planeName = label(self.planeRow, "Name", "CRUISER", 52, 2, 200, 28, 22, COLORS.white, true)
+	self.planeName.TextXAlignment = Enum.TextXAlignment.Center
+	self.planeName.TextScaled = true
+	create("UITextSizeConstraint", { MinTextSize = 12, MaxTextSize = 22 }, self.planeName)
+	self.planeDetail = label(self.planeRow, "Detail", "", 52, 28, 200, 16, 11, COLORS.soft, true)
+	self.planeDetail.TextXAlignment = Enum.TextXAlignment.Center
+	self:_connect(self.planePrevious.Activated, function() if self.phase == "Lobby" then self:_call("cyclePlane", -1) end end)
+	self:_connect(self.planeNext.Activated, function() if self.phase == "Lobby" then self:_call("cyclePlane", 1) end end)
+	self:_connect(self.paintButton.Activated, function() if self.phase == "Lobby" then self:_call("cyclePaint") end end)
 
 	self.waitingPanel = self:_panel("Waiting", 200)
 	label(self.waitingPanel, "Title", "YOUR NEXT FLIGHT AWAITS", 24, 28, 422, 35, 24, COLORS.ink, true)
@@ -958,7 +983,7 @@ function Hud.new(callbacks)
 	self.resultActions.Visible = false
 	corner(self.resultActions, 14)
 	stroke(self.resultActions, COLORS.ink, 3)
-	self.rematchButton = button(self.resultActions, "Rematch", "REMATCH", 8, 8, 219, 48, COLORS.green)
+	self.rematchButton = button(self.resultActions, "Rematch", "FLY AGAIN", 8, 8, 219, 48, COLORS.green)
 	self.returnButton = button(self.resultActions, "ReturnLobby", "RETURN TO LOBBY", 239, 8, 223, 48, COLORS.soft)
 	self:_connect(self.rematchButton.Activated, function()
 		local now = workspace:GetServerTimeNow()
@@ -1052,22 +1077,44 @@ function Hud:_layoutDuel(viewport, height)
 	end
 	local portrait = viewport.X < 600
 	local short = not portrait and height < 430
-	local actionWidth = short and 260 or 280
-	local rewardWidth = short and 252 or 318
-	local hubWidth = portrait and viewport.X - 24 or math.min(short and 340 or 420, viewport.X - math.max(actionWidth, rewardWidth) - 48)
-	local hubHeight = short and 82 or 100
-	place(self.hubCard, portrait and 12 or 16, short and 6 or 10, hubWidth, hubHeight)
-	place(self.hubTitle, 16, 9, hubWidth - 32, 31)
-	self.hubTitle.TextSize = portrait and 22 or (hubWidth < 350 and 20 or 27)
-	place(self.hubInstruction, 16, short and 39 or 44, hubWidth - 32, short and 34 or 43)
-	self.hubInstruction.TextSize = hubWidth < 350 and 13 or 15
-	self.hubAction.AnchorPoint = Vector2.new(1, 0)
-	self.hubAction.Position = UDim2.new(1, portrait and -12 or -16, 0, portrait and 122 or (short and 8 or 10))
-	self.hubAction.Size = UDim2.fromOffset(portrait and viewport.X - 24 or (short and 260 or 280), portrait and 52 or (short and 50 or 58))
-	self.hubAction.TextSize = portrait and 21 or 23
-	local utilityY = portrait and 184 or (short and 100 or 122)
-	local utilityWidth = portrait and (viewport.X - 36) / 2 or math.min(short and 142 or 166, (hubWidth - 12) / 2)
-	place(self.statsButton, portrait and 12 or 16, utilityY, utilityWidth, short and 44 or 46)
+	-- Hub: one centered stack at the bottom. PLAY and SOLO share a row; the
+	-- plane selector sits above it and gives way to the queue status.
+	local margin = portrait and 12 or 16
+	local blockWidth = math.min(420, viewport.X - margin * 2)
+	local soloWidth = portrait and 96 or 128
+	local playWidth = blockWidth - soloWidth - 8
+	self.hubPlayWidth, self.hubBlockWidth = playWidth, blockWidth
+	local playHeight = short and 54 or (portrait and 64 or 76)
+	local blockLeft = (viewport.X - blockWidth) / 2
+	-- Portrait phones keep Roblox's jump button in the bottom-right corner.
+	local bottom = (short and -8 or -14) - ((portrait and UserInputService.TouchEnabled) and 104 or 0)
+	self.hubAction.Position = UDim2.new(0, blockLeft, 1, bottom)
+	self.hubAction.Size = UDim2.fromOffset(playWidth, playHeight)
+	self.hubAction.TextSize = short and 32 or (portrait and 36 or 44)
+	self.practiceButton.Position = UDim2.new(0, blockLeft + playWidth + 8, 1, bottom)
+	self.practiceButton.Size = UDim2.fromOffset(soloWidth, playHeight)
+	self.practiceButton.TextSize = short and 20 or 22
+	local rowHeight = short and 44 or 50
+	local rowBottom = bottom - playHeight - 8
+	local arrow = rowHeight - 8
+	self.planeRow.Position = UDim2.new(0.5, 0, 1, rowBottom)
+	self.planeRow.Size = UDim2.fromOffset(blockWidth, rowHeight)
+	place(self.planePrevious, 4, 4, arrow, arrow)
+	place(self.planeNext, blockWidth - arrow * 2 - 10, 4, arrow, arrow)
+	place(self.paintButton, blockWidth - arrow - 4, 4, arrow, arrow)
+	local nameWidth = blockWidth - arrow * 3 - 26
+	place(self.planeName, arrow + 10, 2, nameWidth, math.floor(rowHeight * 0.56))
+	place(self.planeDetail, arrow + 10, math.floor(rowHeight * 0.58), nameWidth, math.floor(rowHeight * 0.34))
+	self.planeDetail.TextSize = short and 10 or 11
+	local hubHeight = short and 54 or 64
+	self.hubCard.Position = UDim2.new(0.5, 0, 1, rowBottom)
+	self.hubCard.Size = UDim2.fromOffset(blockWidth, hubHeight)
+	place(self.hubTitle, 14, 5, blockWidth - 28, math.floor(hubHeight * 0.5))
+	place(self.hubInstruction, 14, math.floor(hubHeight * 0.55), blockWidth - 28, math.floor(hubHeight * 0.38))
+	self.hubInstruction.TextSize = blockWidth < 350 and 12 or 13
+	local utilityY = short and 6 or 10
+	local utilityWidth = portrait and (viewport.X - 36) / 2 or (short and 132 or 148)
+	place(self.statsButton, margin, utilityY, utilityWidth, short and 44 or 46)
 	self.statsButton.TextSize = short and 17 or 19
 	self.hubSoundPosition = UDim2.fromOffset((portrait and 12 or 16) + utilityWidth + 12, utilityY)
 	self.hubSoundSize = UDim2.fromOffset(utilityWidth, short and 44 or 46)
@@ -1498,6 +1545,13 @@ function Hud:getFlightViewport()
 	return { left = 18, right = viewport.X - 18, top = top, bottom = math.max(top + 40, bottom) }
 end
 
+-- Offset from the bottom edge to just above the hub's plane selector, for
+-- other hub controls that stack on top of it.
+function Hud:getHubStackTop()
+	self:_resize()
+	return self.planeRow.Position.Y.Offset - self.planeRow.Size.Y.Offset - 8
+end
+
 function Hud:getAimViewport()
 	self:_resize()
 	local topInset = GuiService:GetGuiInset()
@@ -1609,7 +1663,7 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		self.rematchRequested = false
 		self.rematchPendingUntil = 0
 		self.canRematch = false
-		self.rematchButton.Text = "REMATCH"
+		self.rematchButton.Text = "FLY AGAIN"
 		self.rematchButton.Active = true
 		self.pendingSettings = nil
 		self.pendingReady = nil
@@ -1677,8 +1731,11 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		unavailable = "Cloud save unavailable · this session may not be saved." }
 	self.statsSave.Text = saveCopy[snapshot.saveStatus] or "Loading your record…"
 	self.header.Visible = not inHub and phase ~= "Flight"
-	self.hubCard.Visible = inHub
+	self.hubCard.Visible = phase == "Queued"
 	self.hubAction.Visible = inHub
+	self.practiceButton.Visible = phase == "Lobby"
+	self.planeRow.Visible = phase == "Lobby"
+	self.footer.Visible = not inHub
 	self.waitingPanel.Visible = phase == "Waiting"
 	self.votePanel.Visible = phase == "Voting"
 	self.configPanel.Visible = phase == "Configure"
@@ -1711,17 +1768,28 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	end
 	self.waitingMessage.Text = snapshot.message or "Getting the runway ready…"
 	if phase == "Lobby" then
-        self.hubTitle.Text = "SKYBOUND / THE HANGAR"
-		self.hubInstruction.Text = self.hubCard.Size.X.Offset < 350 and "Plane battles: PLAY button below.\nDistance flight: gates ahead."
-			or (PlaneCatalog.get(self.settings.planeId).name.." selected · Distance gates ahead.\nPlane battles: PLAY button below.")
-		self.hubAction.Text = "DISTANCE FLIGHT · SOLO"
-		self.hubAction.Visible = self.callbacks.practice ~= nil
+		local plane = PlaneCatalog.get(self.settings.planeId) or PlaneCatalog.get(PlaneCatalog.DEFAULT_ID)
+		self.planeName.Text = string.upper(plane.name)
+		self.planeDetail.Text = tostring(plane.speed) .. " M/S  ·  " .. tostring(plane.defaultAngle) .. "° START"
+		self.paintButton.BackgroundColor3 = PAINTS[self.settings.color] or PAINTS[1]
+		self.hubAction.Text = "PLAY"
+		self.hubAction.BackgroundColor3 = COLORS.green
+		self.hubAction.Size = UDim2.fromOffset(self.hubPlayWidth, self.hubAction.Size.Y.Offset)
 	elseif phase == "Queued" then
-		self.hubTitle.Text = "WAITING FOR OPPONENT"
 		local queue = snapshot.queue or {}
-		local station = queue.stationName or (queue.stationId and "Pad " .. tostring(queue.stationId)) or "1v1 pad"
-		self.hubInstruction.Text = station .. " · walk off the pad to leave."
-		self.hubAction.Text = "LEAVE QUEUE"
+		if queue.quick then
+			local wait = math.max(0, math.ceil((queue.fallbackAt or now) - now))
+			self.hubTitle.Text = "FINDING A RIVAL…"
+			self.hubInstruction.Text = wait > 0 and ("Nobody around? You fly a practice ghost in " .. wait .. "s.")
+				or "Starting your flight…"
+		else
+			local station = queue.stationName or (queue.stationId and "Pad " .. tostring(queue.stationId)) or "1v1 pad"
+			self.hubTitle.Text = "WAITING FOR A RIVAL"
+			self.hubInstruction.Text = station .. " · walk off the pad to leave."
+		end
+		self.hubAction.Text = "CANCEL"
+		self.hubAction.BackgroundColor3 = COLORS.coral
+		self.hubAction.Size = UDim2.fromOffset(self.hubBlockWidth, self.hubAction.Size.Y.Offset)
 	elseif phase == "Voting" then
 		for name, votes in pairs(self.voteCounts) do
 			votes.Text = tostring((snapshot.votes or {})[name] or 0)
@@ -1832,7 +1900,7 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		self.resultsPanel.Title.Text = firstPlaces > 1 and "DEAD HEAT!"
 			or (yourResult and yourResult.rank == 1
 			and (hasForfeit and "YOU WIN THE DUEL." or "YOU WENT FURTHEST.") or "ONE MORE FLIGHT?")
-        self.nextRoundLabel.Text = (snapshot.endsAt or 0) > 0 and ("Return to lobby in " .. remaining .. "s") or "Request a rematch or head back to the club."
+        self.nextRoundLabel.Text = (snapshot.endsAt or 0) > 0 and ("Back to the hangar in " .. remaining .. "s") or "Request a rematch or head back to the club."
 		self:_refreshReward(snapshot, yourResult, now)
 		self.canRematch = snapshot.canRematch == true
 		self.rematchRequested = localPlayer ~= nil and localPlayer.rematchReady == true
@@ -1846,7 +1914,7 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 		elseif now < self.rematchPendingUntil then
 			self.rematchButton.Text = "REQUESTING…"
 		else
-			self.rematchButton.Text = opponent and opponent.rematchReady and "ACCEPT REMATCH" or "REMATCH"
+			self.rematchButton.Text = opponent and opponent.rematchReady and not opponent.bot and "ACCEPT REMATCH" or "FLY AGAIN"
 		end
 		local rematchEnabled = self.canRematch and not self.rematchRequested and now >= self.rematchPendingUntil
 		self.rematchButton.Active = rematchEnabled
