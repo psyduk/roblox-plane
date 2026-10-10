@@ -1,3 +1,58 @@
+# Results screen — October 10, 2026
+
+Audit item 19. The status pill and dark footer at the end of a fight are replaced by a results moment that waits for the knockout to play out (1.8s after a knockout, 0.6s after a timeout) and then takes the screen: a slammed-in VICTORY! / DEFEAT / DRAW! banner, one plain line saying how it ended, the winner's portrait under a crown, three stat chips (your hits, rival hits, time), and REMATCH as the large button between Change power and Hangar. A win gets falling confetti, APM's "Champion Fanfare" and a crowd roar; a loss gets a groan and a low thump. The battle loop drops to a murmur under the result.
+
+Checked: 47 server scenarios; no script errors in Studio. Seen on desktop: a real victory (3 hits to 1, 27.2s) with banner, crown, portrait, stats, buttons and confetti, then a real click on REMATCH, which went straight to a new countdown against a re-rolled rival. Not checked: the defeat and draw variants, the timeout wording, the stings by ear, phone and portrait layouts.
+
+---
+
+# Fighter bar — October 10, 2026
+
+The dark header strip is replaced, after the owner called it out, by a floating fighting-game bar: each pilot's portrait (the player's Roblox headshot; a robot for the bot), name, power pill and three outlined armor pips at the screen edges, with a large central clock that reads VS before the fight, counts down during it, turns red and pulses in the last ten seconds, and reads K.O. or TIME! at the end. Hangar and sound are two small icon buttons under the left portrait. The leftover hint strip during the countdown is gone.
+
+Checked: 47 server scenarios; no script errors in Studio. Seen on desktop through a real click on FIGHT!: setup, countdown and a mid-fight frame with the clock at 29 and one rival pip lost. Not checked: the last-ten-seconds pulse, the results state of the bar, phone and portrait layouts.
+
+---
+
+# Setup cards, calmer camera, lighter music — October 10, 2026
+
+Follow-up to the pass below, after the owner played it: liked the direction, found the music too dramatic, wanted zooms tied to attacks or reduced, and disliked the cycling setup footer.
+
+- **Setup:** the footer of cycling buttons is replaced by one screen about your own plane: two power cards, four twist chips and a FIGHT! button. The player no longer configures the opponent. The rival's power, twist and opening angle are rolled on the client when FIGHT! or REMATCH is pressed and revealed by the countdown; it never mirrors a Firework pick, because Firework mirrors still trade into draws. Opening-angle tuning is no longer exposed. The server still validates and owns the committed settings.
+- **Rematch** re-rolls the rival instead of replaying the identical fight (the round seed is still fixed at 731).
+- **Camera:** rests at a 126-stud-wide frame and closes to 94 only while a plane is winding up or attacking, or for a knockout. The hit punch-in is roughly halved.
+- **Music:** APM's "Feel That Move" (30-second light version, clavinet funk) replaces "Rival", about a third quieter. Menu clicks and a commit whoosh were added.
+- Player-facing "SIM" and "Battle Lab" wording is now "RIVAL" and "VS PRACTICE BOT"; the opponent is still labelled as a bot.
+
+Checked: 47 server scenarios; in Studio, 6 battle-view and 21 audio tests; no script errors. **Seen on desktop at about 2480×1030** through real clicks: the card screen, picking a twist, FIGHT!, the rival reveal, the 3-2 countdown and the opening Meteor-versus-Meteor exchange in the sky arena. Not checked: the new track by ear, a full fight to results with the new camera, REMATCH by click, phone and portrait layouts of the card screen.
+
+---
+
+# Battle look, sound and feel pass — October 10, 2026
+
+First pass on [the battle audit](docs/BATTLE-AUDIT.md), items 1–4, 6, 7, 15, 21 and 23, on branch `battle-juice-pass` (based on `codex/plane-battles-entry`). Presentation only: `BattleSimulation.luau` is untouched. The one server change is countdown length (launch 2.0s → 2.4s, quick retry 1.0s → 1.8s) so three evenly spaced beats fit.
+
+What changed:
+
+- **Camera:** frames both planes and any rocket in flight instead of the whole field, widening fast and tightening slowly, with a punch-in and shake on hits. A knockout plays at 0.35× for half a second and the camera goes to the falling plane first. Reduced-motion mode keeps the old fixed full-field frame with no shake, freeze or slow motion.
+- **Impacts:** pooled spark, smoke and fire particles (Roblox built-in textures), a 0.07–0.16s freeze-frame, a white screen flash and a colour-grade kick. Planes smoke after one hit and burn after two. Rockets have a long sparkling trail and burst in the shooter's colour.
+- **Arena:** painted late-afternoon sky, sun, 32 drifting clouds at four depths, a floating deck and two bleachers whose crowd rows hop harder as the fight heats up. Bloom and a colour grade are added on entry and removed on exit.
+- **Your plane:** fighter one uses the pilot's hangar paint and equipped trail, with their avatar in the cockpit; the rival gets a contrasting paint and a practice pilot. The HUD accents follow the paints. The chosen plane *type* still does not show, because the power replaces the wings and fuselage.
+- **Callouts and countdown:** cartoon-lettered pop-in words over the planes, and a full-screen 3-2-1-FIGHT!
+- **Sound:** the existing pitched stock voices are kept and layered with 16 licensed one-shots (Pro Sound Effects' official Creator Store channel) plus three beds: APM Music's "Rival - 30 second" (the track already vetted on `claude/game-visuals-sound-80a0f8`), a stadium crowd and a storm bed for the closing wind. Countdown beeps, a start whistle, last-five-seconds ticks and crowd reactions are new.
+
+Checked:
+
+- `sample_battle.py --tests-only`: 27 pass. `test_server.py`: 47 scenarios pass after four countdown waits were lengthened to match.
+- Native Studio Luau, run through Studio's automation server: **6 battle-view crash tests and 21 battle-audio tests pass**. One real fix came from this: a wreck could end a frame within 0.002 studs of the floor without counting as landed; touching now lands.
+- Three complete simulated fights (plain, Spring Bumper vs Fizzy Fuel, Afterburner vs Fizzy Fuel) were stepped through the view at 60 Hz with no errors. Visible height ranged **73–162** studs, so the lens moves about 2.2×. Bloom, grade and the arena were removed on destroy.
+- A second HUD instance was driven through a real server fight on the client: calls appeared as 3, 2, 1 at 0.8s spacing and FIGHT! at 2.5s; the screen flash peaked at 0.63 opacity; the result was reached at 27.2s. `BattlePlane1` reported `PilotAvatarSource=CharacterClone`, the rival `PracticeDummy`.
+- All **51 battle sounds** (16 stock, 32 licensed one-shot voices, 3 beds) reported `IsLoaded` with a non-zero length.
+
+**Not checked — nobody has seen or heard this build.** The Mac's screen was locked during the pass, Studio rendered zero frames, and screenshots were unavailable. Every visual and audio judgement (sky colours, particle sizes, shake strength, bloom level, mix balance, whether each licensed sample suits its moment) is untested. Phone and portrait layouts, performance on a low-end device and published-server audio permissions are also unchecked.
+
+---
+
 # Main PLAY enters plane battles — October 9, 2026
 
 The hangar now has one game entrance: **PLAY → battle setup → Launch battle**. The Solo button, separate Battle Lab shortcut and distance-duel gates are removed from the default build. Distance matchmaking and direct practice requests are disabled server-side unless `FlightServer.DistanceModeEnabled` is explicitly set to boolean `true` before startup. The old implementation and its regression coverage remain available for later; see [the archived distance reference](docs/DISTANCE-FLIGHT-REFERENCE.md).

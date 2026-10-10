@@ -18,6 +18,8 @@ Results offer **Run it again**, **Change setup**, or **Hangar**. This lab uses a
 
 This is the first combat toy. Random offers, human combat matchmaking and multi-round drafting are later milestones. Firework mirrors currently trade into repeated draws; those are exposed honestly for testing. Competitive balance and replay appeal still need player observation.
 
+Battle audio layers Roblox's bundled sounds with free licensed samples from the official Pro Sound Effects and APM Music Creator Store channels (asset IDs and titles are listed in `src/client/BattleAudio.luau`). The full look-and-feel backlog is in [the battle audit](docs/BATTLE-AUDIT.md).
+
 Simulation checks: `build/testenv/bin/python scripts/sample_battle.py --tests-only`. With the optional Lupa dependency in another environment, use that environment's Python. Add `--samples 20 --mirrors` for reproducible matchup samples. Server-flow checks remain `python scripts/test_server.py`.
 
 The observed BALL vs BALL lobby references and the scope chosen for this pass are in [Hangar references](docs/HANGAR-REFERENCES.md).

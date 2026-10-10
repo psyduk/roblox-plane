@@ -1,5 +1,6 @@
 -- Local presentation only. Authoritative events decide which impacts are heard.
--- No looping tracks, per-event instances, delayed callbacks, or uploaded assets.
+-- No per-event instances or delayed callbacks. The original pitched stock
+-- voices are layered with licensed Creator Store samples and three beds.
 local SoundService = game:GetService("SoundService")
 local ContentProvider = game:GetService("ContentProvider")
 local TweenService = game:GetService("TweenService")
@@ -19,6 +20,39 @@ local SOURCES = {
     chime = "rbxasset://sounds/volume_slider.ogg",
     land = "rbxasset://sounds/action_jump_land.mp3",
 }
+-- Licensed one-shots from Pro Sound Effects' official Creator Store channel
+-- (@ProSoundEffects): free for use in experiences, not open user uploads.
+local SAMPLES = {
+    thump = "rbxassetid://9116329674",    -- Low Impacts 1
+    punch = "rbxassetid://9119061110",    -- Sharp Punch 2
+    crunch = "rbxassetid://9120188871",   -- Toolbox Impact Wood Metal Hits Fall Crash 12
+    shatter = "rbxassetid://9114591567",  -- Glass Breaks 4
+    blast = "rbxassetid://9117982785",    -- Pyro Explosion 4
+    bigBlast = "rbxassetid://9117982449", -- Pyro Explosion 1
+    sub = "rbxassetid://9126009582",      -- Subwoofer Impact Deep Rumbling Pops Booming
+    whoosh = "rbxassetid://9126229255",   -- Whoosh By Fast Airy Swooshing Whipping Thuds
+    rise = "rbxassetid://9125805781",     -- Rising Whoosh Hissing Build Up Ascending
+    ignite = "rbxassetid://9114446852",   -- Fire Whoosh 15
+    comic = "rbxassetid://9113496949",    -- Body Hit Comic 2
+    beep = "rbxassetid://9117060347",     -- Nasa Transmission Beep 1
+    whistle = "rbxassetid://9125967307",  -- Soccer Whistle Acme Thunderer
+    cheer = "rbxassetid://9120974378",    -- Wrestling Crowd 3
+    gasp = "rbxassetid://9114013354",     -- Crowd Reaction 4
+    thunder = "rbxassetid://9120018172",  -- Thunder Distant Boom Thud Rapid Hits 20
+    click = "rbxassetid://9119717523",    -- Switch Click On Or Off Toggle Button 2
+    -- APM Music "Champion Fanfare" (Bruton, Big Heavy Horn Riffs), @APMOfficial.
+    fanfare = "rbxassetid://9043234711",
+}
+-- Beds. Music is APM Music's "Feel That Move" (30 second light version: 80s
+-- clavinet funk) from the official @APMOfficial channel, chosen after the
+-- cinematic "Rival" cue proved too dramatic; the rest are Pro Sound Effects.
+local LOOPS = {
+    music = "rbxassetid://9044946334",
+    crowd = "rbxassetid://9119562311",    -- Stadium Crowd 2
+    storm = "rbxassetid://9125742262",    -- Plasma Trails Constant Airy Whooshing Windy
+}
+BattleAudio.SHOTS_PER_SAMPLE = 2
+BattleAudio.ROUND_TIME = 35
 local KINDS = {
     launch=true, windup=true, dive=true, rocket=true, hit=true, bump=true,
     bumper_block=true, wake_hit=true, afterburner=true, finish=true, knockout=true,
@@ -43,6 +77,22 @@ function BattleAudio.new()
     self.group=Instance.new("SoundGroup")
     self.group.Name="BattleMix"; self.group.Volume=0.7; self.group.Parent=self.folder
     local preload={}
+    self.shots,self.nextShot,self.loops={}, {}, {}
+    for name,id in pairs(SAMPLES) do
+        local pool={}; self.shots[name]=pool
+        for index=1,BattleAudio.SHOTS_PER_SAMPLE do
+            local sound=Instance.new("Sound")
+            sound.Name="shot_"..name..index; sound.SoundId=id; sound.Volume=0
+            sound.Looped=false; sound.SoundGroup=self.group; sound.Parent=self.folder
+            pool[index]=sound; preload[#preload+1]=sound
+        end
+    end
+    for name,id in pairs(LOOPS) do
+        local sound=Instance.new("Sound")
+        sound.Name="loop_"..name; sound.SoundId=id; sound.Volume=0
+        sound.Looped=true; sound.SoundGroup=self.group; sound.Parent=self.folder
+        self.loops[name]=sound; preload[#preload+1]=sound
+    end
     for name,id in pairs(SOURCES) do
         local pool={}; self.voices[name]=pool; self.nextVoice[name]=0
         for index=1,BattleAudio.VOICES_PER_SOURCE do
@@ -66,6 +116,81 @@ function BattleAudio:_silence()
     for _,pool in pairs(self.voices) do
         for _,sound in ipairs(pool) do sound:Stop() end
     end
+    for _,pool in pairs(self.shots or {}) do
+        for _,sound in ipairs(pool) do sound:Stop() end
+    end
+end
+
+-- A licensed sample at its natural length. Mocked mixes have no pools.
+function BattleAudio:_shot(name,volume,speed)
+    local pool=self.shots and self.shots[name]
+    if not pool or self.destroyed or self.muted then return end
+    local index=(self.nextShot[name] or 0)%#pool+1
+    self.nextShot[name]=index
+    local sound=pool[index]
+    sound:Stop(); sound.TimePosition=0
+    sound.Volume=volume; sound.PlaybackSpeed=speed or 1
+    sound:Play()
+end
+
+function BattleAudio:_loop(name,volume,speed)
+    local sound=self.loops[name]
+    if self.muted then volume=0 end
+    if volume>0 and not sound.IsPlaying then sound:Play() end
+    sound.Volume=sound.Volume+(volume-sound.Volume)*0.07
+    sound.PlaybackSpeed=speed
+    if volume==0 and sound.Volume<0.004 and sound.IsPlaying then sound:Stop() end
+end
+
+-- Music, crowd and storm beds follow the phase every frame, including the
+-- frames after a battle closes so each bed fades instead of cutting.
+function BattleAudio:_ambience(snapshot)
+    if not self.loops or self.destroyed then return end
+    local active=type(snapshot)=="table" and snapshot.active==true
+    local phase=active and snapshot.phase or nil
+    local simulation=active and type(snapshot.simulation)=="table" and snapshot.simulation or nil
+    local pressure=simulation and finite(simulation.pressure) and simulation.pressure or 0
+    local elapsed=simulation and finite(simulation.elapsed) and simulation.elapsed or 0
+    local fighting=phase=="Fight"
+    local closing=fighting and pressure>0
+    -- The battle loop steps right back at the result so the sting can land.
+    self:_loop("music",active and ((fighting or phase=="Countdown") and 0.24 or (phase=="Results" and 0.05 or 0.13)) or 0,closing and 1.04 or 1)
+    self:_loop("crowd",active and ((fighting or phase=="Countdown") and 0.22 or 0.1) or 0,1)
+    self:_loop("storm",closing and 0.14+pressure*0.3 or 0,1)
+    if phase=="Countdown" and finite(snapshot.endsAt) then
+        -- Three evenly spaced beats, however long the server's countdown is.
+        local remaining=snapshot.endsAt-workspace:GetServerTimeNow()
+        if self.countRound~=snapshot.roundId then
+            self.countRound,self.countSpan,self.countBeat=snapshot.roundId,math.max(0.3,remaining),0
+        end
+        local beat=math.clamp(math.floor((1-remaining/self.countSpan)*3)+1,1,3)
+        if beat>self.countBeat then self.countBeat=beat; self:_shot("beep",0.5,0.85+beat*0.1) end
+    elseif fighting then
+        if self.ambientPhase=="Countdown" then self:_shot("whistle",0.55,1); self:_shot("cheer",0.4,1) end
+        if closing and not self.wasClosing then self:_shot("thunder",0.6,1) end
+        local left=math.ceil(BattleAudio.ROUND_TIME-elapsed)
+        if left<=5 and left>0 and left~=self.lastTick then self.lastTick=left; self:_shot("beep",0.3,1.6) end
+    end
+    self.wasClosing=closing
+    self.ambientPhase=phase
+end
+
+-- The result banner: horns and a roar for a win, a groan for a loss.
+function BattleAudio:result(outcome)
+    self:_stopShot("fanfare")
+    if outcome=="win" then self:_shot("fanfare",0.5,1); self:_shot("cheer",0.6,1)
+    elseif outcome=="lose" then self:_shot("gasp",0.55,0.85); self:_shot("thump",0.5,0.7)
+    else self:_shot("whistle",0.4,0.8); self:_shot("gasp",0.35,1) end
+end
+function BattleAudio:_stopShot(name)
+    for _,sound in ipairs(self.shots and self.shots[name] or {}) do sound:Stop() end
+end
+
+-- Menu feedback: a click for a choice, a whoosh for committing to the fight.
+function BattleAudio:ui(confirm)
+    self:_stopShot("fanfare")
+    if confirm then self:_shot("whoosh",0.45,1.1); self:_shot("click",0.5,0.8)
+    else self:_shot("click",0.5,1.15) end
 end
 
 function BattleAudio:setMuted(muted)
@@ -135,7 +260,9 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
         self:_voice(name,volume*gain,pitch*pitchShift,duration,
             finishPitch and finishPitch*pitchShift,swell,actor)
     end
+    local function shot(name,volume,speed) self:_shot(name,volume*gain,speed) end
     if kind=="launch" then
+        shot("whoosh",0.22,0.85)
         voice("jump",0.14,0.75,0.28,1.5)
     elseif kind=="windup" then
         local fighter=simulation.fighters and simulation.fighters[actor]
@@ -147,48 +274,64 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
             local remaining=math.max(0.08,duration-age)
             voice("jump",0.16,0.55,remaining,1.15,true)
             voice("chime",0.055,0.7,math.min(0.48,remaining),1.0)
+            shot("rise",0.42,math.clamp(1.9/remaining,0.8,2.4))
         else
             -- A tiny bright arming cue leaves space for rocket ignition.
             voice("chime",0.11,1.85,0.24,2.1)
             voice("land",0.045,2.25,0.09)
+            shot("beep",0.2,1.9)
         end
     elseif kind=="dive" then
         self:_stopCharges(actor)
         -- Commitment sounds fast and weighty, but never claims an armor hit.
         voice("jump",0.25,1.65,0.46,0.55)
         voice("land",0.10,0.75,0.16,0.5)
+        shot("whoosh",0.6,0.75); shot("ignite",0.35,0.9)
     elseif kind=="rocket" then
         voice("jump",0.22,1.15,0.3,1.9)
         voice("boom",0.12,2.1,0.14,1.6)
+        shot("ignite",0.55,1.15)
     elseif kind=="hit" then
         if event.source=="meteor" then
             voice("boom",0.30,0.8,0.46,0.55)
             voice("land",0.30,0.55,0.18)
+            -- A slam: low thump, a knuckle crack and bending metal.
+            shot("thump",0.8,0.9); shot("punch",0.65,0.85); shot("crunch",0.5,0.9)
         else
             voice("boom",0.29,1.5,0.32,0.95)
             voice("land",0.21,1.05,0.13)
+            -- A rocket: the bang first, then the same body blow underneath.
+            shot("blast",0.7,1.1); shot("thump",0.55,1.1); shot("punch",0.4,1.15)
         end
+        -- Every damaging hit breaks one armor pip and the crowd feels it.
+        shot("shatter",0.34,1.1); shot("gasp",0.3,1)
     elseif kind=="bumper_block" then
         voice("jump",0.27,0.85,0.4,1.9)
         voice("chime",0.12,1.6,0.28)
+        shot("comic",0.6,1)
     elseif kind=="wake_hit" then
         voice("land",0.23,1.25,0.2)
         voice("boom",0.17,1.8,0.3,1.1)
+        shot("punch",0.4,1.3); shot("shatter",0.26,1.3)
     elseif kind=="afterburner" then
         voice("jump",0.17,0.65,0.32,1.8)
     elseif kind=="bump" then
         -- A normal collision pushes without armor loss: never use the hit mix.
         voice("land",0.065,1.55,0.11)
+        shot("comic",0.26,1.35)
     elseif kind=="knockout" or (kind=="finish" and simulation.reason=="knockout") then
         self:_stopCharges()
         -- Armor breaking ends the fight. The heavier ground thud belongs to
         -- playCrash, when the defeated plane actually reaches the floor.
         voice("boom",0.13,1.25,0.24,0.85)
         voice("chime",0.21,0.95,0.48,1.4)
+        -- The finishing blow is its own, larger sound, and the stands erupt.
+        shot("bigBlast",0.85,0.9); shot("sub",0.9,1); shot("cheer",0.7,1)
     elseif kind=="finish" then
         self:_stopCharges()
         voice("land",0.12,0.9,0.2)
         voice("chime",0.23,1.1,0.5)
+        shot("whistle",0.55,0.9); shot("cheer",0.5,1)
     end
     self.played=self.played+1
     self.folder:SetAttribute("PlayedEvents",self.played)
@@ -207,6 +350,7 @@ function BattleAudio:playCrash(roundId,actor)
     local gain=actor==2 and 0.88 or 1
     self:_voice("land",0.38*gain,0.5,0.24,0.4)
     self:_voice("boom",0.26*gain,0.62,0.48,0.45)
+    self:_shot("crunch",0.85*gain,0.75); self:_shot("thump",0.8*gain,0.8)
     self.played=self.played+1
     self.folder:SetAttribute("PlayedEvents",self.played)
     self.folder:SetAttribute("LastEvent","crash")
@@ -223,6 +367,7 @@ end
 
 function BattleAudio:update(snapshot)
     if self.destroyed then return end
+    self:_ambience(snapshot)
     if type(snapshot)~="table" or snapshot.active~=true then
         if self.key then self:stop() end
         return
