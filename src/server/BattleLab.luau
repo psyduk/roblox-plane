@@ -4,7 +4,13 @@ local BattleLab = {}
 BattleLab.__index = BattleLab
 BattleLab.ROSTER_VERSION = "sky-battle-public-v1"
 BattleLab.QUEUE_SECONDS = 8
-BattleLab.PICK_SECONDS = 10
+BattleLab.PICK_SECONDS = 15
+-- Every pick shows the whole eligible roster, so a new pilot sees all the
+-- skills there are. A smaller OFFER_SIZE deals a random hand instead, and
+-- the two per-match helpers below only matter then.
+BattleLab.OFFER_SIZE = 9
+BattleLab.REROLLS = 0
+BattleLab.PICK_ANYS = 0
 -- Long enough to read who hit whom before the next pick takes the screen.
 BattleLab.ROUND_OVER_SECONDS = 3.5
 BattleLab.MATCH_SECONDS = 240
@@ -108,10 +114,13 @@ function BattleLab:eligible(m,side)
     return result
 end
 function BattleLab:offer(eligible,old)
+    local size=self.OFFER_SIZE
+    -- A full hand keeps roster order so each card is always in the same place.
+    if #eligible<=size then return copy(eligible) end
     local shuffled=copy(eligible)
     for index=#shuffled,2,-1 do local other=self:random(index); shuffled[index],shuffled[other]=shuffled[other],shuffled[index] end
-    local result={}; for index=1,math.min(3,#shuffled) do result[index]=shuffled[index] end
-    if old and #eligible>3 then
+    local result={}; for index=1,math.min(size,#shuffled) do result[index]=shuffled[index] end
+    if old and #eligible>size then
         local same=true; for _,id in ipairs(result) do if not contains(old,id) then same=false end end
         if same then for _,id in ipairs(eligible) do if not contains(result,id) then result[#result]=id; break end end end
     end
@@ -155,7 +164,7 @@ function BattleLab:createMatch(a,b,mode,botIdentity)
     self.sequence=self.sequence+1
     local m={id=self.sequence,participants={{player=a.player},{player=b and b.player}},identities={self:identity(a.player),copy(botIdentity) or self:identity(b and b.player)},
         roster=copy(a.roster),mode=mode or a.roster.mode,diagnostic=a.roster.mode=="experimental" or (self.deps.allowFixedSeed and finite(self.deps.fixedSeed)),startedAt=self.deps.now(),score={0,0},stage=1,
-        roundNumber=0,roundId=0,settings={{wildIds={},angle=35},{wildIds={},angle=35}},resources={{reroll=1,pickAny=1},{reroll=1,pickAny=1}},
+        roundNumber=0,roundId=0,settings={{wildIds={},angle=35},{wildIds={},angle=35}},resources={{reroll=self.REROLLS,pickAny=self.PICK_ANYS},{reroll=self.REROLLS,pickAny=self.PICK_ANYS}},
         votes={false,false},rewards={},rounds={},completedRounds=0,decisiveRounds=0,fightSeconds=0,draftSeconds=0,transitionSeconds=0,
         queueSeconds=math.max(0,self.deps.now()-a.queuedAt)}
     -- A bot never flies the pilot's own paint; two planes must read apart at a glance.
@@ -243,7 +252,7 @@ function BattleLab:snapshot(player)
     local eligible=m.phase=="Pick" and self:eligible(m,side) or {}
     local resources=copy(m.resources[side]); local reason
     if resources.reroll==0 then reason="Used this match"
-    elseif #eligible<=3 then reason="All remaining cards are already offered"
+    elseif #eligible<=self.OFFER_SIZE then reason="All remaining cards are already offered"
     elseif m.pickAnyActive[side] then reason="Pick Any is open" end
     return {active=true,phase=m.phase,matchId=m.id,roundId=m.roundId,roundNumber=m.roundNumber,stage=m.stage,
         slot=m.stage==1 and "offence" or "wild",score=pair(m.score,side),settings=pair(m.settings,side),players=pair(m.identities,side),
@@ -436,7 +445,7 @@ function BattleLab:command(player,payload)
                 -- auto-pick: an old offer or missing selection cannot do so.
                 m.selected[side]=payload.skillId; m.locked[side]=true
                 if m.locked[1] and m.locked[2] then self:reveal(m) end
-            elseif kind=="reroll" and m.resources[side].reroll>0 and #eligible>3 and not m.pickAnyActive[side] then
+            elseif kind=="reroll" and m.resources[side].reroll>0 and #eligible>self.OFFER_SIZE and not m.pickAnyActive[side] then
                 m.offers[side]=self:offer(eligible,m.offers[side]); m.resources[side].reroll=0; m.selected[side]=nil
                 m.offerRevision[side]=m.offerRevision[side]+1
             elseif kind=="pickAny" and m.resources[side].pickAny>0 then

@@ -4405,7 +4405,13 @@ local BattleLab = {}
 BattleLab.__index = BattleLab
 BattleLab.ROSTER_VERSION = "sky-battle-public-v1"
 BattleLab.QUEUE_SECONDS = 8
-BattleLab.PICK_SECONDS = 10
+BattleLab.PICK_SECONDS = 15
+-- Every pick shows the whole eligible roster, so a new pilot sees all the
+-- skills there are. A smaller OFFER_SIZE deals a random hand instead, and
+-- the two per-match helpers below only matter then.
+BattleLab.OFFER_SIZE = 9
+BattleLab.REROLLS = 0
+BattleLab.PICK_ANYS = 0
 -- Long enough to read who hit whom before the next pick takes the screen.
 BattleLab.ROUND_OVER_SECONDS = 3.5
 BattleLab.MATCH_SECONDS = 240
@@ -4509,10 +4515,13 @@ function BattleLab:eligible(m,side)
     return result
 end
 function BattleLab:offer(eligible,old)
+    local size=self.OFFER_SIZE
+    -- A full hand keeps roster order so each card is always in the same place.
+    if #eligible&lt;=size then return copy(eligible) end
     local shuffled=copy(eligible)
     for index=#shuffled,2,-1 do local other=self:random(index); shuffled[index],shuffled[other]=shuffled[other],shuffled[index] end
-    local result={}; for index=1,math.min(3,#shuffled) do result[index]=shuffled[index] end
-    if old and #eligible&gt;3 then
+    local result={}; for index=1,math.min(size,#shuffled) do result[index]=shuffled[index] end
+    if old and #eligible&gt;size then
         local same=true; for _,id in ipairs(result) do if not contains(old,id) then same=false end end
         if same then for _,id in ipairs(eligible) do if not contains(result,id) then result[#result]=id; break end end end
     end
@@ -4556,7 +4565,7 @@ function BattleLab:createMatch(a,b,mode,botIdentity)
     self.sequence=self.sequence+1
     local m={id=self.sequence,participants={{player=a.player},{player=b and b.player}},identities={self:identity(a.player),copy(botIdentity) or self:identity(b and b.player)},
         roster=copy(a.roster),mode=mode or a.roster.mode,diagnostic=a.roster.mode=="experimental" or (self.deps.allowFixedSeed and finite(self.deps.fixedSeed)),startedAt=self.deps.now(),score={0,0},stage=1,
-        roundNumber=0,roundId=0,settings={{wildIds={},angle=35},{wildIds={},angle=35}},resources={{reroll=1,pickAny=1},{reroll=1,pickAny=1}},
+        roundNumber=0,roundId=0,settings={{wildIds={},angle=35},{wildIds={},angle=35}},resources={{reroll=self.REROLLS,pickAny=self.PICK_ANYS},{reroll=self.REROLLS,pickAny=self.PICK_ANYS}},
         votes={false,false},rewards={},rounds={},completedRounds=0,decisiveRounds=0,fightSeconds=0,draftSeconds=0,transitionSeconds=0,
         queueSeconds=math.max(0,self.deps.now()-a.queuedAt)}
     -- A bot never flies the pilot's own paint; two planes must read apart at a glance.
@@ -4644,7 +4653,7 @@ function BattleLab:snapshot(player)
     local eligible=m.phase=="Pick" and self:eligible(m,side) or {}
     local resources=copy(m.resources[side]); local reason
     if resources.reroll==0 then reason="Used this match"
-    elseif #eligible&lt;=3 then reason="All remaining cards are already offered"
+    elseif #eligible&lt;=self.OFFER_SIZE then reason="All remaining cards are already offered"
     elseif m.pickAnyActive[side] then reason="Pick Any is open" end
     return {active=true,phase=m.phase,matchId=m.id,roundId=m.roundId,roundNumber=m.roundNumber,stage=m.stage,
         slot=m.stage==1 and "offence" or "wild",score=pair(m.score,side),settings=pair(m.settings,side),players=pair(m.identities,side),
@@ -4837,7 +4846,7 @@ function BattleLab:command(player,payload)
                 -- auto-pick: an old offer or missing selection cannot do so.
                 m.selected[side]=payload.skillId; m.locked[side]=true
                 if m.locked[1] and m.locked[2] then self:reveal(m) end
-            elseif kind=="reroll" and m.resources[side].reroll&gt;0 and #eligible&gt;3 and not m.pickAnyActive[side] then
+            elseif kind=="reroll" and m.resources[side].reroll&gt;0 and #eligible&gt;self.OFFER_SIZE and not m.pickAnyActive[side] then
                 m.offers[side]=self:offer(eligible,m.offers[side]); m.resources[side].reroll=0; m.selected[side]=nil
                 m.offerRevision[side]=m.offerRevision[side]+1
             elseif kind=="pickAny" and m.resources[side].pickAny&gt;0 then
@@ -6274,6 +6283,9 @@ return function(BattleLab, Skills)
         t.lab=BattleLab.new(deps)
         -- These cases step through transitions with a two-second round pause.
         t.lab.ROUND_OVER_SECONDS=2
+        -- The dealt-hand draft stays covered here; the public default deals
+        -- the whole roster and is checked on its own below.
+        if not options.publicDraft then t.lab.PICK_SECONDS=10;t.lab.OFFER_SIZE=3;t.lab.REROLLS=1;t.lab.PICK_ANYS=1 end
         function t.player(id)
             local p={UserId=id,Name="Pilot"..id,DisplayName="Pilot"..id}
             function p:GetAttribute(key)if key=="SkyboundColor"then return id end return nil end
@@ -6343,6 +6355,14 @@ return function(BattleLab, Skills)
         t.lock(a);local chosen=m.selected[1];t.advance(.1);t.send(a,"pick",{slot="offence",skillId=s.offer[3]});assert(m.selected[1]==chosen)
         t.lock(b);t.advance(.1);t.send(a,"pickAny");assert(m.resources[1].pickAny==1)
         t.send(a,"configure",{settings={{offenceId="Copycat"},{offenceId="Copycat"}}});assert(m.settings[1].offenceId==chosen)
+    end)
+    test("the public draft deals the whole roster in order with nothing to reroll",function()
+        local t=harness({publicDraft=true});local a,b,m=t.pair();local s=t.lab:snapshot(a)
+        assert(table.concat(s.offer,",")=="Meteor,Firework,MachineGun,Pinball" and s.resources.reroll==0 and s.resources.pickAny==0)
+        t.send(a,"reroll");t.send(a,"pickAny");assert(t.lab:snapshot(a).offerRevision==s.offerRevision)
+        t.advance(14.9);assert(m.phase=="Pick");t.advance(.2);assert(m.phase~="Pick","The 15-second deadline did not lock")
+        t.advance(2.5);assert(m.phase=="Fight");t.finish(m,1);t.advance(3.6);s=t.lab:snapshot(a)
+        assert(s.phase=="Pick" and #s.offer==5 and s.offer[1]=="Afterburner","Wild pick hid part of the roster")
     end)
     test("reroll changes set once and Pick Any consumes once for the entire match",function()
         local t=harness();local a,b,m=t.pair();local old=t.lab:snapshot(a).offer;t.send(a,"reroll")
@@ -13058,7 +13078,7 @@ function BattleLab:update(dt)
         local powerWidth=math.min(textWidth,tight and 86 or 112)
         place(fighter.power,right and textLeft+textWidth-powerWidth or textLeft,rowTwo,powerWidth,rowHeight)
         fighter.powerText.TextSize=tight and 10 or 13
-        local pillText=(right and searching) and "SEARCHING" or ((right and pick and rivalLocked) and "LOCKED IN!"
+        local pillText=(right and searching) and "SEARCHING" or ((right and pick and rivalLocked) and ((identity.bot and not locked) and "PICKING…" or "LOCKED IN!")
             or (offence and string.upper(offence.name) or (i==1 and "YOU" or "RIVAL")))
         -- In a fight the pill is a meter: half for lining up, half for the
         -- windup, a white flash on the attack, then empty while banking away.
@@ -13205,12 +13225,17 @@ function BattleLab:update(dt)
                 and "Last round: "..self.lastRound.text.." Add a trick to change the next one."
                 or "Your plane fights on its own. Win 2 rounds to win the match!")
         y=y+(landscapeDraft and 2 or short and 22 or (compact and 36 or 30))
-        local bottom=landscapeDraft and 54 or short and 116 or 138
+        local resources=data.resources or {}; local reroll=(resources.reroll or 0)&gt;0; local any=(resources.pickAny or 0)&gt;0
+        -- Reroll and Pick Any only take up room in a match that deals them.
+        local helpers=reroll or any or data.pickAnyActive==true
+        local bottom=landscapeDraft and 54 or (short and 116 or 138)-(helpers and 0 or (short and 61 or 66))
         local listHeight=landscapeDraft and math.max(0,area-y-bottom) or math.max(62,area-y-bottom)
         local choices=data.pickAnyActive and data.eligible or data.offer or {}
         local stackedCards=compact and not landscapeDraft
-        local cols=stackedCards and 1 or math.min(#choices&gt;4 and 3 or 4,math.max(1,#choices))
-        local rows=math.ceil(#choices/cols)
+        -- One row while each card keeps a readable width, then even rows.
+        local fit=math.max(1,math.floor((panel-12+12)/(150+12)))
+        local rows=stackedCards and #choices or math.max(1,math.ceil(#choices/fit))
+        local cols=stackedCards and 1 or math.max(1,math.ceil(#choices/rows))
         local gap=12
         local cardHeight
         if landscapeDraft then cardHeight=math.max(80,listHeight/rows-gap)
@@ -13266,24 +13291,28 @@ function BattleLab:update(dt)
         end
         self.cardList.CanvasSize=UDim2.fromOffset(0,(stackedCards or used&gt;listHeight) and used+12 or 0)
         y=y+listHeight+(landscapeDraft and 4 or 8)
-        local resources=data.resources or {}; local reroll=(resources.reroll or 0)&gt;0; local any=(resources.pickAny or 0)&gt;0
         local canReroll=reroll and not locked and not self.pendingOfferChange and #((data.eligible) or {})&gt;3 and not data.pickAnyActive
         self.reroll.Text=reroll and "🎲 Reroll · 1 free" or "Reroll used"
         self.pickAny.Text=data.pickAnyActive and "All cards shown" or (any and "🃏 Pick Any · 1 free" or "Pick Any used")
         enabled(self.reroll,canReroll); enabled(self.pickAny,any and not locked and not self.pendingOfferChange and not data.pickAnyActive)
         self.reroll.TextSize=short and 13 or 15; self.pickAny.TextSize=short and 13 or 15
-        self.resourceHint.Visible=not landscapeDraft
+        self.resourceHint.Visible=helpers and not landscapeDraft
+        self.reroll.Visible=helpers; self.pickAny.Visible=helpers
         local ready=not locked and not self.pendingOfferChange and selected~=nil
         if landscapeDraft then
             local actionWidth=(panel-16)/3
             place(self.reroll,x,y,actionWidth,44); place(self.pickAny,x+actionWidth+8,y,actionWidth,44)
-            place(self.fightButton,x+2*(actionWidth+8),y,actionWidth,44); self.fightButton.TextSize=20
+            if helpers then place(self.fightButton,x+2*(actionWidth+8),y,actionWidth,44)
+            else place(self.fightButton,(width-math.min(panel,360))/2,y,math.min(panel,360),44) end
+            self.fightButton.TextSize=20
         else
             local side=math.min((panel-8)/2,220); local lockWidth=math.min(panel,440)
-            place(self.reroll,width/2-side-4,y,side,40); place(self.pickAny,width/2+4,y,side,40); y=y+43
-            place(self.resourceHint,x,y,panel,short and 16 or 20); self.resourceHint.TextSize=short and 10 or 11
-            self.resourceHint.Text=self.pendingOfferChange and "Updating your cards…" or data.rerollReason or "One of each per match · Same skill access for every pilot"
-            y=y+(short and 18 or 23)
+            if helpers then
+                place(self.reroll,width/2-side-4,y,side,40); place(self.pickAny,width/2+4,y,side,40); y=y+43
+                place(self.resourceHint,x,y,panel,short and 16 or 20); self.resourceHint.TextSize=short and 10 or 11
+                self.resourceHint.Text=self.pendingOfferChange and "Updating your cards…" or data.rerollReason or "One of each per match · Same skill access for every pilot"
+                y=y+(short and 18 or 23)
+            end
             place(self.fightButton,(width-lockWidth)/2,y,lockWidth,short and 46 or 58)
             self.fightButton.TextSize=(short and 22 or 30)+((ready and not self.reducedMotion) and 2*math.sin(now*5) or 0)
         end

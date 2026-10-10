@@ -720,7 +720,7 @@ function BattleLab:update(dt)
         local powerWidth=math.min(textWidth,tight and 86 or 112)
         place(fighter.power,right and textLeft+textWidth-powerWidth or textLeft,rowTwo,powerWidth,rowHeight)
         fighter.powerText.TextSize=tight and 10 or 13
-        local pillText=(right and searching) and "SEARCHING" or ((right and pick and rivalLocked) and "LOCKED IN!"
+        local pillText=(right and searching) and "SEARCHING" or ((right and pick and rivalLocked) and ((identity.bot and not locked) and "PICKING…" or "LOCKED IN!")
             or (offence and string.upper(offence.name) or (i==1 and "YOU" or "RIVAL")))
         -- In a fight the pill is a meter: half for lining up, half for the
         -- windup, a white flash on the attack, then empty while banking away.
@@ -867,12 +867,17 @@ function BattleLab:update(dt)
                 and "Last round: "..self.lastRound.text.." Add a trick to change the next one."
                 or "Your plane fights on its own. Win 2 rounds to win the match!")
         y=y+(landscapeDraft and 2 or short and 22 or (compact and 36 or 30))
-        local bottom=landscapeDraft and 54 or short and 116 or 138
+        local resources=data.resources or {}; local reroll=(resources.reroll or 0)>0; local any=(resources.pickAny or 0)>0
+        -- Reroll and Pick Any only take up room in a match that deals them.
+        local helpers=reroll or any or data.pickAnyActive==true
+        local bottom=landscapeDraft and 54 or (short and 116 or 138)-(helpers and 0 or (short and 61 or 66))
         local listHeight=landscapeDraft and math.max(0,area-y-bottom) or math.max(62,area-y-bottom)
         local choices=data.pickAnyActive and data.eligible or data.offer or {}
         local stackedCards=compact and not landscapeDraft
-        local cols=stackedCards and 1 or math.min(#choices>4 and 3 or 4,math.max(1,#choices))
-        local rows=math.ceil(#choices/cols)
+        -- One row while each card keeps a readable width, then even rows.
+        local fit=math.max(1,math.floor((panel-12+12)/(150+12)))
+        local rows=stackedCards and #choices or math.max(1,math.ceil(#choices/fit))
+        local cols=stackedCards and 1 or math.max(1,math.ceil(#choices/rows))
         local gap=12
         local cardHeight
         if landscapeDraft then cardHeight=math.max(80,listHeight/rows-gap)
@@ -928,24 +933,28 @@ function BattleLab:update(dt)
         end
         self.cardList.CanvasSize=UDim2.fromOffset(0,(stackedCards or used>listHeight) and used+12 or 0)
         y=y+listHeight+(landscapeDraft and 4 or 8)
-        local resources=data.resources or {}; local reroll=(resources.reroll or 0)>0; local any=(resources.pickAny or 0)>0
         local canReroll=reroll and not locked and not self.pendingOfferChange and #((data.eligible) or {})>3 and not data.pickAnyActive
         self.reroll.Text=reroll and "🎲 Reroll · 1 free" or "Reroll used"
         self.pickAny.Text=data.pickAnyActive and "All cards shown" or (any and "🃏 Pick Any · 1 free" or "Pick Any used")
         enabled(self.reroll,canReroll); enabled(self.pickAny,any and not locked and not self.pendingOfferChange and not data.pickAnyActive)
         self.reroll.TextSize=short and 13 or 15; self.pickAny.TextSize=short and 13 or 15
-        self.resourceHint.Visible=not landscapeDraft
+        self.resourceHint.Visible=helpers and not landscapeDraft
+        self.reroll.Visible=helpers; self.pickAny.Visible=helpers
         local ready=not locked and not self.pendingOfferChange and selected~=nil
         if landscapeDraft then
             local actionWidth=(panel-16)/3
             place(self.reroll,x,y,actionWidth,44); place(self.pickAny,x+actionWidth+8,y,actionWidth,44)
-            place(self.fightButton,x+2*(actionWidth+8),y,actionWidth,44); self.fightButton.TextSize=20
+            if helpers then place(self.fightButton,x+2*(actionWidth+8),y,actionWidth,44)
+            else place(self.fightButton,(width-math.min(panel,360))/2,y,math.min(panel,360),44) end
+            self.fightButton.TextSize=20
         else
             local side=math.min((panel-8)/2,220); local lockWidth=math.min(panel,440)
-            place(self.reroll,width/2-side-4,y,side,40); place(self.pickAny,width/2+4,y,side,40); y=y+43
-            place(self.resourceHint,x,y,panel,short and 16 or 20); self.resourceHint.TextSize=short and 10 or 11
-            self.resourceHint.Text=self.pendingOfferChange and "Updating your cards…" or data.rerollReason or "One of each per match · Same skill access for every pilot"
-            y=y+(short and 18 or 23)
+            if helpers then
+                place(self.reroll,width/2-side-4,y,side,40); place(self.pickAny,width/2+4,y,side,40); y=y+43
+                place(self.resourceHint,x,y,panel,short and 16 or 20); self.resourceHint.TextSize=short and 10 or 11
+                self.resourceHint.Text=self.pendingOfferChange and "Updating your cards…" or data.rerollReason or "One of each per match · Same skill access for every pilot"
+                y=y+(short and 18 or 23)
+            end
             place(self.fightButton,(width-lockWidth)/2,y,lockWidth,short and 46 or 58)
             self.fightButton.TextSize=(short and 22 or 30)+((ready and not self.reducedMotion) and 2*math.sin(now*5) or 0)
         end

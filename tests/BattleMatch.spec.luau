@@ -28,6 +28,9 @@ return function(BattleLab, Skills)
         t.lab=BattleLab.new(deps)
         -- These cases step through transitions with a two-second round pause.
         t.lab.ROUND_OVER_SECONDS=2
+        -- The dealt-hand draft stays covered here; the public default deals
+        -- the whole roster and is checked on its own below.
+        if not options.publicDraft then t.lab.PICK_SECONDS=10;t.lab.OFFER_SIZE=3;t.lab.REROLLS=1;t.lab.PICK_ANYS=1 end
         function t.player(id)
             local p={UserId=id,Name="Pilot"..id,DisplayName="Pilot"..id}
             function p:GetAttribute(key)if key=="SkyboundColor"then return id end return nil end
@@ -97,6 +100,14 @@ return function(BattleLab, Skills)
         t.lock(a);local chosen=m.selected[1];t.advance(.1);t.send(a,"pick",{slot="offence",skillId=s.offer[3]});assert(m.selected[1]==chosen)
         t.lock(b);t.advance(.1);t.send(a,"pickAny");assert(m.resources[1].pickAny==1)
         t.send(a,"configure",{settings={{offenceId="Copycat"},{offenceId="Copycat"}}});assert(m.settings[1].offenceId==chosen)
+    end)
+    test("the public draft deals the whole roster in order with nothing to reroll",function()
+        local t=harness({publicDraft=true});local a,b,m=t.pair();local s=t.lab:snapshot(a)
+        assert(table.concat(s.offer,",")=="Meteor,Firework,MachineGun,Pinball" and s.resources.reroll==0 and s.resources.pickAny==0)
+        t.send(a,"reroll");t.send(a,"pickAny");assert(t.lab:snapshot(a).offerRevision==s.offerRevision)
+        t.advance(14.9);assert(m.phase=="Pick");t.advance(.2);assert(m.phase~="Pick","The 15-second deadline did not lock")
+        t.advance(2.5);assert(m.phase=="Fight");t.finish(m,1);t.advance(3.6);s=t.lab:snapshot(a)
+        assert(s.phase=="Pick" and #s.offer==5 and s.offer[1]=="Afterburner","Wild pick hid part of the roster")
     end)
     test("reroll changes set once and Pick Any consumes once for the entire match",function()
         local t=harness();local a,b,m=t.pair();local old=t.lab:snapshot(a).offer;t.send(a,"reroll")

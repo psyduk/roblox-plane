@@ -188,12 +188,14 @@ DEFAULT_SCENARIOS = {
         Harness.send(a,'play');Harness.send(b,'play');local old=Harness.battleLatest(a)
         Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage})
         assert(not Harness.battleLatest(a).locked[1] and Harness.battleLatest(a).selected==nil)
+        -- The public draft shows the whole roster, with no reroll to spend.
+        assert(#old.offer==4 and old.resources.reroll==0 and old.resources.pickAny==0)
         Harness.battleSend(a,'reroll',{matchId=old.matchId,stage=old.stage,offerRevision=old.offerRevision})
-        local fresh=Harness.battleLatest(a);assert(fresh.offerRevision==old.offerRevision+1)
-        local removed;for _,id in ipairs(old.offer)do if not table.find(fresh.offer,id)then removed=id end end
-        assert(removed);Harness.advance(.1)
-        Harness.battleSend(a,'pick',{matchId=old.matchId,stage=old.stage,slot=old.slot,skillId=removed,offerRevision=old.offerRevision})
-        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,slot=old.slot,skillId=removed,offerRevision=old.offerRevision})
+        Harness.battleSend(a,'pickAny',{matchId=old.matchId,stage=old.stage,offerRevision=old.offerRevision})
+        local fresh=Harness.battleLatest(a);assert(fresh.offerRevision==old.offerRevision and #fresh.offer==4)
+        Harness.advance(.1)
+        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,slot=old.slot,skillId=old.offer[2],offerRevision=old.offerRevision+1})
+        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,slot=old.slot,skillId='SpringBumper',offerRevision=old.offerRevision})
         assert(not Harness.battleLatest(a).locked[1] and Harness.battleLatest(a).selected==nil)
         Harness.advance(.1)
         Harness.battleSend(a,'lock',{matchId=fresh.matchId,stage=fresh.stage,slot=fresh.slot,skillId=fresh.offer[2],offerRevision=fresh.offerRevision})
@@ -262,7 +264,7 @@ DEFAULT_SCENARIOS = {
         Harness.battleSend(a,'rematch',{matchId=sa.matchId});Harness.battleSend(b,'rematch',{matchId=sb.matchId})
         Harness.advance(.2);local retry=Harness.battleLatest(a)
         assert(retry.phase=='Pick' and retry.matchId~=sa.matchId and retry.players[1].trailId=='rookieblue')
-        assert(retry.resources.reroll==1 and retry.economy.credits==coins and not retry.economy.progression.starterAvailable)
+        assert(retry.resources.reroll==0 and retry.economy.credits==coins and not retry.economy.progression.starterAvailable)
     ''',
     "bot completed award purchases and equips in results while fight mutations are blocked": r'''
         local a=Harness.add(101);Harness.send(a,'play');Harness.advance(248.2)
