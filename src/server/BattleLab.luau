@@ -156,6 +156,9 @@ function BattleLab:createMatch(a,b,mode,botIdentity)
         roundNumber=0,roundId=0,settings={{wildIds={},angle=35},{wildIds={},angle=35}},resources={{reroll=1,pickAny=1},{reroll=1,pickAny=1}},
         votes={false,false},rewards={},rounds={},completedRounds=0,decisiveRounds=0,fightSeconds=0,draftSeconds=0,transitionSeconds=0,
         queueSeconds=math.max(0,self.deps.now()-a.queuedAt)}
+    -- A bot never flies the pilot's own paint; two planes must read apart at a glance.
+    local own,rival=m.identities[1],m.identities[2]
+    if rival.bot and rival.color==own.color then rival.color=own.color%4+1 end
     self.matches[m.id]=m
     for side,p in ipairs(m.participants) do
         if p.player then

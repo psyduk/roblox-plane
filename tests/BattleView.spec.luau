@@ -184,15 +184,15 @@ return function(View, World, Simulation)
             assert(math.abs(view.edges[2].Position.X-origin.X-bounds.right)<0.001)
             assert(math.abs(view.edges[3].Position.Y-origin.Y-bounds.top)<0.001)
             assert(math.abs(view.edges[4].Position.Y-origin.Y-bounds.bottom)<0.001)
-            assert(view.stormClouds[1][1].Transparency<1 and view.grade.Brightness<0,"Storm did not track pressure")
+            assert(view.windStreaks[1][1].Transparency<1,"Closing wind did not track pressure")
+            assert(view.grade.Brightness>=0 and math.abs(view.grade.Saturation-0.14)<0.001,"Closing wind darkened the sky")
             view.reducedMotion=true;view:update(s,1/60)
-            for _,bolt in ipairs(view.lightning) do assert(bolt.Transparency==1,"Reduced motion lightning") end
             s.phase="MatchOver";view:update(s,1/60)
             assert(math.abs(view.grade.Brightness)<0.001 and math.abs(view.grade.Saturation-0.14)<0.001,"Result kept storm grade")
             view.reducedMotion=false
         end
         view:_resetRound(400)
-        for side=1,4 do assert(view.stormClouds[side][1].Transparency==1 and view.lightning[side].Transparency==1,"Round reset left storm") end
+        for side=1,4 do assert(view.windStreaks[side][1].Transparency==1,"Round reset left closing wind") end
     end)
     test("generic non-aircraft contract supports equipment and crash without plane parts",function(view,cues,advance,snapshot)
         local originalWorld=view.World

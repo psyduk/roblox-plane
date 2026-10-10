@@ -350,20 +350,15 @@ function BattleView.new(World, onPresentationCue, options)
 	self.folder.Name = "SkyboundBattleView"
 	self.folder.Parent = Workspace
 	self.edges, self.wind, self.floorLip, self.clouds, self.crowd = makeArena(self.folder)
-	-- Bounded decoration sits behind the exact, authoritative inner rails.
-	self.stormClouds, self.windStreaks, self.lightning = {}, {}, {}
+	-- The closing wind is drawn as bright streaks blowing in from each rail.
+	-- The sky itself stays sunny: no storm clouds, no darkened grade.
+	self.windStreaks = {}
 	for side = 1, 4 do
-		self.stormClouds[side], self.windStreaks[side] = {}, {}
-		for n = 1, 6 do
-			local cloud = ellipsoid(self.folder, "StormCloud", Vector3.one, CFrame.identity, Color3.fromRGB(47, 54, 91))
-			cloud.Transparency = 1; self.stormClouds[side][n] = cloud
-		end
-		for n = 1, 3 do
+		self.windStreaks[side] = {}
+		for n = 1, 5 do
 			local streak = part(self.folder, "InwardWind", Vector3.one, CFrame.identity, COLORS.cream, Enum.Material.Neon)
 			streak.Transparency = 1; self.windStreaks[side][n] = streak
 		end
-		local bolt = part(self.folder, "StormLightning", Vector3.one, CFrame.identity, COLORS.cream, Enum.Material.Neon)
-		bolt.Transparency = 1; self.lightning[side] = bolt
 	end
 	-- Glow and grade belong to this view and leave with it.
 	self.bloom = Instance.new("BloomEffect")
@@ -388,9 +383,8 @@ function BattleView:_resetRound(roundId)
 	self.roundId, self.lastEvent, self.sampleElapsed, self.sampleAge = roundId, 0, nil, 0
 	self.finishTime, self.finishReal = nil, nil
 	self.shake, self.punch, self.freeze, self.screenFlash = 0, 0, 0, 0
-	self.stormStarted, self.stormAt = false, nil
 	self.grade.Brightness, self.grade.Contrast, self.grade.Saturation = 0, 0.06, 0.14
-	for side = 1, 4 do hide(self.stormClouds[side]); hide(self.windStreaks[side]); self.lightning[side].Transparency = 1 end
+	for side = 1, 4 do hide(self.windStreaks[side]) end
 	for _, fighter in pairs(self.fighters) do
 		fighter.damageSmoke.Rate, fighter.damageFire.Rate = 0, 0
 		fighter.damageSmoke:Clear()
@@ -549,15 +543,15 @@ function BattleView:_fighter(id, index)
 	pop.Parent = label
 	local identityGui = Instance.new("BillboardGui")
 	identityGui.Name = "PilotIdentity"; identityGui.Adornee = pivot:FindFirstChild("Top") or pivot
-	identityGui.Size = UDim2.fromOffset(160, 22); identityGui.StudsOffsetWorldSpace = Vector3.new(0, 2.5, 0)
+	identityGui.Size = UDim2.fromOffset(180, 26); identityGui.StudsOffsetWorldSpace = Vector3.new(0, 2.5, 0)
 	identityGui.AlwaysOnTop = true; identityGui.MaxDistance = 10000; identityGui.Parent = pivot
 	local identityText = Instance.new("TextLabel")
 	identityText.BackgroundTransparency = 1; identityText.Size = UDim2.fromScale(1, 1)
-	identityText.Font = Enum.Font.GothamBold; identityText.TextSize = 13
-	identityText.Text = index == 1 and "▼ YOU" or ((look.name or "RIVAL") .. (look.bot and " · BOT" or ""))
-	identityText.TextColor3 = index == 1 and Color3.fromRGB(87, 224, 248) or Color3.fromRGB(255, 141, 119)
+	identityText.Font = Enum.Font.FredokaOne; identityText.TextSize = index == 1 and 18 or 15
+	identityText.Text = index == 1 and "▼ YOU" or string.upper(look.name or "RIVAL")
+	identityText.TextColor3 = index == 1 and COLORS.yellow or COLORS.cream
 	identityText.TextTruncate = Enum.TextTruncate.AtEnd; identityText.Parent = identityGui
-	local identityEdge = Instance.new("UIStroke"); identityEdge.Thickness = 2; identityEdge.Color = COLORS.ink; identityEdge.Parent = identityText
+	local identityEdge = Instance.new("UIStroke"); identityEdge.Thickness = 3; identityEdge.Color = COLORS.ink; identityEdge.Parent = identityText
 	-- Always on: a dark ink outline makes any paint read against the sky. A hit
 	-- fills it white for an instant; the winner's outline turns gold.
 	local highlight = Instance.new("Highlight")
@@ -565,7 +559,7 @@ function BattleView:_fighter(id, index)
 	highlight.Adornee = model
 	highlight.DepthMode = Enum.HighlightDepthMode.Occluded
 	local sideColor = index == 1 and Color3.fromRGB(87, 224, 248) or Color3.fromRGB(255, 141, 119)
-	highlight.FillTransparency, highlight.OutlineColor, highlight.OutlineTransparency = 1, sideColor, 0
+	highlight.FillTransparency, highlight.OutlineColor, highlight.OutlineTransparency = 1, COLORS.ink, 0
 	highlight.Parent = model
 	-- Keep the FX outside the aircraft model so the full-model hit highlight
 	-- cannot accidentally outline distant aim markers or a victory halo.
@@ -966,10 +960,10 @@ function BattleView:_signatureEffects(fighter, state, simulation, moving, pose)
 	end
 	if (meteor or fighter.offenceId == "Pinball") and (windup or armed) then
 		local shellCharge = armed and 1 or charge
-		fighter.chargeShell.Size = Vector3.new(7 + shellCharge * 2, 3.2 + shellCharge * 1.4, 3.2 + shellCharge * 1.4) * SCALE * fighter.visualScale
+		fighter.chargeShell.Size = Vector3.new(8 + shellCharge * 3.5, 3.6 + shellCharge * 2.6, 3.4 + shellCharge * 2.2) * SCALE * fighter.visualScale
 		fighter.chargeShell.CFrame = pose * mount(fighter, "Centre")
 		fighter.chargeShell.Color = fighter.offenceId == "Pinball" and Color3.fromRGB(110, 220, 255) or (armed and COLORS.yellow or COLORS.fire)
-		fighter.chargeShell.Transparency = armed and 0.72 or (0.88 - charge * 0.2)
+		fighter.chargeShell.Transparency = armed and 0.62 or (0.92 - charge * 0.35)
 	else
 		fighter.chargeShell.Transparency = 1
 	end
@@ -1018,7 +1012,7 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 	local knockedOut = simulation.finished == true and numeric(state.armor, 3) <= 0
 	local flashing = hitAge < 0.18
 	fighter.highlight.FillColor = flashing and Color3.new(1, 1, 1) or COLORS.yellow
-	fighter.highlight.OutlineColor = flashing and Color3.new(1, 1, 1) or (winner and COLORS.yellow or fighter.sideColor)
+	fighter.highlight.OutlineColor = flashing and Color3.new(1, 1, 1) or (winner and COLORS.yellow or (self.mirrorPaint and fighter.sideColor or COLORS.ink))
 	fighter.highlight.FillTransparency = flashing and (0.05 + math.min(1, hitAge / 0.18) * 0.85) or (winner and 0.88 or 1)
 	local center = (displayPose * mount(fighter, "Centre")).Position + Vector3.new(0, 0, 9)
 	if winner then
@@ -1195,7 +1189,7 @@ function BattleView:_camera(rect, simulation, dt)
 			view.height = math.max(view.height, 2 * (math.abs(fighter.position.Y - ORIGIN.Y - view.y) + 14))
 		end
 	end
-	local zoom = 1 - 0.035 * self.punch
+	local zoom = 1 - 0.06 * self.punch
 	local fullHeight = math.max(view.width * zoom / (regionWidth / width) / aspect, view.height * zoom / (regionHeight / height))
 	local fullWidth = fullHeight * aspect
 	local shakeX = math.sin(self.realClock * 83) * self.shake
@@ -1230,6 +1224,8 @@ function BattleView:update(snapshot, dt, viewportRect)
 		self.fighters = {}; self.identityKey = identityKey
 	end
 	self.identities = snapshot.players
+	local paints = snapshot.players or {}
+	self.mirrorPaint = paints[1] ~= nil and paints[2] ~= nil and paints[1].color == paints[2].color
 	local simulation = snapshot.simulation or {}
 	if simulation.finished == true then self.finishReal = self.finishReal or self.realClock
 	else self.finishReal = nil end
@@ -1243,10 +1239,9 @@ function BattleView:update(snapshot, dt, viewportRect)
 	self.punch = self.punch * math.exp(-6 * realDt)
 	self.screenFlash = self.screenFlash * math.exp(-11 * realDt)
 	self.hype = self.hype * math.exp(-0.9 * realDt)
-	local atmosphere = snapshot.phase == "Fight" and math.clamp(numeric(simulation.pressure, 0), 0, 1) or 0
-	self.grade.Brightness = self.screenFlash * 0.16 - atmosphere * 0.065
-	self.grade.Contrast = 0.06 + self.screenFlash * 0.2 + atmosphere * 0.04
-	self.grade.Saturation = slowMotion and -0.35 or (0.14 - atmosphere * 0.22)
+	self.grade.Brightness = self.screenFlash * 0.16
+	self.grade.Contrast = 0.06 + self.screenFlash * 0.2
+	self.grade.Saturation = slowMotion and -0.35 or 0.14
 	for _, cloud in ipairs(self.clouds) do
 		cloud.x = cloud.x + cloud.drift * realDt
 		if cloud.x > cloud.span then cloud.x = -cloud.span end
@@ -1448,7 +1443,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 		rocket.trail.Color = ColorSequence.new(color, COLORS.cream)
 		rocket.trail.Lifetime = tracer and 0.12 or 0.55
 		rocket.trail.WidthScale = NumberSequence.new(tracer and 0.25 or 1, 0)
-		rocket.fizz.Rate = moving and not tracer and not self.reducedMotion and 28 or 0
+		rocket.fizz.Rate = moving and not tracer and not self.reducedMotion and 55 or 0
 		rocket.fizz.Color = ColorSequence.new(COLORS.cream, color)
 	end
 	self:_wakes(simulation, moving)
@@ -1521,8 +1516,6 @@ function BattleView:update(snapshot, dt, viewportRect)
 		self.wind[index].CFrame = arenaPose(zone[3], zone[4], -5)
 		self.wind[index].Transparency = pressured and (0.6 + (self.reducedMotion and 0 or 0.08 * math.sin(self.clock * 4 + index))) or 1
 	end
-	if pressured and not self.stormStarted then self.stormStarted, self.stormAt = true, self.realClock end
-	if not pressured then self.stormStarted, self.stormAt = false, nil end
 	local pressure = math.clamp(numeric(simulation.pressure, 0), 0, 1)
 	for side = 1, 4 do
 		local vertical = side <= 2
@@ -1530,27 +1523,15 @@ function BattleView:update(snapshot, dt, viewportRect)
 		local outward = (side == 1 or side == 4) and -1 or 1
 		local span = vertical and fieldHeight or fieldWidth
 		local middle = vertical and fieldY or fieldX
-		for n, cloud in ipairs(self.stormClouds[side]) do
-			local along = middle - span / 2 + (n - 0.5) * span / 6
-			local breathe = self.reducedMotion and 0 or math.sin(self.clock * 0.7 + n + side) * 1.4
-			cloud.Size = vertical and Vector3.new(7 + pressure * 5, span / 6 + 6, 4) or Vector3.new(span / 6 + 6, 7 + pressure * 5, 4)
-			cloud.CFrame = vertical and arenaPose(rail + outward * (5 + breathe), along, -10) or arenaPose(along, rail + outward * (5 + breathe), -10)
-			cloud.Transparency = pressured and 0.16 or 1
-		end
 		for n, streak in ipairs(self.windStreaks[side]) do
-			local sweep = self.reducedMotion and 0.5 or (self.clock * (0.65 + pressure * 0.5) + n / 3) % 1
-			local along = middle - span * 0.4 + n * span * 0.2
-			local across = rail + outward * (2 + (1 - sweep) * 10)
-			streak.Size = vertical and Vector3.new(2 + pressure * 3, 0.16, 0.15) or Vector3.new(0.16, 2 + pressure * 3, 0.15)
-			streak.CFrame = vertical and arenaPose(across, along, -7) or arenaPose(along, across, -7)
-			streak.Transparency = pressured and (0.5 + sweep * 0.45) or 1
+			local sweep = self.reducedMotion and 0.5 or (self.clock * (0.8 + pressure * 0.7) + n * 0.37) % 1
+			local along = middle - span * 0.5 + (n - 0.5) * span / 5
+			local across = rail + outward * (1.5 + (1 - sweep) * 12)
+			local length = 4 + pressure * 5
+			streak.Size = vertical and Vector3.new(length, 0.3, 0.15) or Vector3.new(0.3, length, 0.15)
+			streak.CFrame = vertical and arenaPose(across, along, -4) or arenaPose(along, across, -4)
+			streak.Transparency = pressured and (0.25 + math.abs(sweep - 0.5) * 1.5) or 1
 		end
-		local initial = self.stormAt and self.realClock - self.stormAt < 0.12
-		local flash = not self.reducedMotion and pressured and (initial or ((self.realClock * (0.15 + pressure * 0.3) + side * 0.17) % 1 < 0.035))
-		local bolt = self.lightning[side]
-		bolt.Size = vertical and Vector3.new(0.4, 11, 0.2) or Vector3.new(11, 0.4, 0.2)
-		bolt.CFrame = (vertical and arenaPose(rail + outward * 6, middle, -6) or arenaPose(middle, rail + outward * 6, -6)) * CFrame.Angles(0, 0, 0.3)
-		bolt.Transparency = flash and 0.35 or 1
 	end
 	for index, edge in ipairs(self.edges) do
 		edge.Color = pressured and COLORS.yellow or (index <= 2 and self:accent(index) or COLORS.cream)

@@ -108,4 +108,22 @@ The visual/input pass completed **five bot matches: four before the QA fixes and
 | M2 | Same-server friend challenge | Accept/decline/cancel/expiry, crossing invites, atomic reservation, queue conflict and mutual rematch implemented and covered by orchestration/integration checks. Invitation UI is built; short-landscape list/footer overlap was corrected by source review. Real two-client production-remote run passed challenge decline, acceptance and final lobby cleanup. Human GUI invitation input, real-client expiry/crossing/disconnect and published lifecycle remain unverified. |
 | M1–2 | Replay measurement and first session | Versioned funnel records request separately from next actual launch, with outcome/device/cohort/mode context. Native telemetry checks pass. No unfamiliar-player cohort, retention result, listening verdict or physical-phone evidence has been collected. |
 
+## Presentation pass after Milestones 1–2 (October 10, 2026)
+
+The milestone build worked but had flattened the battle's look. A bot match was played on desktop, and at 640×480, iPhone 17 Pro landscape and portrait emulation, before and after; screenshots are `previews/hud-restore-*.jpg`. Sound was not listened to and no physical phone was used.
+
+| Regression found | Now |
+| --- | --- |
+| Full-width navy bar behind the fighter HUD, 8px armor bars, small Gotham text | No backing. Portrait rings, outlined names, a paint-coloured offence pill, round wild-card chips and chunky armor pips float over the sky; a hit flashes the ring and pips |
+| Small clock, "0 — 0" text, "ROUND 1 / 5" | Big outlined clock that turns red and pulses in the last ten seconds; two round-win dots per pilot under it |
+| Permanent "FIRST TO TWO / Your pilot fights automatically" strip | One status pill, only while planes fly; hit and bumper callouts returned |
+| Flat draft cards on a near-opaque scrim | Illustrated cards with thick outlines, rotated comic word, deal-in and pop on pick; lighter scrim; pulsing LOCK IN |
+| Reveal as two navy text boxes, countdown small at the bottom | Skill-coloured VS cards slide in from the sides; centred 3-2-1-FIGHT with pop and fade |
+| Results as plain text lines shown at once | Slammed banner for round and match, crown and winner portrait, stat chips, 40-piece confetti, pulsing REMATCH; the match result waits for the crash; coin card has a trail-coloured progress bar |
+| Dark indigo cloud blobs and lightning sticks around the closing wind, sky dimmed and desaturated | Removed. Yellow rails, the lilac wind wash and bright inward streaks; the grade stays sunny |
+| Bot flew the pilot's own paint (two red planes); side-coloured outlines | A bot never takes the pilot's paint; ink outlines, side colours only for a human paint mirror |
+| Hit zoom, Meteor charge shell and rocket fizz toned down | Restored to the earlier audit's weight |
+
+Open after this pass: the 10-second pick timer is tight for a first read of three cards; Machine Gun vs Pinball timed out to a draw twice running in one match; wild-card chips are dropped from the header in phone portrait for lack of room.
+
 Milestones 3 and 4 remain outside scope. Public release/purchases stay gated by [AND-222's published two-player and real-phone run](SKY-BATTLE-PLAYTEST.md); local service doubles, native specs, bot play, two real Studio clients with programmatic input and emulation are supporting evidence only.
