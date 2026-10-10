@@ -1,5 +1,6 @@
--- Pure tests: require(thisModule)(BattleSimulation) in Studio or a Lua runtime.
-return function(Simulation, Modifiers)
+-- Pure tests: require(thisModule)(BattleSimulation, SkillCatalog, BattleSkills)
+-- in Studio or a Lua runtime. The last two are optional.
+return function(Simulation, Catalog, Skills)
 	local passed = 0
 	local function check(value, message) assert(value, message) end
 	local function close(a, b) return math.abs(a - b) < 0.0000001 end
@@ -36,18 +37,18 @@ return function(Simulation, Modifiers)
 	end
 	local function armed(fighter, x, heading)
 		passive(fighter, x, 50, heading)
-		fighter.powerId = "Meteor"
+		fighter.offenceId = "Meteor"
 		fighter.phase, fighter.phaseLeft, fighter.armed = "Attack", 1, true
 		fighter._attackHeading, fighter._attackHit = heading, false
 	end
 	local function wake(id, owner, x, y, armLeft)
-		return { id = id, owner = owner, x = x, y = y, radius = Simulation.WAKE_RADIUS,
+		return { id = id, owner = owner, skillId = "FizzyFuel", x = x, y = y, radius = Simulation.WAKE_RADIUS,
 			life = Simulation.WAKE_LIFE, maxLife = Simulation.WAKE_LIFE, armLeft = armLeft or 0 }
 	end
 
 	test("same seed settings and frame times reproduce entire round", function()
-		local a = run(8137, { powerId = "Meteor", angle = 10 }, { powerId = "Firework", angle = 55 })
-		local b = run(8137, { powerId = "Meteor", angle = 10 }, { powerId = "Firework", angle = 55 })
+		local a = run(8137, { offenceId = "Meteor", angle = 10 }, { offenceId = "Firework", angle = 55 })
+		local b = run(8137, { offenceId = "Meteor", angle = 10 }, { offenceId = "Firework", angle = 55 })
 		check(equal(a, b), "Deterministic replay differed")
 		check(a.finished and a.eventSerial > 2, "No combat occurred")
 	end)
@@ -75,14 +76,15 @@ return function(Simulation, Modifiers)
 	end)
 
 	test("settings are validated copied and bounded", function()
-		local input = { powerId = "Meteor", angle = 999 }
-		local state = Simulation.newRound(0 / 0, input, { powerId = "unknown", angle = math.huge })
+		local input = { offenceId = "Meteor", angle = 999 }
+		local state = Simulation.newRound(0 / 0, input, { offenceId = "unknown", angle = math.huge })
 		input.angle = 10
 		check(state.seed == 1 and state.fighters[1].settings.angle == 55, "Seed or settings ownership failed")
-		check(state.fighters[2].powerId == "Firework" and state.fighters[2].settings.angle == 32, "Fallback failed")
+		check(state.fighters[2].offenceId == "Firework" and state.fighters[2].settings.angle == 32, "Fallback failed")
 		local other = Simulation.newRound({}, { angle = -99 }, false)
 		check(other.fighters[1].settings.angle == 10 and other.fighters[2].armor == 3, "Malformed settings failed")
-		check(Simulation.validPower("Meteor") and Simulation.validPower("Firework") and not Simulation.validPower("Paid"), "Power validation failed")
+		check(Simulation.validOffence("Meteor") and Simulation.validOffence("Firework") and not Simulation.validOffence("Paid"), "Offence validation failed")
+		check(not Simulation.validOffence("Afterburner") and not Simulation.validWild("Meteor") and not Simulation.validWild({}), "Skill kinds were mixed up")
 	end)
 
 	test("passive body contact only bumps", function()
@@ -152,7 +154,7 @@ return function(Simulation, Modifiers)
 	end)
 
 	test("dive commitment survives a hit and recovery within one broadcast interval", function()
-		local state = Simulation.newRound(1, { powerId = "Meteor", modifierId = "None" })
+		local state = Simulation.newRound(1, { offenceId = "Meteor", wildIds = {} })
 		passive(state.fighters[1], -8, 50, 0)
 		passive(state.fighters[2], 0, 50, 0)
 		state.fighters[1].phase, state.fighters[1].phaseLeft = "Windup", 0
@@ -170,7 +172,7 @@ return function(Simulation, Modifiers)
 	end)
 
 	test("normal Meteor charge creates continuous space before a visible landed dive", function()
-		local state = Simulation.newRound(731, { powerId = "Meteor", angle = 32 }, { powerId = "Firework", angle = 32 })
+		local state = Simulation.newRound(731, { offenceId = "Meteor", angle = 32 }, { offenceId = "Firework", angle = 32 })
 		local charge, commitment, impact, waypointX, waypointY, previousHeading
 		local serial = state.eventSerial
 		for _ = 1, 300 do
@@ -275,8 +277,8 @@ return function(Simulation, Modifiers)
 		for _, power in ipairs({ "Meteor", "Firework" }) do
 			for _, a in ipairs({ 10, 32, 55 }) do
 				for _, b in ipairs({ 10, 32, 55 }) do
-					local state = Simulation.newRound(104729 + a * 7919 + b, { powerId = power, angle = a },
-						{ powerId = power == "Meteor" and "Firework" or "Meteor", angle = b })
+					local state = Simulation.newRound(104729 + a * 7919 + b, { offenceId = power, angle = a },
+						{ offenceId = power == "Meteor" and "Firework" or "Meteor", angle = b })
 					for _ = 1, 2102 do
 						Simulation.step(state, Simulation.FIXED_DT)
 						check(#state.events <= 24, "Event history leaked")
@@ -289,7 +291,7 @@ return function(Simulation, Modifiers)
 						if state.finished then break end
 					end
 					check(state.finished and state.elapsed <= Simulation.MAX_TIME, "Nonterminating match")
-					if state.winner ~= 0 then wins[state.fighters[state.winner].powerId] = true end
+					if state.winner ~= 0 then wins[state.fighters[state.winner].offenceId] = true end
 					for index = 2, #state.events do check(state.events[index].serial > state.events[index - 1].serial, "Event order changed") end
 				end
 			end
@@ -298,37 +300,71 @@ return function(Simulation, Modifiers)
 		check(wins.Meteor and wins.Firework, "One signature could never win the sample")
 	end)
 
-	test("modifiers validate and reset independently each round", function()
-		local invalid = Simulation.newRound(1, { modifierId = "PaidShield" }, { modifierId = {} })
-		check(invalid.fighters[1].modifierId == "None" and invalid.fighters[2].modifierId == "None", "Invalid modifiers accepted")
-		for _, id in ipairs({ "None", "Afterburner", "SpringBumper", "FizzyFuel" }) do
-			check(Simulation.validModifier(id), "Catalog modifier rejected")
-			local first = Simulation.newRound(12, { modifierId = id }, { modifierId = id })
+	local function has(fighter, id)
+		for _, wildId in ipairs(fighter.wildIds) do if wildId == id then return true end end
+		return false
+	end
+	local WILD = { "Afterburner", "FizzyFuel", "SpringBumper" }
+	-- Every way to carry zero, one or two different wild cards.
+	local LOADOUTS = { {}, { "Afterburner" }, { "FizzyFuel" }, { "SpringBumper" },
+		{ "Afterburner", "FizzyFuel" }, { "Afterburner", "SpringBumper" }, { "FizzyFuel", "SpringBumper" } }
+
+	test("wild cards validate and reset independently each round", function()
+		local invalid = Simulation.newRound(1, { wildIds = { "PaidShield", {}, "Meteor" } }, { wildIds = "Afterburner" })
+		check(#invalid.fighters[1].wildIds == 0 and #invalid.fighters[2].wildIds == 0, "Invalid wild cards accepted")
+		check(invalid.fighters[1].bumperReady == nil, "A skill's private state appeared without the skill")
+		for _, id in ipairs(WILD) do
+			check(Simulation.validWild(id), "Catalog wild card rejected")
+			local first = Simulation.newRound(12, { wildIds = { id } }, { wildIds = { id } })
 			first.fighters[1].armor, first.fighters[1].boostLeft, first.fighters[1].bumperReady = 0, 0.8, false
 			first.wakes = { wake(1, 1, 0, 50) }
-			local nextRound = Simulation.newRound(12, { modifierId = id }, { modifierId = id })
+			local nextRound = Simulation.newRound(12, { wildIds = { id } }, { wildIds = { id } })
 			check(nextRound.fighters[1].armor == 3 and nextRound.fighters[1].boostLeft == 0 and #nextRound.wakes == 0, "Previous round effects leaked")
-			check(nextRound.fighters[1].bumperReady == (id == "SpringBumper"), "Bumper charge did not reset")
+			check((nextRound.fighters[1].bumperReady == true) == (id == "SpringBumper"), "Bumper charge did not reset")
 			check(nextRound.eventSerial == 2, "Activation events leaked into launch")
 		end
 	end)
 
-	if Modifiers then
-		test("shared catalog agrees with validation and returns detached records", function()
-			check(Modifiers.DEFAULT_ID == "None" and #Modifiers.all() == 4, "Catalog default or size differs")
-			for _, entry in ipairs(Modifiers.all()) do
-				check(Simulation.validModifier(entry.id) and Modifiers.valid(entry.id), "Catalog and simulation disagree")
-				check(type(entry.name) == "string" and type(entry.description) == "string", "Missing UI copy")
-				local original = Modifiers.get(entry.id)
-				entry.name, entry.color.r = "mutated", -1
-				check(Modifiers.get(original.id).name == original.name and Modifiers.get(original.id).color.r == original.color.r, "UI mutated catalog")
+	test("a build keeps at most two different wild cards in a fixed order", function()
+		local state = Simulation.newRound(1, { wildIds = { "SpringBumper", "SpringBumper", "Afterburner", "FizzyFuel" } },
+			{ wildIds = { "FizzyFuel", "Afterburner" } })
+		local a, b = state.fighters[1].wildIds, state.fighters[2].wildIds
+		check(#a == 2 and a[1] == "Afterburner" and a[2] == "SpringBumper", "Duplicate or third wild card kept")
+		check(#b == 2 and b[1] == "Afterburner" and b[2] == "FizzyFuel", "Pick order leaked into the fight")
+		local picked = { wildIds = { "SpringBumper", "FizzyFuel" } }
+		local swapped = { wildIds = { "FizzyFuel", "SpringBumper" } }
+		check(equal(run(4421, picked, picked), run(4421, swapped, swapped)), "Pick order changed a fight")
+		check(#picked.wildIds == 2 and picked.wildIds[1] == "SpringBumper", "Caller's settings were edited")
+	end)
+
+	if Catalog and Skills then
+		test("catalog and skill behaviour agree and catalog records are detached", function()
+			local count = { offence = 0, wild = 0 }
+			for _, entry in ipairs(Catalog.all()) do
+				count[entry.kind] = count[entry.kind] + 1
+				check(Skills[entry.kind][entry.id] ~= nil, "Catalog skill has no behaviour: " .. entry.id)
+				check(Simulation.validOffence(entry.id) == (entry.kind == "offence") and
+					Simulation.validWild(entry.id) == (entry.kind == "wild"), "Catalog and simulation disagree")
 			end
-			check(Modifiers.get("unknown") == nil and not Modifiers.valid({}), "Invalid catalog ID accepted")
+			for kind, total in pairs(count) do
+				local behaviours = 0
+				for id in pairs(Skills[kind]) do
+					behaviours = behaviours + 1
+					check(Catalog.valid(id, kind), "Behaviour has no catalog entry: " .. id)
+				end
+				check(behaviours == total, "Catalog and behaviour counts differ")
+			end
+			for id, offence in pairs(Skills.offence) do
+				for _, field in ipairs({ "windup", "attackTime", "attackSpeed", "earliest", "leadSpeed", "leadFactor" }) do
+					check(type(offence[field]) == "number", id .. " lacks " .. field)
+				end
+			end
+			check(Catalog.MAX_WILD == Simulation.MAX_WILD, "Wild card limit differs")
 		end)
 	end
 
 	test("afterburner starts only after an attack and expires without retriggering", function()
-		local state = Simulation.newRound(1, { powerId = "Firework", modifierId = "Afterburner" })
+		local state = Simulation.newRound(1, { offenceId = "Firework", wildIds = { "Afterburner" } })
 		local fighter = state.fighters[1]
 		passive(fighter, -40, 50, 0)
 		passive(state.fighters[2], 50, 80, 0)
@@ -343,7 +379,7 @@ return function(Simulation, Modifiers)
 		check(close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 44), "Boost did not change recovery speed")
 		local activations = 0
 		for _, entry in ipairs(state.events) do
-			if entry.kind == "modifier" and entry.modifierId == "Afterburner" then activations = activations + 1 end
+			if entry.kind == "skill" and entry.skillId == "Afterburner" then activations = activations + 1 end
 		end
 		check(activations == 1, "Boost activation duplicated")
 		for _ = 1, 60 do Simulation.step(state, Simulation.FIXED_DT) end
@@ -352,7 +388,7 @@ return function(Simulation, Modifiers)
 	end)
 
 	test("spring bumper ignores passive or protected contact and blocks one valid strike", function()
-		local state = Simulation.newRound(1, nil, { modifierId = "SpringBumper" })
+		local state = Simulation.newRound(1, nil, { wildIds = { "SpringBumper" } })
 		passive(state.fighters[1], -3, 50, math.pi)
 		passive(state.fighters[2], 3, 50, 0)
 		Simulation.step(state, Simulation.FIXED_DT)
@@ -378,7 +414,7 @@ return function(Simulation, Modifiers)
 	end)
 
 	test("spring bumper consumes a rocket without reporting armor loss", function()
-		local state = Simulation.newRound(1, nil, { modifierId = "SpringBumper" })
+		local state = Simulation.newRound(1, nil, { wildIds = { "SpringBumper" } })
 		passive(state.fighters[1], -55, 50, 0)
 		passive(state.fighters[2], 0, 50, 0)
 		state.projectiles = { projectile(1, 1, -25, 50, 6000, 0) }
@@ -389,7 +425,7 @@ return function(Simulation, Modifiers)
 	end)
 
 	test("fizzy wake starts at commitment and visibly arms before damage", function()
-		local state = Simulation.newRound(1, { powerId = "Firework", modifierId = "FizzyFuel" })
+		local state = Simulation.newRound(1, { offenceId = "Firework", wildIds = { "FizzyFuel" } })
 		local fighter = state.fighters[1]
 		passive(fighter, -40, 50, 0)
 		passive(state.fighters[2], 50, 80, 0)
@@ -427,7 +463,7 @@ return function(Simulation, Modifiers)
 		Simulation.step(owner, Simulation.FIXED_DT)
 		check(owner.fighters[1].armor == 3 and #owner.wakes == 1, "Wake hit its owner")
 		for _, modifier in ipairs({ "None", "SpringBumper" }) do
-			local state = Simulation.newRound(1, nil, { modifierId = modifier })
+			local state = Simulation.newRound(1, nil, { wildIds = { modifier } })
 			passive(state.fighters[1], -55, 50, 0)
 			passive(state.fighters[2], 0, 50, 0)
 			state.wakes = { wake(1, 1, 0, 50), wake(2, 1, 0, 50) }
@@ -442,7 +478,7 @@ return function(Simulation, Modifiers)
 	end)
 
 	test("wake instances are bounded and expire after emission stops", function()
-		local state = Simulation.newRound(1, { modifierId = "FizzyFuel" }, { modifierId = "FizzyFuel" })
+		local state = Simulation.newRound(1, { wildIds = { "FizzyFuel" } }, { wildIds = { "FizzyFuel" } })
 		for _ = 1, 180 do
 			for id, fighter in ipairs(state.fighters) do
 				passive(fighter, 0, id == 1 and 80 or 20, id == 1 and 0 or math.pi)
@@ -463,17 +499,63 @@ return function(Simulation, Modifiers)
 		check(#state.wakes == 0, "Expired wake persisted")
 	end)
 
-	test("all modifier pairs remain deterministic bounded and terminate", function()
-		for _, a in ipairs({ "None", "Afterburner", "SpringBumper", "FizzyFuel" }) do
-			for _, b in ipairs({ "None", "Afterburner", "SpringBumper", "FizzyFuel" }) do
-				local settingsA, settingsB = { powerId = "Meteor", modifierId = a, angle = 10 }, { powerId = "Firework", modifierId = b, angle = 55 }
+	test("afterburner and fizzy fuel both fire from one attack", function()
+		local state = Simulation.newRound(1, { offenceId = "Firework", wildIds = { "FizzyFuel", "Afterburner" } })
+		local fighter = state.fighters[1]
+		passive(fighter, -40, 50, 0)
+		passive(state.fighters[2], 50, 80, 0)
+		fighter.phase, fighter.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(fighter.phase == "Attack" and #state.wakes == 1 and fighter.boostLeft == 0, "Wake or boost timing changed when paired")
+		fighter.phaseLeft = 0
+		for _ = 1, 12 do Simulation.step(state, Simulation.FIXED_DT) end
+		check(fighter.phase == "Recover" and fighter.boostLeft > 0 and state._wakeSerial > 1, "Paired wild cards did not both run")
+		check(close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 44), "Boost speed lost when paired with a wake")
+	end)
+
+	test("spring bumper still blocks once beside another wild card", function()
+		for _, partner in ipairs({ "Afterburner", "FizzyFuel" }) do
+			local state = Simulation.newRound(1, nil, { wildIds = { partner, "SpringBumper" } })
+			armed(state.fighters[1], -8, 0)
+			passive(state.fighters[2], 0, 50, 0)
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(not state.fighters[2].bumperReady and state.fighters[2].armor == 3, "Paired bumper did not absorb: " .. partner)
+			local entry = state.events[#state.events]
+			check(entry.kind == "blocked" and entry.skillId == "SpringBumper", "Paired block lacks feedback")
+			state.fighters[2].invulnerable = 0
+			state.projectiles = { projectile(7, 1, -25, state.fighters[2].y, 6000, 0) }
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(state.fighters[2].armor == 2, "Paired bumper blocked twice: " .. partner)
+		end
+	end)
+
+	test("a bumper carrier's own wake and boost are untouched by its block", function()
+		local state = Simulation.newRound(1, { offenceId = "Firework", wildIds = { "Afterburner", "SpringBumper" } },
+			{ wildIds = { "FizzyFuel", "SpringBumper" } })
+		passive(state.fighters[1], -55, 50, 0)
+		passive(state.fighters[2], 0, 50, 0)
+		state.wakes = { wake(1, 2, -55, 50) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[1].armor == 3 and not state.fighters[1].bumperReady, "Bumper did not stop a rival wake")
+		check(state.fighters[2].bumperReady and #state.wakes == 0, "Wake owner lost its own bumper or kept the puff")
+	end)
+
+	test("every loadout pair is deterministic bounded and terminates", function()
+		for _, a in ipairs(LOADOUTS) do
+			for _, b in ipairs(LOADOUTS) do
+				local settingsA, settingsB = { offenceId = "Meteor", wildIds = a, angle = 10 }, { offenceId = "Firework", wildIds = b, angle = 55 }
 				local first, second = run(91273, settingsA, settingsB), run(91273, settingsA, settingsB)
-				check(equal(first, second), "Modifier replay differed: " .. a .. "/" .. b)
-				check(#first.wakes <= Simulation.MAX_WAKES and first.elapsed <= Simulation.MAX_TIME, "Modifier lifecycle escaped bounds")
+				local label = table.concat(a, "+") .. "/" .. table.concat(b, "+")
+				check(equal(first, second), "Loadout replay differed: " .. label)
+				check(#first.wakes <= Simulation.MAX_WAKES and first.elapsed <= Simulation.MAX_TIME, "Loadout lifecycle escaped bounds")
+				for id, fighter in ipairs(first.fighters) do
+					check(has(fighter, "SpringBumper") == (fighter.bumperReady ~= nil), "Bumper state on the wrong plane")
+					check(#fighter.wildIds == #(id == 1 and a or b), "Loadout changed during the fight")
+				end
 				for _, entry in ipairs(first.events) do check(type(entry.at) == "number" and entry.at <= first.elapsed, "Event timestamp missing") end
 			end
 		end
 	end)
 
-	return string.format("BattleSimulation: %d tests passed (determinism, fixed ticks, collisions, protection, endings, modifiers, wakes)", passed)
+	return string.format("BattleSimulation: %d tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes)", passed)
 end

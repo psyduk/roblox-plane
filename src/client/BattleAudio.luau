@@ -61,10 +61,10 @@ local function finite(value)
     return type(value)=="number" and value==value and value>-math.huge and value<math.huge
 end
 local function audibleKind(event)
-    if event.kind=="modifier" then
-        return event.modifierId=="Afterburner" and "afterburner" or nil
+    if event.kind=="skill" then
+        return event.skillId=="Afterburner" and "afterburner" or nil
     elseif event.kind=="blocked" then
-        return event.modifierId=="SpringBumper" and "bumper_block" or nil
+        return event.skillId=="SpringBumper" and "bumper_block" or nil
     end
     return KINDS[event.kind] and event.kind or nil
 end
@@ -266,7 +266,7 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
         voice("jump",0.14,0.75,0.28,1.5)
     elseif kind=="windup" then
         local fighter=simulation.fighters and simulation.fighters[actor]
-        if fighter and fighter.powerId=="Meteor" then
+        if fighter and fighter.offenceId=="Meteor" then
             -- Low rising charge, then a separate downward sweep on commitment.
             local duration=finite(fighter.windupDuration) and fighter.windupDuration>0
                 and math.max(0.2,math.min(3,fighter.windupDuration)) or 0.65

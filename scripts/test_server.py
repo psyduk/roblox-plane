@@ -9,7 +9,7 @@ Roblox replication, character physics, UI, or real network timing.
 """
 from pathlib import Path
 import re
-from lua_modules import load_simulation
+from lua_modules import load_battle, load_simulation
 
 try:
     from lupa import LuaRuntime
@@ -129,7 +129,10 @@ def make_runtime(studio=True, published=False, distance_mode=None):
     L.execute('function Harness.services.RunService:IsStudio()return Harness.studio end')
     simulation, catalog = load_simulation(L)
     L.globals().Harness.shared.Simulation.module=simulation
-    L.globals().Harness.shared.children.BattleSimulation=L.table_from({'module':L.execute((ROOT/'src/shared/BattleSimulation.luau').read_text())})
+    battle, battle_skills, skill_catalog = load_battle(L)
+    L.globals().Harness.shared.children.BattleSimulation=L.table_from({'module':battle})
+    L.globals().Harness.shared.children.BattleSkills=L.table_from({'module':battle_skills})
+    L.globals().Harness.shared.children.SkillCatalog=L.table_from({'module':skill_catalog})
     L.globals().Harness.shared.PlaneCatalog=L.table_from({'module':catalog})
     L.globals().Harness.shared.PowerCatalog=L.table_from({'module':L.execute((ROOT/'src/shared/PowerCatalog.luau').read_text())})
     L.globals().Harness.shared.children.CosmeticCatalog=L.table_from({'module':L.execute((ROOT/'src/shared/CosmeticCatalog.luau').read_text())})
@@ -191,10 +194,10 @@ DEFAULT_SCENARIOS = {
         assert(firstA.phase=='Configure' and firstB.phase=='Configure')
         assert(firstA.simulatedOpponent==true and firstB.simulatedOpponent==true)
         assert(firstA.roundId~=firstB.roundId)
-        Harness.battleSend(a,'configure',{settings={{powerId='Firework',angle=10},{powerId='Meteor',angle=55}}})
+        Harness.battleSend(a,'configure',{settings={{offenceId='Firework',angle=10},{offenceId='Meteor',angle=55}}})
         Harness.battleSend(a,'launch');Harness.advance(2.7)
         assert(Harness.battleLatest(a).phase=='Fight')
-        assert(Harness.battleLatest(b).phase=='Configure' and Harness.battleLatest(b).settings[1].powerId=='Meteor')
+        assert(Harness.battleLatest(b).phase=='Configure' and Harness.battleLatest(b).settings[1].offenceId=='Meteor')
         Harness.advance(38)
         assert(Harness.battleLatest(a).phase=='Results' and Harness.battleLatest(b).simulation.elapsed==0)
         Harness.battleSend(a,'exit');Harness.advance(.1)
@@ -227,7 +230,7 @@ SCENARIOS = {
         local a=Harness.add(101)
         Harness.battleSend(a,'enter');Harness.advance(1)
         local function payload(angle,id)
-            return {settings={{powerId='Meteor',angle=angle,modifierId=id or 'Afterburner'},{powerId='Firework',angle=30,modifierId='SpringBumper'}}}
+            return {settings={{offenceId='Meteor',angle=angle,wildIds={id or 'Afterburner'}},{offenceId='Firework',angle=30,wildIds={'SpringBumper'}}}}
         end
         for _,angle in ipairs({15,20,25,30,35})do Harness.battleSend(a,'configure',payload(angle))end
         assert(Harness.battleLatest(a).settings[1].angle==30,'burst did not reach throttle')
@@ -236,45 +239,71 @@ SCENARIOS = {
         assert(Harness.battleLatest(a).phase=='Configure','invalid launch settings accepted')
         Harness.battleSend(a,'launch',payload(35));Harness.advance(.1)
         local s=Harness.battleLatest(a)
-        assert(s.phase=='Countdown' and s.settings[1].angle==35 and s.settings[1].modifierId=='Afterburner')
+        assert(s.phase=='Countdown' and s.settings[1].angle==35 and s.settings[1].wildIds[1]=='Afterburner')
         assert(s.simulation.fighters[1].settings.angle==35 and s.simulation.fighters[2].bumperReady)
     ''',
-    "Battle Lab validates one modifier slot and locks it through a battle": r'''
+    "Battle Lab validates a build of one offence and up to two wild cards and locks it through a battle": r'''
         local a=Harness.add(101)
         Harness.battleSend(a,'enter');Harness.advance(.1)
-        local function setup(modifier)
-            return {settings={{powerId='Meteor',angle=35,modifierId=modifier},{powerId='Firework',angle=30,modifierId='SpringBumper'}}}
+        local function setup(wild,offence)
+            return {settings={{offenceId=offence or 'Meteor',angle=35,wildIds=wild},{offenceId='Firework',angle=30,wildIds={'SpringBumper'}}}}
         end
-        for _,id in ipairs({'None','Afterburner','SpringBumper','FizzyFuel'})do
-            Harness.battleSend(a,'configure',setup(id));Harness.advance(.1)
+        local function same(list,expected)
+            if #list~=#expected then return false end
+            for i,id in ipairs(expected)do if list[i]~=id then return false end end
+            return true
+        end
+        for _,wild in ipairs({{},{'Afterburner'},{'SpringBumper'},{'FizzyFuel'},{'SpringBumper','Afterburner'},{'FizzyFuel','SpringBumper'}})do
+            Harness.battleSend(a,'configure',setup(wild));Harness.advance(.1)
             local s=Harness.battleLatest(a)
-            assert(s.settings[1].modifierId==id and s.simulation.fighters[1].modifierId==id)
+            assert(same(s.settings[1].wildIds,wild),'accepted build was changed')
+            local sorted={};for i,id in ipairs(wild)do sorted[i]=id end;table.sort(sorted)
+            assert(same(s.simulation.fighters[1].wildIds,sorted),'fight did not receive the build')
         end
+        Harness.battleSend(a,'configure',{settings={{offenceId='Firework',angle=35},{offenceId='Meteor',angle=30}}});Harness.advance(.1)
+        assert(#Harness.battleLatest(a).settings[1].wildIds==0,'a build with no wild cards was refused')
         local round=Harness.battleLatest(a).roundId
-        for _,invalid in ipairs({'unknown',false,999,{'Afterburner','SpringBumper'}})do
-            Harness.battleSend(a,'configure',setup(invalid));Harness.advance(.1)
-            assert(Harness.battleLatest(a).roundId==round,'invalid modifier accepted')
+        local refused={
+            unknown={'unknown'},wrongKind={'Firework'},three={'Afterburner','SpringBumper','FizzyFuel'},
+            duplicate={'Afterburner','Afterburner'},text='Afterburner',number=999,flag=false,
+            nested={{'Afterburner'}},keyed={first='Afterburner'},
+        }
+        for name,wild in pairs(refused)do
+            Harness.battleSend(a,'configure',setup(wild));Harness.advance(.1)
+            assert(Harness.battleLatest(a).roundId==round,'invalid wild cards accepted: '..name)
         end
+        for _,offence in ipairs({'unknown','Afterburner',false,7,{'Meteor'}})do
+            local bad=setup({});bad.settings[1].offenceId=offence
+            Harness.battleSend(a,'configure',bad);Harness.advance(.1)
+            assert(Harness.battleLatest(a).roundId==round,'invalid offence accepted')
+        end
+        local missing=setup({});missing.settings[1].offenceId=nil
+        Harness.battleSend(a,'configure',missing);Harness.advance(.1)
+        assert(Harness.battleLatest(a).roundId==round,'missing offence accepted')
+        Harness.battleSend(a,'configure',{settings={{powerId='Meteor',modifierId='Afterburner',angle=35},{offenceId='Firework',angle=30}}});Harness.advance(.1)
+        assert(Harness.battleLatest(a).roundId==round,'old power and modifier format accepted')
+        Harness.battleSend(a,'configure',setup({'FizzyFuel','SpringBumper'}));Harness.advance(.1)
         Harness.battleSend(a,'launch');Harness.advance(.1)
-        Harness.battleSend(a,'configure',setup('Afterburner'));Harness.advance(2.6)
-        assert(Harness.battleLatest(a).settings[1].modifierId=='FizzyFuel')
-        Harness.battleSend(a,'configure',setup('None'));Harness.advance(38)
+        Harness.battleSend(a,'configure',setup({'Afterburner'}));Harness.advance(2.6)
+        assert(same(Harness.battleLatest(a).settings[1].wildIds,{'FizzyFuel','SpringBumper'}))
+        Harness.battleSend(a,'configure',setup({}));Harness.advance(38)
         assert(Harness.battleLatest(a).phase=='Results')
         Harness.battleSend(a,'restart',{edit=true});Harness.advance(.1)
         local reset=Harness.battleLatest(a)
         assert(reset.phase=='Configure' and #reset.simulation.wakes==0)
-        assert(reset.simulation.fighters[2].bumperReady and reset.simulation.fighters[1].boostLeft==0)
-        assert(reset.settings[1].modifierId=='FizzyFuel')
+        assert(reset.simulation.fighters[2].bumperReady and reset.simulation.fighters[1].bumperReady)
+        assert(reset.simulation.fighters[1].boostLeft==0)
+        assert(same(reset.settings[1].wildIds,{'FizzyFuel','SpringBumper'}))
         Harness.battleSend(a,'exit');Harness.advance(.1);Harness.battleSend(a,'enter');Harness.advance(.1)
-        assert(Harness.battleLatest(a).settings[1].modifierId=='None')
+        assert(#Harness.battleLatest(a).settings[1].wildIds==0)
     ''',
     "Battle Lab accepts a bounded ordered burst after network delay": r'''
         local a=Harness.add(101)
         Harness.battleSend(a,'enter')
-        Harness.battleSend(a,'configure',{settings={{powerId='Firework',angle=50},{powerId='Meteor',angle=15}}})
+        Harness.battleSend(a,'configure',{settings={{offenceId='Firework',angle=50},{offenceId='Meteor',angle=15}}})
         Harness.battleSend(a,'launch')
         local s=Harness.battleLatest(a)
-        assert(s.phase=='Countdown' and s.settings[1].angle==50 and s.settings[1].powerId=='Firework')
+        assert(s.phase=='Countdown' and s.settings[1].angle==50 and s.settings[1].offenceId=='Firework')
         for i=1,100 do Harness.battleSend(a,'request') end
         Harness.advance(2.6)
         assert(Harness.battleLatest(a).phase=='Fight')
@@ -348,7 +377,7 @@ SCENARIOS = {
         Harness.battleSend(a,'enter')
         assert(a:GetAttribute('SkyboundFlying')==true and a.Character.HumanoidRootPart.Anchored)
         assert(not Harness.latest(a).economy.canShop)
-        Harness.battleSend(a,'configure',{settings={{powerId='Firework',angle=10,modifierId='FizzyFuel'},{powerId='Meteor',angle=55}}})
+        Harness.battleSend(a,'configure',{settings={{offenceId='Firework',angle=10,wildIds={'FizzyFuel'}},{offenceId='Meteor',angle=55}}})
         a.Character.HumanoidRootPart.Anchored=false
         a.CharacterAdded:Fire(a.Character)
         assert(a.Character.HumanoidRootPart.Anchored,'respawn escaped active lab isolation')
@@ -397,18 +426,18 @@ SCENARIOS = {
             assert(Harness.battleLatest(a).roundId==initial.roundId)
         end
         for _,settings in ipairs({
-            false,12,'Meteor',{},{{powerId='Meteor',angle=35}},
-            {{powerId='Unknown',angle=35},{powerId='Firework',angle=30}},
-            {{powerId='Meteor',angle=0/0},{powerId='Firework',angle=30}},
-            {{powerId='Meteor',angle=math.huge},{powerId='Firework',angle=30}},
-            {{powerId='Meteor',angle=35},{powerId='Firework',angle='30'}}
+            false,12,'Meteor',{},{{offenceId='Meteor',angle=35}},
+            {{offenceId='Unknown',angle=35},{offenceId='Firework',angle=30}},
+            {{offenceId='Meteor',angle=0/0},{offenceId='Firework',angle=30}},
+            {{offenceId='Meteor',angle=math.huge},{offenceId='Firework',angle=30}},
+            {{offenceId='Meteor',angle=35},{offenceId='Firework',angle='30'}}
         })do
             Harness.battleSend(a,'configure',{settings=settings});Harness.advance(0.06)
             local s=Harness.battleLatest(a)
             assert(s.roundId==initial.roundId and s.phase=='Configure')
-            assert(s.settings[1].powerId=='Meteor' and s.settings[2].powerId=='Firework')
+            assert(s.settings[1].offenceId=='Meteor' and s.settings[2].offenceId=='Firework')
         end
-        Harness.battleSend(a,'configure',{settings={{powerId='Firework',angle=-500,armor=999},{powerId='Meteor',angle=500}},winner=1})
+        Harness.battleSend(a,'configure',{settings={{offenceId='Firework',angle=-500,armor=999},{offenceId='Meteor',angle=500}},winner=1})
         Harness.advance(0.1)
         local configured=Harness.battleLatest(a)
         assert(configured.settings[1].angle==10 and configured.settings[2].angle==55)
@@ -417,12 +446,12 @@ SCENARIOS = {
         for _,phase in ipairs({'Countdown','Fight'})do
             if phase=='Fight'then Harness.advance(2.5)end
             assert(Harness.battleLatest(a).phase==phase)
-            Harness.battleSend(a,'configure',{settings={{powerId='Meteor',angle=35},{powerId='Firework',angle=30}}})
+            Harness.battleSend(a,'configure',{settings={{offenceId='Meteor',angle=35},{offenceId='Firework',angle=30}}})
             Harness.advance(0.1)
             Harness.battleSend(a,'restart',{edit=true});Harness.advance(0.1)
             local s=Harness.battleLatest(a)
             assert(s.phase==phase and s.roundId==configured.roundId)
-            assert(s.settings[1].powerId=='Firework' and s.settings[2].powerId=='Meteor')
+            assert(s.settings[1].offenceId=='Firework' and s.settings[2].offenceId=='Meteor')
             assert(s.settings[1].angle==10 and s.settings[2].angle==55)
         end
     ''',
@@ -441,7 +470,7 @@ SCENARIOS = {
         for _,fighter in ipairs(retry.simulation.fighters)do
             assert(fighter.armor==3 and fighter.attacks==0 and fighter.hits==0 and fighter.invulnerable==0)
         end
-        assert(retry.settings[1].powerId==ended.settings[1].powerId)
+        assert(retry.settings[1].offenceId==ended.settings[1].offenceId)
         Harness.advance(37)
         Harness.battleSend(a,'restart',{edit=true});Harness.advance(0.1)
         assert(Harness.battleLatest(a).phase=='Configure')

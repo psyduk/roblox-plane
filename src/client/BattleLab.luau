@@ -11,10 +11,12 @@ local WHITE=Color3.fromRGB(255,245,221)
 local MUTED=Color3.fromRGB(172,191,210)
 local ACCENTS={Color3.fromRGB(255,113,111),Color3.fromRGB(70,221,234)}
 local GOLD=Color3.fromRGB(255,221,87)
-local POWERS={
-    {id="Meteor",icon="☄️",word="BOOOM!",promise="Charge up, then dive-bomb your rival.",color=Color3.fromRGB(255,128,86)},
-    {id="Firework",icon="🎆",word="FWOOSH!",promise="Fire a big rocket on every pass.",color=Color3.fromRGB(160,128,255)},
-}
+local function tint(color) return Color3.fromRGB(color.r,color.g,color.b) end
+local function copyBuild(build)
+    local wildIds={}
+    for index,id in ipairs(build.wildIds or {}) do wildIds[index]=id end
+    return {offenceId=build.offenceId,angle=build.angle,wildIds=wildIds}
+end
 local function make(class,parent,name)
     local item=Instance.new(class); item.Name=name; item.Parent=parent; return item
 end
@@ -49,7 +51,7 @@ local function place(item,x,y,w,h)
 end
 function BattleLab.new(World,shared)
     local self=setmetatable({World=World,active=false,data=nil,settings={},outbox={},sending=false,lastSend=-math.huge},BattleLab)
-    self.modifiers=require(shared:WaitForChild("BattleModifiers"))
+    self.skills=require(shared:WaitForChild("SkillCatalog"))
     self.audio=BattleAudio.new()
     self.command=shared:WaitForChild("BattleCommand")
     self.gui=make("ScreenGui",Players.LocalPlayer:WaitForChild("PlayerGui"),"SkyboundBattleLab")
@@ -111,15 +113,16 @@ function BattleLab.new(World,shared)
         end)
         if ok and self.fighters[1].face.Parent then self.fighters[1].face.Image=image end
     end)
-    -- Setup is one screen about your own plane: pick a power card, add a
-    -- twist, FIGHT! The rival's build is rolled when the fight starts.
+    -- Setup is one screen about your own plane: pick a power card, add up to
+    -- two wild cards, FIGHT! The rival's build is rolled when the fight starts.
     self.picker=make("Frame",self.panel,"Picker"); self.picker.BorderSizePixel=0
     self.picker.BackgroundTransparency=1
     self.pickTitle=label(self.picker,"Title",38,WHITE); self.pickTitle.Font=Enum.Font.FredokaOne
     self.pickTitle.Text="CHOOSE YOUR POWER"
     local titleEdge=make("UIStroke",self.pickTitle,"Edge"); titleEdge.Thickness=4; titleEdge.Color=NAVY
     self.powerCards={}
-    for index,spec in ipairs(POWERS) do
+    for index,spec in ipairs(self.skills.all("offence")) do
+        spec.color=tint(spec.color)
         local card=make("TextButton",self.picker,spec.id)
         card.Text=""; card.AutoButtonColor=false; card.BorderSizePixel=0; card.BackgroundColor3=spec.color
         make("UICorner",card,"Corner").CornerRadius=UDim.new(0,22)
@@ -132,19 +135,19 @@ function BattleLab.new(World,shared)
         local word=label(card,"Word",20,WHITE); word.Font=Enum.Font.FredokaOne; word.Rotation=index==1 and -9 or 9
         word.TextWrapped=false; word.Text=spec.word
         local wordEdge=make("UIStroke",word,"Edge"); wordEdge.Thickness=3; wordEdge.Color=NAVY
-        local name=label(card,"PowerName",30,NAVY); name.Font=Enum.Font.FredokaOne; name.Text=string.upper(spec.id)
+        local name=label(card,"PowerName",30,NAVY); name.Font=Enum.Font.FredokaOne; name.Text=string.upper(spec.name)
         local promise=label(card,"Promise",14,NAVY); promise.Text=spec.promise
         local scale=make("UIScale",card,"Pop")
-        card.Activated:Connect(function() self:choose("powerId",spec.id) end)
+        card.Activated:Connect(function() self:choose(spec.id) end)
         self.powerCards[index]={spec=spec,button=card,edge=edge,tag=tag,icon=icon,word=word,name=name,promise=promise,scale=scale}
         icon.Text=spec.icon
     end
-    self.twistTitle=label(self.picker,"TwistTitle",15,MUTED); self.twistTitle.Text="ADD A TWIST"
+    self.twistTitle=label(self.picker,"TwistTitle",15,MUTED); self.twistTitle.Text="ADD UP TO "..self.skills.MAX_WILD.." WILD CARDS"
     self.chips={}
-    for index,modifier in ipairs(self.modifiers.all()) do
-        local chip=button(self.picker,"Twist"..modifier.id,modifier.id=="None" and "No twist" or modifier.name,function() self:choose("modifierId",modifier.id) end)
+    for index,wild in ipairs(self.skills.all("wild")) do
+        local chip=button(self.picker,"Wild"..wild.id,wild.icon.." "..wild.name,function() self:toggleWild(wild.id) end)
         chip.AutoButtonColor=false
-        self.chips[index]={modifier=modifier,button=chip,color=Color3.fromRGB(modifier.color.r,modifier.color.g,modifier.color.b)}
+        self.chips[index]={wild=wild,button=chip,color=tint(wild.color)}
     end
     self.twistHint=label(self.picker,"TwistHint",14,WHITE)
     self.fightButton=button(self.picker,"Fight","FIGHT!",function() self:fight() end)
@@ -208,13 +211,12 @@ function BattleLab.new(World,shared)
             -- This pilot owns setup edits. Older periodic snapshots must not
             -- roll back a tap that is still travelling to the server.
             if not wasActive or data.phase~="Configure" or previousPhase~="Configure" then
-            self.settings={{powerId=data.settings[1].powerId,angle=data.settings[1].angle,modifierId=data.settings[1].modifierId or "None"},
-                {powerId=data.settings[2].powerId,angle=data.settings[2].angle,modifierId=data.settings[2].modifierId or "None"}}
+            self.settings={copyBuild(data.settings[1]),copyBuild(data.settings[2])}
             end
             if not self.view then
                 self.view=BattleView.new(World,function(cue)
                     if cue.kind=="crash" then self.audio:playCrash(cue.roundId,cue.actor) end
-                end,{pilots=PilotAvatar})
+                end,{pilots=PilotAvatar,skills=self.skills})
             end
         elseif self.view then self.view:destroy(); self.view=nil end
         self.panel.Visible=self.active
@@ -226,8 +228,7 @@ end
 function BattleLab:send(kind,payload)
     payload=payload or {}; payload.kind=kind
     if payload.settings then
-        payload.settings={{powerId=payload.settings[1].powerId,angle=payload.settings[1].angle,modifierId=payload.settings[1].modifierId},
-            {powerId=payload.settings[2].powerId,angle=payload.settings[2].angle,modifierId=payload.settings[2].modifierId}}
+        payload.settings={copyBuild(payload.settings[1]),copyBuild(payload.settings[2])}
     end
     -- Queue button intents in order, including configuration before launch.
     -- Coalesce rapid setup taps and stay below the server's shared rate limit.
@@ -247,21 +248,39 @@ function BattleLab:send(kind,payload)
     end)
 end
 function BattleLab:isActive() return self.active end
-function BattleLab:choose(key,value)
+function BattleLab:choose(offenceId)
     if not self.data or self.data.phase~="Configure" or not self.settings[1] then return end
-    self.settings[1][key]=value
+    self.settings[1].offenceId=offenceId
     self.pickedAt=os.clock()
     self.audio:ui(false)
     self:send("configure",{settings=self.settings})
 end
+-- Tap a wild card to add it, tap again to drop it. With a full hand, a new
+-- card pushes out the one picked longest ago.
+function BattleLab:toggleWild(id)
+    if not self.data or self.data.phase~="Configure" or not self.settings[1] then return end
+    local wildIds=self.settings[1].wildIds
+    local held=table.find(wildIds,id)
+    if held then table.remove(wildIds,held)
+    else
+        if #wildIds>=self.skills.MAX_WILD then table.remove(wildIds,1) end
+        table.insert(wildIds,id)
+    end
+    self.audio:ui(false)
+    self:send("configure",{settings=self.settings})
+end
 -- The rival's build is a surprise revealed by the countdown. Firework mirrors
--- still trade into draws, so the bot never copies a Firework pick.
+-- still trade into draws, so the bot never copies a Firework pick. It brings
+-- as many wild cards as the pilot did, so neither side starts a card ahead.
 function BattleLab:fight()
     if not self.data or self.data.phase~="Configure" or not self.settings[2] then return end
-    local twists=self.modifiers.all()
+    local offences,wilds=self.skills.all("offence"),self.skills.all("wild")
     local rival=self.settings[2]
-    rival.powerId=self.settings[1].powerId=="Firework" and "Meteor" or POWERS[math.random(#POWERS)].id
-    rival.modifierId=twists[math.random(#twists)].id
+    rival.offenceId=self.settings[1].offenceId=="Firework" and "Meteor" or offences[math.random(#offences)].id
+    rival.wildIds={}
+    for _=1,math.min(#self.settings[1].wildIds,#wilds) do
+        rival.wildIds[#rival.wildIds+1]=table.remove(wilds,math.random(#wilds)).id
+    end
     rival.angle=math.random(4,10)*5
     self.audio:ui(true)
     self.launchHide=os.clock()+1.5
@@ -396,8 +415,8 @@ function BattleLab:update(dt)
     local compact=width<600
     local short=height<500
     local headerHeight=(short or compact) and 62 or 98
-    local plainFight=data.phase=="Fight" and (data.settings[1].modifierId or "None")=="None"
-        and (data.settings[2].modifierId or "None")=="None"
+    local plainFight=data.phase=="Fight" and #(data.settings[1].wildIds or {})==0
+        and #(data.settings[2].wildIds or {})==0
     local quiet=config or plainFight or data.phase=="Countdown"
     quiet=quiet or results
     local footerHeight=quiet and 0 or 54
@@ -423,7 +442,7 @@ function BattleLab:update(dt)
         local powerWidth=math.min(textWidth,compact and 86 or 112)
         local rowTwo=compact and 19 or 31
         place(fighter.power,right and textLeft+textWidth-powerWidth or textLeft,rowTwo,powerWidth,compact and 14 or 19)
-        fighter.power.Text=(right and config) and "???" or string.upper(f.powerId)
+        fighter.power.Text=(right and config) and "???" or string.upper((self.skills.get(f.offenceId) or {name="?"}).name)
         fighter.power.TextSize=compact and 10 or 13; fighter.power.BackgroundColor3=accents[i]
         local pipHeight=compact and 9 or 18
         local pipWidth=math.min(compact and 30 or 62,(textWidth-12)/3)
@@ -463,7 +482,7 @@ function BattleLab:update(dt)
         local panelWidth=math.min(width-24,760)
         local x0=(width-panelWidth)/2
         local showTitle=area>=380
-        local chipRows=compact and 2 or 1
+        local chipRows=math.ceil(#self.chips/(compact and 3 or 5))
         local chipHeight=short and 36 or 42
         local fightHeight=short and 48 or 62
         local fixed=(showTitle and 54 or 8)+(showTitle and 26 or 0)+chipRows*(chipHeight+6)+(showTitle and 26 or 0)+fightHeight+34
@@ -473,9 +492,9 @@ function BattleLab:update(dt)
         if showTitle then
             place(self.pickTitle,x0,y,panelWidth,46); self.pickTitle.TextSize=compact and 26 or 38; y=y+54
         else y=y+8 end
-        local cardWidth=(panelWidth-14)/2
+        local cardWidth=(panelWidth-14*(#self.powerCards-1))/#self.powerCards
         for index,card in ipairs(self.powerCards) do
-            local chosen=self.settings[1].powerId==card.spec.id
+            local chosen=self.settings[1].offenceId==card.spec.id
             place(card.button,x0+(index-1)*(cardWidth+14),y,cardWidth,cardHeight)
             card.button.BackgroundColor3=chosen and card.spec.color or card.spec.color:Lerp(NAVY,0.45)
             card.edge.Color=chosen and GOLD or NAVY; card.edge.Thickness=chosen and 6 or 4
@@ -502,12 +521,12 @@ function BattleLab:update(dt)
         end
         y=y+cardHeight+12
         if showTitle then place(self.twistTitle,x0,y,panelWidth,20); y=y+26 end
-        local perRow=#self.chips/chipRows
+        local perRow=math.ceil(#self.chips/chipRows)
         local chipWidth=(panelWidth-(perRow-1)*8)/perRow
-        local chosenTwist=self.modifiers.get(self.settings[1].modifierId) or self.modifiers.get("None")
+        local held=self.settings[1].wildIds
         for index,chip in ipairs(self.chips) do
             local row,column=math.floor((index-1)/perRow),(index-1)%perRow
-            local chosen=chip.modifier.id==chosenTwist.id
+            local chosen=table.find(held,chip.wild.id)~=nil
             place(chip.button,x0+column*(chipWidth+8),y+row*(chipHeight+6),chipWidth,chipHeight)
             chip.button.BackgroundColor3=chosen and chip.color or Color3.fromRGB(40,58,84)
             chip.button.TextColor3=chosen and NAVY or WHITE
@@ -518,7 +537,8 @@ function BattleLab:update(dt)
         y=y+chipRows*(chipHeight+6)
         if showTitle then
             place(self.twistHint,x0,y,panelWidth,22); self.twistHint.TextSize=compact and 12 or 15
-            self.twistHint.Text=chosenTwist.id=="None" and "No twist: just your power." or chosenTwist.description
+            local last=self.skills.get(held[#held])
+            self.twistHint.Text=last and (last.name..": "..last.promise) or "No wild cards: just your power."
             y=y+26
         end
         local fightWidth=math.min(panelWidth,440)
@@ -538,7 +558,7 @@ function BattleLab:update(dt)
     elseif data.phase=="Countdown" then
         self.status.Text="GET READY"
         self.help.Text="Watch the windup. The attack is committed."
-        self.footerHint.Text="Meteor dives into a ram · Firework sends a rocket"
+        self.footerHint.Text=""
     elseif results then
         self.status.Text=""; self.help.Text=""
     else
@@ -550,11 +570,15 @@ function BattleLab:update(dt)
         self.help.Text=""
         local effects={}
         for i,f in ipairs(sim.fighters) do
-            local effect=self.modifiers.get(f.modifierId or "None")
-            local name=effect and effect.name or "No effect"
-            if f.modifierId=="SpringBumper" then name=f.bumperReady and "Bumper ready" or "Bumper spent" end
-            if (f.boostLeft or 0)>0 then name="Afterburner firing!" end
-            effects[i]=(i==1 and "YOU: " or "RIVAL: ")..name
+            local names={}
+            for _,id in ipairs(f.wildIds or {}) do
+                local wild=self.skills.get(id)
+                local name=wild and wild.name or id
+                if id=="SpringBumper" then name=f.bumperReady and "Bumper ready" or "Bumper spent" end
+                if id=="Afterburner" and (f.boostLeft or 0)>0 then name="Afterburner firing!" end
+                names[#names+1]=name
+            end
+            effects[i]=(i==1 and "YOU: " or "RIVAL: ")..(#names>0 and table.concat(names," + ") or "No wild cards")
         end
         self.footerHint.Text=table.concat(effects,"   ·   ")
     end

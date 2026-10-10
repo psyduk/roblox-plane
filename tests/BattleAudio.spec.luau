@@ -23,7 +23,7 @@ return function(Audio)
     end
     local function snapshot(phase,elapsed,events,roundId)
         return {active=true,phase=phase,roundId=roundId or 1,
-            simulation={elapsed=elapsed,events=events or {},fighters={{id=1,powerId="Meteor",armor=3},{id=2,powerId="Firework",armor=3}}}}
+            simulation={elapsed=elapsed,events=events or {},fighters={{id=1,offenceId="Meteor",armor=3},{id=2,offenceId="Firework",armor=3}}}}
     end
     local function results(roundId,armorA,armorB,reason)
         local s=snapshot("Results",5,{},roundId)
@@ -106,15 +106,15 @@ return function(Audio)
         mix:update(snapshot("Fight",0,{}))
         mix:update(snapshot("Fight",0.2,{event(1,"bump",0.2)}))
         assert(#calls==1 and calls[1].name=="land" and calls[1].volume<0.1)
-        local block=event(2,"blocked",0.4); block.modifierId="SpringBumper"
+        local block=event(2,"blocked",0.4); block.skillId="SpringBumper"
         mix:update(snapshot("Fight",0.4,{block}))
         assert(calls[2].name=="jump" and calls[3].name=="chime")
         mix:update(snapshot("Fight",0.6,{event(3,"wake_hit",0.6)}))
         assert(calls[4].name=="land" and calls[5].name=="boom")
-        local boost=event(4,"modifier",0.8); boost.modifierId="Afterburner"
+        local boost=event(4,"skill",0.8); boost.skillId="Afterburner"
         mix:update(snapshot("Fight",0.8,{boost}))
         assert(calls[6].name=="jump" and calls[6].finishPitch>calls[6].pitch)
-        local wake=event(5,"modifier",1); wake.modifierId="FizzyFuel"
+        local wake=event(5,"skill",1); wake.skillId="FizzyFuel"
         mix:update(snapshot("Fight",1,{wake}))
         assert(#calls==6,"wake emission sounded like an armor hit")
     end)

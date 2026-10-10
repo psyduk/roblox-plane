@@ -23,7 +23,7 @@ def build(output: Path):
     ET.SubElement(props,"float",{"name":"FallenPartsDestroyHeight"}).text="-80"
     replicated,_=item(doc,"ReplicatedStorage","ReplicatedStorage")
     shared,_=item(replicated,"Folder","FlightGame")
-    for filename in ("PlaneCatalog","PowerCatalog","CosmeticCatalog","Simulation","BattleSimulation","BattleModifiers","World"):
+    for filename in ("PlaneCatalog","PowerCatalog","CosmeticCatalog","Simulation","BattleSimulation","BattleSkills","SkillCatalog","World"):
         source(shared,"ModuleScript",filename,f"src/shared/{filename}.luau")
     item(shared,"RemoteEvent","Command")
     item(shared,"RemoteEvent","Snapshot")
@@ -34,7 +34,7 @@ def build(output: Path):
     for filename in ("PlayerStats", "Telemetry", "BattleLab"):
         source(server,"ModuleScript",filename,f"src/server/{filename}.luau")
     storage,_=item(doc,"ServerStorage","ServerStorage")
-    for filename in ("Simulation", "BattleSimulation", "PlaneCatalog", "PowerCatalog", "CosmeticCatalog", "PlayerStats", "Telemetry", "FlightAudio", "BattleAudio", "BattleView"):
+    for filename in ("Simulation", "BattleSimulation", "SkillCatalog", "PlaneCatalog", "PowerCatalog", "CosmeticCatalog", "PlayerStats", "Telemetry", "FlightAudio", "BattleAudio", "BattleView"):
         test_path=ROOT/f"tests/{filename}.spec.luau"
         if test_path.exists():
             source(storage,"ModuleScript",f"{filename}Tests",f"tests/{filename}.spec.luau")

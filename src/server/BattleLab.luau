@@ -5,13 +5,14 @@ BattleLab.__index = BattleLab
 local function finite(v)
     return type(v)=="number" and v==v and v>-math.huge and v<math.huge
 end
-local function checked(value,simulation)
-    if type(value)~="table" or (value.powerId~="Meteor" and value.powerId~="Firework")
-        or not finite(value.angle) then return nil end
-    local modifier=value.modifierId
-    if modifier==nil then modifier="None" end
-    if not simulation.validModifier(modifier) then return nil end
-    return {powerId=value.powerId,modifierId=modifier,angle=math.floor(math.max(10,math.min(55,value.angle))+0.5)}
+-- A build is refused whole if any part is wrong: unknown skill, a skill of
+-- the wrong kind, a repeated wild card or too many of them.
+local function checked(value,skills)
+    if type(value)~="table" or not finite(value.angle) then return nil end
+    local build=skills.build(value.offenceId,value.wildIds)
+    if not build then return nil end
+    build.angle=math.floor(math.max(10,math.min(55,value.angle))+0.5)
+    return build
 end
 function BattleLab.new(deps)
     return setmetatable({deps=deps,sessions={},throttle={},sequence=0,broadcastTime=0},BattleLab)
@@ -50,7 +51,7 @@ function BattleLab:command(player,payload)
     budget.tokens=budget.tokens-1
     local s=self.sessions[player.UserId]
     if kind=="enter" and not s and self.deps.canEnter(player) then
-        s={player=player,settings={{powerId="Meteor",modifierId="None",angle=35},{powerId="Firework",modifierId="None",angle=30}}}
+        s={player=player,settings={{offenceId="Meteor",wildIds={},angle=35},{offenceId="Firework",wildIds={},angle=30}}}
         self:prepare(s)
         self.sessions[player.UserId]=s
         self.deps.entered(player)
@@ -58,8 +59,8 @@ function BattleLab:command(player,payload)
         self.sessions[player.UserId]=nil
         self.deps.exited(player)
     elseif kind=="configure" and s and s.phase=="Configure" then
-        local a=type(payload.settings)=="table" and checked(payload.settings[1],self.deps.simulation)
-        local b=type(payload.settings)=="table" and checked(payload.settings[2],self.deps.simulation)
+        local a=type(payload.settings)=="table" and checked(payload.settings[1],self.deps.skills)
+        local b=type(payload.settings)=="table" and checked(payload.settings[2],self.deps.skills)
         if not a or not b then return end
         s.settings={a,b}
         self:prepare(s)
@@ -67,8 +68,8 @@ function BattleLab:command(player,payload)
         -- Commit exactly the setup visible on the launching client's screen.
         -- Earlier configure packets can be rate-limited after network stalls.
         if payload.settings~=nil then
-            local a=type(payload.settings)=="table" and checked(payload.settings[1],self.deps.simulation)
-            local b=type(payload.settings)=="table" and checked(payload.settings[2],self.deps.simulation)
+            local a=type(payload.settings)=="table" and checked(payload.settings[1],self.deps.skills)
+            local b=type(payload.settings)=="table" and checked(payload.settings[2],self.deps.skills)
             if not a or not b then return end
             s.settings={a,b}; self:prepare(s)
         end

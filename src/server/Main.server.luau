@@ -14,6 +14,7 @@ local CosmeticCatalog = require(shared.CosmeticCatalog)
 local Simulation = require(shared.Simulation)
 local World = require(shared.World)
 local BattleSimulation = require(shared.BattleSimulation)
+local SkillCatalog = require(shared.SkillCatalog)
 local command, snapshots = shared.Command, shared.Snapshot
 -- Distance racing stays available for isolated development. Normal servers
 -- enter plane battles unless this server Script explicitly opts in at startup.
@@ -464,7 +465,7 @@ local function updateBoard()
     end
     World.updateLobbyBoard(flying,clubBest)
 end
-local battleLab=BattleLab.new({simulation=BattleSimulation,now=now,
+local battleLab=BattleLab.new({simulation=BattleSimulation,skills=SkillCatalog,now=now,
     canEnter=function(player)
         local p=profiles[player.UserId]
         return not shuttingDown and p~=nil and not p.matchId and not p.queue and not p.quick and not p.inBattleLab

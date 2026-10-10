@@ -342,6 +342,8 @@ function BattleView.new(World, onPresentationCue, options)
 		shake = 0, punch = 0, freeze = 0, screenFlash = 0, hype = 0, bursts = {}, burstCursor = 0,
 		onPresentationCue = type(onPresentationCue) == "function" and onPresentationCue or nil,
 		pilots = type(options) == "table" and options.pilots or nil,
+		-- SkillCatalog, for the words a skill shouts. Optional in tests.
+		skills = type(options) == "table" and options.skills or nil,
 	}, BattleView)
 	pcall(function() self.reducedMotion = GuiService.ReducedMotionEnabled end)
 	self.folder = Instance.new("Folder")
@@ -672,10 +674,10 @@ function BattleView:_crashPose(fighter, state, target)
 	return CFrame.new(position) * rotation
 end
 
-function BattleView:_setSignature(fighter, powerId)
-	if fighter.powerId == powerId then return end
+function BattleView:_setSignature(fighter, offenceId)
+	if fighter.offenceId == offenceId then return end
 	if fighter.signature then fighter.signature:Destroy() end
-	fighter.powerId = powerId
+	fighter.offenceId = offenceId
 	fighter.signature = Instance.new("Folder")
 	fighter.signature.Name = "Signature"
 	fighter.signature.Parent = fighter.model
@@ -690,7 +692,7 @@ function BattleView:_setSignature(fighter, powerId)
 	local function piece(name, size, offset, color, material, shape, rotation)
 		return part(fighter.signature, name, size * SCALE, pose * CFrame.new(offset * SCALE) * (rotation or CFrame.identity), color, material, shape)
 	end
-	if powerId == "Firework" then
+	if offenceId == "Firework" then
 		fighter.body.Size = Vector3.new(9.7, 2.35, 2.6) * SCALE
 		piece("ForkedTail", Vector3.new(1.8, 0.25, 6.8), Vector3.new(-3.9, 0.2, 0), COLORS.cream)
 		for _, side in ipairs({ -1, 1 }) do
@@ -722,7 +724,7 @@ function BattleView:_setSignature(fighter, powerId)
 		end
 	end
 	-- Signature geometry is cosmetic. Collision and damage remain in the sim.
-	fighter.model:SetAttribute("PowerId", powerId)
+	fighter.model:SetAttribute("OffenceId", offenceId)
 end
 
 -- One pooled attachment with spark, smoke and fire emitters per impact.
@@ -847,7 +849,7 @@ function BattleView:_events(simulation)
 					if actor then actor.shotTime = self.clock - math.max(0, age) end
 					self:_particles(x, y, COLORS.yellow, 14, 5, 6, 35)
 					self:_jolt(0.7, 0.15, 0, 0, 0.1)
-				elseif kind == "miss" and actor and actor.powerId == "Firework" then
+				elseif kind == "miss" and actor and actor.offenceId == "Firework" then
 					self:_burst(x, y, COLORS.steel, false, "fizzle")
 					self:_particles(x, y, actor.color, 26, 6, 0, 45)
 				elseif kind == "blocked" then
@@ -867,7 +869,7 @@ function BattleView:_events(simulation)
 end
 
 function BattleView:_signatureEffects(fighter, state, simulation, moving, pose)
-	local meteor = fighter.powerId == "Meteor"
+	local meteor = fighter.offenceId == "Meteor"
 	local windup = moving and state.phase == "Windup"
 	local armed = moving and state.armed == true
 	local charge = windup and chargeProgress(fighter, state, self.sampleAge) or 0
@@ -943,7 +945,7 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 	local center = fighter.position + Vector3.new(0, 0, 9)
 	if winner then
 		ring(fighter.statusRing, center, 10.5 + math.sin(self.clock * 3) * 0.3, COLORS.yellow, 0.2, self.clock * 0.2, 0.5)
-	elseif not knockedOut and fighter.modifierId == "SpringBumper" then
+	elseif not knockedOut and table.find(fighter.wildIds or {}, "SpringBumper") then
 		local ready = state.bumperReady == true
 		local popping = blockAge < 0.38
 		local radius = popping and (8 + blockAge / 0.38 * 3) or 8
@@ -979,13 +981,14 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 			streak.Transparency = 1
 		end
 	end
+	local offence = self.skills and self.skills.get(fighter.offenceId)
 	local tell
 	if winner then tell = "WINNER!"
 	elseif knockedOut then tell = "K.O.!"
 	elseif hitAge < 0.45 then tell = "POW!"
 	elseif blockAge < 0.45 then tell = "BOING!"
-	elseif windup then tell = fighter.powerId == "Meteor" and "CHARGING..." or "LOCKED ON"
-	elseif moving and state.phase == "Attack" then tell = fighter.powerId == "Meteor" and "DIVE!" or "FIRE!"
+	elseif windup then tell = offence and offence.windupTell or "LOCKED ON"
+	elseif moving and state.phase == "Attack" then tell = offence and offence.attackTell or "FIRE!"
 	elseif boosted then tell = "BOOST!" end
 	fighter.gui.Enabled = tell ~= nil
 	if tell and tell ~= fighter.label.Text then fighter.tellTime = self.realClock end
@@ -1165,8 +1168,9 @@ function BattleView:update(snapshot, dt, viewportRect)
 			local settings = snapshot.settings and snapshot.settings[index] or {}
 			local direction = index == 1 and 1 or -1
 			local angle = math.rad(numeric(settings.angle, 25))
-			states[index] = { id = index, powerId = settings.powerId or (index == 1 and "Meteor" or "Firework"),
-				modifierId = settings.modifierId or "None", bumperReady = settings.modifierId == "SpringBumper",
+			local wildIds = type(settings.wildIds) == "table" and settings.wildIds or {}
+			states[index] = { id = index, offenceId = settings.offenceId or (index == 1 and "Meteor" or "Firework"),
+				wildIds = wildIds, bumperReady = table.find(wildIds, "SpringBumper") ~= nil,
 				x = -direction * 44, y = 34, vx = math.cos(angle) * direction, vy = math.sin(angle), armor = 3 }
 		end
 	end
@@ -1185,8 +1189,9 @@ function BattleView:update(snapshot, dt, viewportRect)
 		seenFighters[id] = true
 		local fighter = self:_fighter(id, index)
 		local settings = snapshot.settings and snapshot.settings[index]
-		self:_setSignature(fighter, state.powerId or (settings and settings.powerId) or "Meteor")
-		fighter.modifierId = state.modifierId or (settings and settings.modifierId) or "None"
+		self:_setSignature(fighter, state.offenceId or (settings and settings.offenceId) or "Meteor")
+		fighter.wildIds = type(state.wildIds) == "table" and state.wildIds
+			or (settings and type(settings.wildIds) == "table" and settings.wildIds) or {}
 		if state.phase == "Windup" and fighter.previousPhase ~= "Windup" then
 			fighter.observedWindupDuration = math.max(0.01, numeric(state.phaseLeft, 1))
 		end
@@ -1216,7 +1221,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 		fighter.armor = armor
 		fighter.model:SetAttribute("Armor", armor)
 		fighter.model:SetAttribute("Phase", state.phase or "Approach")
-		fighter.model:SetAttribute("ModifierId", fighter.modifierId)
+		fighter.model:SetAttribute("WildIds", table.concat(fighter.wildIds, ","))
 		fighter.model:SetAttribute("BumperReady", state.bumperReady == true)
 		local flash = self.clock - fighter.hitTime < 0.14
 		fighter.body.Color = flash and COLORS.cream or (armor <= 0 and fighter.color:Lerp(COLORS.steel, 0.65) or fighter.color)
@@ -1230,7 +1235,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 		fighter.trail.Enabled = moving and armor > 0 and vx * vx + vy * vy > 4
 		fighter.trail.Lifetime = fighter.look.trailLife * (armed and 1.5 or 1)
 		fighter.flare.Transparency = (armed or boosted) and 0.12 or 1
-		fighter.flare.Color = boosted and COLORS.boost or (fighter.powerId == "Meteor" and COLORS.yellow or fighter.color)
+		fighter.flare.Color = boosted and COLORS.boost or (fighter.offenceId == "Meteor" and COLORS.yellow or fighter.color)
 		fighter.flare.Size = Vector3.new(boosted and 11 or (armed and 9 or 5), boosted and 2 or 1.5, 1.5) * SCALE
 		self:_fighterEffects(fighter, state, simulation, moving, displayPose)
 		-- Damage shows on the airframe: smoke after one hit, fire after two.

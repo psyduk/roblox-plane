@@ -1,3 +1,18 @@
+# Skill catalog and two wild cards — October 10, 2026
+
+AND-190. Battle skills now live in a shared catalog (`SkillCatalog.luau`) with their behaviour in one table of hooks per skill (`BattleSkills.luau`). `BattleSimulation.luau` no longer names any skill. A plane's build is one offence plus zero, one or two different wild cards (`{ offenceId, wildIds, angle }`), replacing one power and one modifier. The server refuses a whole build if a skill is unknown, of the wrong kind, repeated, or if there are more than two wild cards. The setup screen reads its cards and chips from the catalog; wild card chips toggle, and the bot brings as many wild cards as the pilot. No new skills, no draft, no balance change.
+
+Checked:
+
+- **Old fights are unchanged.** Every physics and gameplay field matched the pre-change simulation on every tick: 500 rounds, 805,417 ticks (10 seeds × 9 angle pairs × both Meteor/Firework orders with no wild cards, plus 10 seeds × all 16 pairs of none-or-one wild card × both orders). Renamed fields were compared by meaning. A deliberate 0.01 change to Firework's attack speed made the same comparison fail, so it is not vacuous.
+- 31 simulation tests, including new cases for each pair of wild cards together and all 49 loadout pairs run to the end; 4 catalog tests; 47 server scenarios, including refusal of an unknown skill, a wrong-kind skill, three wild cards, a duplicate and the old power/modifier format.
+- In Roblox Studio: all changed modules compile; simulation, catalog, 21 audio and 6 battle-view tests pass natively; a played session accepted a two-wild-card build for each plane, refused a three-card build, and ran to a knockout with bumper, afterburner and wake events and no script errors. The setup screen and battle view were stepped by hand through setup, a fight and results: chips toggle, the hint and fighter bar follow the catalog, and the callouts (CHARGING..., DIVE!, BOOST!, BOING!) appear.
+- A throwaway skill added with one catalog entry and one behaviour table passed every check and fought (then removed).
+
+Seen on desktop at about 2075×856, through real clicks: the setup screen with no wild cards and with two selected (chips, hint line), a fight in progress with two cards per plane (fighter bar, bumper ring, footer text), and the victory screen. The first capture showed Fizzy Fuel's icon as an empty box, because Roblox does not draw that emoji; it was swapped for one that renders. Not checked: phone and portrait layouts, and the three-chip row at phone width in particular. No balance claim is made for two wild cards together; that is AND-202.
+
+---
+
 # Results screen — October 10, 2026
 
 Audit item 19. The status pill and dark footer at the end of a fight are replaced by a results moment that waits for the knockout to play out (1.8s after a knockout, 0.6s after a timeout) and then takes the screen: a slammed-in VICTORY! / DEFEAT / DRAW! banner, one plain line saying how it ended, the winner's portrait under a crown, three stat chips (your hits, rival hits, time), and REMATCH as the large button between Change power and Hangar. A win gets falling confetti, APM's "Champion Fanfare" and a crowd roar; a loss gets a groan and a low thump. The battle loop drops to a murmur under the result.

@@ -84,7 +84,7 @@ Branch `battle-juice-pass`. "Built" means written and exercised by tests and scr
 | 13 | Comic callout words | Built, unseen |
 | 15 | 3-2-1-FIGHT countdown | Built, seen on desktop |
 | 21 | Battle music | Swapped to a lighter funk track after "too dramatic" feedback; new track unheard. No stings or hangar loop yet |
-| 18 | Power select | Built: power cards, twist chips, FIGHT!; rival rolled at launch. Seen on desktop |
+| 18 | Power select | Built: power cards, wild card chips, FIGHT!; rival rolled at launch. Seen on desktop |
 | 20 | Lab wording | Partly: RIVAL / VS PRACTICE BOT. Header still looks like a tool |
 | 26 | UI sounds | Partly: setup clicks and commit whoosh |
 | 27 | Variety on rematch | Partly: rematch re-rolls the rival; the seed is still fixed |
