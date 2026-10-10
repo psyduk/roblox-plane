@@ -1,0 +1,66 @@
+{
+  "players": [
+    -2,
+    -1
+  ],
+  "rounds": [
+    {
+      "players": [
+        {
+          "powerUsed": true,
+          "score": 6600,
+          "elapsed": 8.308333333333334,
+          "angle": -48,
+          "userId": -2,
+          "powerId": "pulse"
+        },
+        {
+          "powerUsed": true,
+          "score": 66000,
+          "elapsed": 13.275,
+          "angle": -42,
+          "userId": -1,
+          "powerId": "split"
+        }
+      ],
+      "winnerId": -1,
+      "clientReportsAgree": true,
+      "seed": 116219,
+      "draw": false,
+      "simultaneousLaunch": true,
+      "matchId": 1,
+      "roundId": 1
+    },
+    {
+      "players": [
+        {
+          "powerUsed": true,
+          "score": 38190,
+          "elapsed": 10.825,
+          "angle": -45,
+          "userId": -2,
+          "powerId": "pulse"
+        },
+        {
+          "powerUsed": true,
+          "score": 38190,
+          "elapsed": 10.825,
+          "angle": -45,
+          "userId": -1,
+          "powerId": "pulse"
+        }
+      ],
+      "winnerId": 0,
+      "clientReportsAgree": true,
+      "seed": 119790,
+      "draw": true,
+      "simultaneousLaunch": true,
+      "matchId": 1,
+      "roundId": 2
+    }
+  ],
+  "status": "PASS",
+  "elapsed": 36.09,
+  "test": "PegNetworkQA",
+  "reason": "Two real clients joined, locked, launched simultaneously, agreed on server results, rematched, and tied identical second shots."
+}

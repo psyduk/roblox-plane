@@ -1,0 +1,204 @@
+{
+  "players": [
+    -2,
+    -1
+  ],
+  "rounds": [
+    {
+      "players": [
+        {
+          "powerUsed": true,
+          "score": 6600,
+          "elapsed": 8.308333333333334,
+          "angle": -48,
+          "userId": -2,
+          "powerId": "pulse"
+        },
+        {
+          "powerUsed": true,
+          "score": 66000,
+          "elapsed": 13.275,
+          "angle": -42,
+          "userId": -1,
+          "powerId": "split"
+        }
+      ],
+      "winnerId": -1,
+      "draw": false,
+      "avatarReports": [
+        {
+          "panels": [
+            {
+              "panel": "YouAvatar",
+              "source": "character",
+              "headMatches": true,
+              "loaded": true,
+              "liveCharacterPresent": true,
+              "liveAccessoryCount": 1,
+              "avatarUserId": -2,
+              "isGhost": false,
+              "modelCount": 1,
+              "accessoriesMatch": true,
+              "expectedUserId": -2,
+              "cloneAccessoryCount": 1
+            },
+            {
+              "panel": "OpponentAvatar",
+              "source": "character",
+              "headMatches": true,
+              "loaded": true,
+              "liveCharacterPresent": true,
+              "liveAccessoryCount": 1,
+              "avatarUserId": -1,
+              "isGhost": false,
+              "modelCount": 1,
+              "accessoriesMatch": true,
+              "expectedUserId": -1,
+              "cloneAccessoryCount": 1
+            }
+          ],
+          "reporterId": -2
+        },
+        {
+          "panels": [
+            {
+              "panel": "YouAvatar",
+              "source": "character",
+              "headMatches": true,
+              "loaded": true,
+              "liveCharacterPresent": true,
+              "liveAccessoryCount": 1,
+              "avatarUserId": -1,
+              "isGhost": false,
+              "modelCount": 1,
+              "accessoriesMatch": true,
+              "expectedUserId": -1,
+              "cloneAccessoryCount": 1
+            },
+            {
+              "panel": "OpponentAvatar",
+              "source": "character",
+              "headMatches": true,
+              "loaded": true,
+              "liveCharacterPresent": true,
+              "liveAccessoryCount": 1,
+              "avatarUserId": -2,
+              "isGhost": false,
+              "modelCount": 1,
+              "accessoriesMatch": true,
+              "expectedUserId": -2,
+              "cloneAccessoryCount": 1
+            }
+          ],
+          "reporterId": -1
+        }
+      ],
+      "avatarsVerified": true,
+      "seed": 116219,
+      "clientReportsAgree": true,
+      "simultaneousLaunch": true,
+      "matchId": 1,
+      "roundId": 1
+    },
+    {
+      "players": [
+        {
+          "powerUsed": true,
+          "score": 38190,
+          "elapsed": 10.825,
+          "angle": -45,
+          "userId": -2,
+          "powerId": "pulse"
+        },
+        {
+          "powerUsed": true,
+          "score": 38190,
+          "elapsed": 10.825,
+          "angle": -45,
+          "userId": -1,
+          "powerId": "pulse"
+        }
+      ],
+      "winnerId": 0,
+      "draw": true,
+      "avatarReports": [
+        {
+          "panels": [
+            {
+              "panel": "YouAvatar",
+              "source": "character",
+              "headMatches": true,
+              "loaded": true,
+              "liveCharacterPresent": true,
+              "liveAccessoryCount": 1,
+              "avatarUserId": -2,
+              "isGhost": false,
+              "modelCount": 1,
+              "accessoriesMatch": true,
+              "expectedUserId": -2,
+              "cloneAccessoryCount": 1
+            },
+            {
+              "panel": "OpponentAvatar",
+              "source": "character",
+              "headMatches": true,
+              "loaded": true,
+              "liveCharacterPresent": true,
+              "liveAccessoryCount": 1,
+              "avatarUserId": -1,
+              "isGhost": false,
+              "modelCount": 1,
+              "accessoriesMatch": true,
+              "expectedUserId": -1,
+              "cloneAccessoryCount": 1
+            }
+          ],
+          "reporterId": -2
+        },
+        {
+          "panels": [
+            {
+              "panel": "YouAvatar",
+              "source": "character",
+              "headMatches": true,
+              "loaded": true,
+              "liveCharacterPresent": true,
+              "liveAccessoryCount": 1,
+              "avatarUserId": -1,
+              "isGhost": false,
+              "modelCount": 1,
+              "accessoriesMatch": true,
+              "expectedUserId": -1,
+              "cloneAccessoryCount": 1
+            },
+            {
+              "panel": "OpponentAvatar",
+              "source": "character",
+              "headMatches": true,
+              "loaded": true,
+              "liveCharacterPresent": true,
+              "liveAccessoryCount": 1,
+              "avatarUserId": -2,
+              "isGhost": false,
+              "modelCount": 1,
+              "accessoriesMatch": true,
+              "expectedUserId": -2,
+              "cloneAccessoryCount": 1
+            }
+          ],
+          "reporterId": -1
+        }
+      ],
+      "avatarsVerified": true,
+      "seed": 119790,
+      "clientReportsAgree": true,
+      "simultaneousLaunch": true,
+      "matchId": 1,
+      "roundId": 2
+    }
+  ],
+  "status": "PASS",
+  "elapsed": 36,
+  "test": "PegNetworkQA",
+  "reason": "Two real clients agreed on server results, rematched, and tied identical second shots; both clients rendered both actual Character clones with matching head/accessories and one model per panel in both rounds."
+}

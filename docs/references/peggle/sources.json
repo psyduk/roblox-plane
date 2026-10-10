@@ -1,0 +1,43 @@
+{
+  "capturedAt": "2026-10-10T00:30:27.643Z",
+  "sourcePage": "https://store.steampowered.com/app/3480/Peggle_Deluxe/",
+  "captureType": "Browser screenshots of official Steam gallery images, cropped to image bounds. Not live gameplay captures.",
+  "images": [
+    {
+      "file": "01-board-and-bucket.jpg",
+      "sourceUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3480/0000001531.1920x1080.jpg?t=1777394376"
+    },
+    {
+      "file": "02-steam-reference.jpg",
+      "sourceUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3480/0000001532.1920x1080.jpg?t=1777394376"
+    },
+    {
+      "file": "03-steam-reference.jpg",
+      "sourceUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3480/0000001533.1920x1080.jpg?t=1777394376"
+    },
+    {
+      "file": "04-steam-reference.jpg",
+      "sourceUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3480/0000001534.1920x1080.jpg?t=1777394376"
+    },
+    {
+      "file": "05-steam-reference.jpg",
+      "sourceUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3480/0000001535.1920x1080.jpg?t=1777394376"
+    },
+    {
+      "file": "06-steam-reference.jpg",
+      "sourceUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3480/0000001536.1920x1080.jpg?t=1777394376"
+    },
+    {
+      "file": "07-steam-reference.jpg",
+      "sourceUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3480/0000001537.1920x1080.jpg?t=1777394376"
+    },
+    {
+      "file": "08-steam-reference.jpg",
+      "sourceUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3480/0000001538.1920x1080.jpg?t=1777394376"
+    },
+    {
+      "file": "09-steam-reference.jpg",
+      "sourceUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/3480/0000001539.1920x1080.jpg?t=1777394376"
+    }
+  ]
+}
