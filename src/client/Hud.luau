@@ -617,7 +617,7 @@ function Hud.new(callbacks)
 	create("UITextSizeConstraint", { MinTextSize = 16, MaxTextSize = 27 }, self.hubTitle)
 	self.hubInstruction = label(self.hubCard, "Instruction", "Walk onto a 1v1 pad with an opponent.", 14, 34, 292, 31, 12, COLORS.white)
 	self.hubInstruction.TextWrapped = true
-	self.hubAction = button(self.gui, "HubAction", "PRACTICE VS GHOST", 0, 0, 198, 48, COLORS.cyan)
+	self.hubAction = button(self.gui, "HubAction", "DISTANCE FLIGHT · SOLO", 0, 0, 198, 48, COLORS.cyan)
 	self.hubAction.AnchorPoint = Vector2.new(1, 1)
 	self.hubAction.Position = UDim2.new(1, -16, 1, -28)
 	self.hubAction.TextSize = 14
@@ -1712,9 +1712,9 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	self.waitingMessage.Text = snapshot.message or "Getting the runway ready…"
 	if phase == "Lobby" then
         self.hubTitle.Text = "SKYBOUND / THE HANGAR"
-		self.hubInstruction.Text = self.hubCard.Size.X.Offset < 350 and "Duel gates ahead.\nFleet left · Flight effects right."
-			or (PlaneCatalog.get(self.settings.planeId).name.." selected · Duel gates ahead.\nFleet left. Flight effects right.")
-		self.hubAction.Text = "PRACTICE VS GHOST"
+		self.hubInstruction.Text = self.hubCard.Size.X.Offset < 350 and "Plane battles: PLAY button below.\nDistance flight: gates ahead."
+			or (PlaneCatalog.get(self.settings.planeId).name.." selected · Distance gates ahead.\nPlane battles: PLAY button below.")
+		self.hubAction.Text = "DISTANCE FLIGHT · SOLO"
 		self.hubAction.Visible = self.callbacks.practice ~= nil
 	elseif phase == "Queued" then
 		self.hubTitle.Text = "WAITING FOR OPPONENT"

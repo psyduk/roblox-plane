@@ -5,6 +5,7 @@ local RunService = game:GetService("RunService")
 local ServerStorage = game:GetService("ServerStorage")
 local HttpService = game:GetService("HttpService")
 local PlayerStats = require(script.Parent:WaitForChild("PlayerStats"))
+local BattleLab = require(script.Parent:WaitForChild("BattleLab"))
 local Telemetry = require(script.Parent:WaitForChild("Telemetry"))
 local shared = ReplicatedStorage:WaitForChild("FlightGame")
 local PlaneCatalog = require(shared.PlaneCatalog)
@@ -12,6 +13,7 @@ local PowerCatalog = require(shared.PowerCatalog)
 local CosmeticCatalog = require(shared.CosmeticCatalog)
 local Simulation = require(shared.Simulation)
 local World = require(shared.World)
+local BattleSimulation = require(shared.BattleSimulation)
 local command, snapshots = shared.Command, shared.Snapshot
 World.buildLobby()
 
@@ -159,8 +161,8 @@ local function snapshot(p)
     end
     local personalStats,saveStatus=statsService:get(p.statsHandle)
     local economy=statsService:getEconomy(p.statsHandle)
-    economy.canShop=economy.canShop and not m and not p.queue
-    return {phase=m and m.phase or (p.queue and "Queued" or "Lobby"),
+    economy.canShop=economy.canShop and not m and not p.queue and not p.inBattleLab
+    return {phase=p.inBattleLab and "BattleLab" or (m and m.phase or (p.queue and "Queued" or "Lobby")),
         matchId=m and m.id or 0,roundId=m and m.round or 0,
         endsAt=m and m.endsAt or 0,courseName=m and m.courseName or "Coast",
         courseSeed=m and m.course.seed or 104729,votes=m and voteCounts(m) or {},players=list,
@@ -290,7 +292,7 @@ local function finish(m)
     print("SKYBOUND_DUEL_COMPLETE",m.id,m.round,message)
 end
 local function createMatch(ids, practice)
-    for _,id in ipairs(ids) do if not profiles[id] or profiles[id].matchId then return nil end end
+    for _,id in ipairs(ids) do if not profiles[id] or profiles[id].matchId or profiles[id].inBattleLab then return nil end end
     if #ids~=(practice and 1 or 2) or (#ids==2 and ids[1]==ids[2]) then return nil end
     nextMatchId+=1
     local m={id=nextMatchId,round=0,entrants={},votes={},rematchVotes={},results={},elapsed=0,accumulator=0,
@@ -334,7 +336,7 @@ local function leaveMatch(p)
     if abandonedPhase~="Results" then telemetry:phaseAbandoned(p.player,abandonedPhase) end
 end
 local function onPad(p, position)
-    if p.matchId or now()<(p.queueCooldown or 0) then return false end
+    if p.matchId or p.inBattleLab or now()<(p.queueCooldown or 0) then return false end
     local character=p.player.Character
     local root=character and character:FindFirstChild("HumanoidRootPart")
     local humanoid=character and character:FindFirstChildOfClass("Humanoid")
@@ -370,6 +372,24 @@ local function scanQueues()
     for id,q in pairs(queues) do counts[id]=(q.seats[1] and 1 or 0)+(q.seats[2] and 1 or 0) end
     World.updateLobbyQueues(counts)
 end
+local battleLab=BattleLab.new({simulation=BattleSimulation,now=now,
+    canEnter=function(player)
+        local p=profiles[player.UserId]
+        return not shuttingDown and p~=nil and not p.matchId and not p.queue and not p.inBattleLab
+    end,
+    entered=function(player)
+        local p=profiles[player.UserId]
+        p.inBattleLab=true; moveCharacter(p,true); broadcast()
+    end,
+    exited=function(player)
+        local p=profiles[player.UserId]
+        if p then p.inBattleLab=false; release(p); broadcast() end
+    end,
+    emit=function(player,data) shared.BattleSnapshot:FireClient(player,data) end})
+shared.BattleCommand.OnServerEvent:Connect(function(player,payload)
+    if not shuttingDown and profiles[player.UserId] then battleLab:command(player,payload) end
+end)
+
 local function joined(player)
     if shuttingDown then return end
     local p={player=player,settings=copySettings({planeId=PlaneCatalog.DEFAULT_ID,gadget="Shield",color=1}),ready=false,best=0,
@@ -382,7 +402,7 @@ local function joined(player)
     telemetry:sessionStart(player)
     task.spawn(function() statsService:load(p.statsHandle) end)
     local function placeCharacter(character)
-        if character:WaitForChild("HumanoidRootPart",10) then moveCharacter(p,p.matchId~=nil) end
+        if character:WaitForChild("HumanoidRootPart",10) then moveCharacter(p,p.matchId~=nil or p.inBattleLab==true) end
     end
     player.CharacterAdded:Connect(placeCharacter)
     if player.Character then task.spawn(placeCharacter,player.Character) end
@@ -390,6 +410,7 @@ local function joined(player)
 end
 Players.PlayerAdded:Connect(joined)
 Players.PlayerRemoving:Connect(function(player)
+    battleLab:remove(player)
     local p=profiles[player.UserId]
     if p then
         if not shuttingDown then leaveMatch(p) end
@@ -415,6 +436,7 @@ local function handleCommand(p,payload)
     p.lastCommand[payload.kind]=now()
     local m=p.matchId and matches[p.matchId]
     if payload.kind=="request" then snapshots:FireClient(p.player,snapshot(p)); return end
+    if p.inBattleLab then return end
     if payload.kind=="buyCosmetic" or payload.kind=="equipCosmetic" then
         -- One shared limit prevents alternating buy/equip from bypassing it.
         if now()-(p.lastCosmeticCommand or -math.huge)<0.25 then return end
@@ -465,6 +487,7 @@ end)
 RunService.Heartbeat:Connect(function(dt)
     if shuttingDown then return end
     statsService:step()
+    battleLab:step(dt)
     queueAccumulator+=dt
     if queueAccumulator>=0.15 then queueAccumulator=0; scanQueues() end
     for id,m in pairs(matches) do
@@ -528,6 +551,8 @@ if RunService:IsStudio() then
     debugFunction.OnInvoke=function(action,data)
         data=data or {}
         local p=profiles[data.userId or (Players:GetPlayers()[1] and Players:GetPlayers()[1].UserId)]
+        if action=="battleSnapshot" then return p and battleLab:snapshot(p.player) end
+        if action=="battleCommand" and p then battleLab:command(p.player,data.payload); return battleLab:snapshot(p.player) end
         if action=="snapshot" then return p and snapshot(p) end
         if action=="snapshots" then local all={}; for id,profile in pairs(profiles) do all[tostring(id)]=snapshot(profile) end; return all end
         if action=="validateSettings" then return safeSettings(data) end

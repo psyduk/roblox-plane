@@ -1,0 +1,479 @@
+-- Pure tests: require(thisModule)(BattleSimulation) in Studio or a Lua runtime.
+return function(Simulation, Modifiers)
+	local passed = 0
+	local function check(value, message) assert(value, message) end
+	local function close(a, b) return math.abs(a - b) < 0.0000001 end
+	local function test(name, callback)
+		local ok, problem = pcall(callback)
+		assert(ok, name .. ": " .. tostring(problem))
+		passed = passed + 1
+	end
+	local function equal(a, b)
+		if type(a) ~= type(b) then return false end
+		if type(a) ~= "table" then return a == b end
+		for key, value in pairs(a) do if not equal(value, b[key]) then return false end end
+		for key in pairs(b) do if a[key] == nil then return false end end
+		return true
+	end
+	local function run(seed, a, b)
+		local state = Simulation.newRound(seed, a, b)
+		for _ = 1, math.ceil(Simulation.MAX_TIME / Simulation.FIXED_DT) + 2 do
+			Simulation.step(state, Simulation.FIXED_DT)
+			if state.finished then return state end
+		end
+		error("Round exceeded hard limit")
+	end
+	local function passive(fighter, x, y, heading)
+		fighter.x, fighter.y, fighter.heading = x, y, heading or 0
+		fighter.vx, fighter.vy = math.cos(fighter.heading) * 30, math.sin(fighter.heading) * 30
+		fighter.phase, fighter.phaseLeft, fighter.armed = "Recover", 100, false
+		fighter._recoverX = x + math.cos(fighter.heading) * 30
+		fighter._recoverY = y + math.sin(fighter.heading) * 30
+		fighter._knockX, fighter._knockY = 0, 0
+	end
+	local function projectile(id, owner, x, y, vx, vy)
+		return { id = id, owner = owner, x = x, y = y, vx = vx, vy = vy, life = 2, radius = 3.5 }
+	end
+	local function armed(fighter, x, heading)
+		passive(fighter, x, 50, heading)
+		fighter.powerId = "Meteor"
+		fighter.phase, fighter.phaseLeft, fighter.armed = "Attack", 1, true
+		fighter._attackHeading, fighter._attackHit = heading, false
+	end
+	local function wake(id, owner, x, y, armLeft)
+		return { id = id, owner = owner, x = x, y = y, radius = Simulation.WAKE_RADIUS,
+			life = Simulation.WAKE_LIFE, maxLife = Simulation.WAKE_LIFE, armLeft = armLeft or 0 }
+	end
+
+	test("same seed settings and frame times reproduce entire round", function()
+		local a = run(8137, { powerId = "Meteor", angle = 10 }, { powerId = "Firework", angle = 55 })
+		local b = run(8137, { powerId = "Meteor", angle = 10 }, { powerId = "Firework", angle = 55 })
+		check(equal(a, b), "Deterministic replay differed")
+		check(a.finished and a.eventSerial > 2, "No combat occurred")
+	end)
+
+	test("fixed ticks are independent of frame grouping", function()
+		local a, b = Simulation.newRound(37), Simulation.newRound(37)
+		for _ = 1, 60 do Simulation.step(a, 1 / 60) end
+		for _ = 1, 10 do Simulation.step(b, 0.1) end
+		check(close(a.elapsed, 1) and close(b.elapsed, 1), "Wrong accumulated time")
+		check(equal(a.fighters, b.fighters) and equal(a.events, b.events), "Frame partition changed combat")
+	end)
+
+	test("invalid dt is ignored and stalled frames are bounded", function()
+		local state = Simulation.newRound(1)
+		for _, dt in ipairs({ 0, -1, math.huge, -math.huge, 0 / 0, "1" }) do Simulation.step(state, dt) end
+		Simulation.step(state, nil)
+		check(state.elapsed == 0, "Invalid time advanced the round")
+		Simulation.step(state, 10000)
+		check(close(state.elapsed, Simulation.MAX_STEP_DT), "Stalled frame ran unbounded work")
+		local partial = Simulation.newRound(1)
+		Simulation.step(partial, Simulation.FIXED_DT / 2)
+		check(partial.elapsed == 0, "Partial tick advanced")
+		Simulation.step(partial, Simulation.FIXED_DT / 2)
+		check(close(partial.elapsed, Simulation.FIXED_DT), "Partial ticks were discarded")
+	end)
+
+	test("settings are validated copied and bounded", function()
+		local input = { powerId = "Meteor", angle = 999 }
+		local state = Simulation.newRound(0 / 0, input, { powerId = "unknown", angle = math.huge })
+		input.angle = 10
+		check(state.seed == 1 and state.fighters[1].settings.angle == 55, "Seed or settings ownership failed")
+		check(state.fighters[2].powerId == "Firework" and state.fighters[2].settings.angle == 32, "Fallback failed")
+		local other = Simulation.newRound({}, { angle = -99 }, false)
+		check(other.fighters[1].settings.angle == 10 and other.fighters[2].armor == 3, "Malformed settings failed")
+		check(Simulation.validPower("Meteor") and Simulation.validPower("Firework") and not Simulation.validPower("Paid"), "Power validation failed")
+	end)
+
+	test("passive body contact only bumps", function()
+		local state = Simulation.newRound(1)
+		passive(state.fighters[1], -3, 50, math.pi)
+		passive(state.fighters[2], 3, 50, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[1].armor == 3 and state.fighters[2].armor == 3, "Passive collision dealt damage")
+		check(state.events[#state.events].kind == "bump", "Body contact lacked feedback")
+		check(state.fighters[1]._knockX < 0 and state.fighters[2]._knockX > 0, "Bump did not separate fighters")
+	end)
+
+	test("armed frontal strike deals one pip and rear contact does not", function()
+		local hit = Simulation.newRound(1)
+		armed(hit.fighters[1], -8, 0)
+		passive(hit.fighters[2], 0, 50, 0)
+		Simulation.step(hit, Simulation.FIXED_DT)
+		check(hit.fighters[2].armor == 2 and hit.fighters[1].hits == 1, "Frontal strike failed")
+		check(hit.fighters[2].invulnerable > 0 and hit.fighters[1].phase == "Recover", "Hit lacked protection/recovery")
+		local back = Simulation.newRound(1)
+		armed(back.fighters[1], 5, 0)
+		passive(back.fighters[2], 0, 50, 0)
+		Simulation.step(back, Simulation.FIXED_DT)
+		check(back.fighters[2].armor == 3, "Rear body contact counted as an armed nose")
+	end)
+
+	test("projectile sweep catches a target between endpoints", function()
+		local state = Simulation.newRound(1)
+		passive(state.fighters[1], -55, 50, 0)
+		passive(state.fighters[2], 0, 50, 0)
+		state.projectiles = { projectile(1, 1, -25, 50, 6000, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[2].armor == 2 and #state.projectiles == 0, "Swept rocket missed or survived impact")
+		check(state.fighters[1].armor == 3 and state.fighters[1].hits == 1, "Wrong rocket attribution")
+	end)
+
+	test("projectile ownership excludes its own plane", function()
+		local state = Simulation.newRound(1)
+		passive(state.fighters[1], 0, 50, 0)
+		passive(state.fighters[2], 50, 80, 0)
+		state.projectiles = { projectile(1, 1, -20, 50, 1800, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[1].armor == 3 and state.fighters[2].armor == 3, "Projectile hit its owner")
+		check(#state.projectiles == 1, "Projectile consumed itself against owner")
+	end)
+
+	test("impact protection blocks stacked hits and consumes rockets", function()
+		local state = Simulation.newRound(1)
+		passive(state.fighters[1], -55, 50, 0)
+		passive(state.fighters[2], 0, 50, 0)
+		state.projectiles = { projectile(1, 1, -25, 50, 6000, 0), projectile(2, 1, -25, 50, 6000, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[2].armor == 2 and state.fighters[1].hits == 1, "Stacked damage bypassed protection")
+		check(#state.projectiles == 0, "Blocked rocket remained inside target")
+		for _ = 1, 10 do Simulation.step(state, Simulation.FIXED_DT) end
+		check(state.fighters[2].armor == 2, "Protection allowed delayed impact damage")
+	end)
+
+	test("committed attacks and rockets cannot home", function()
+		local state = Simulation.newRound(1)
+		armed(state.fighters[1], -40, 0.3)
+		passive(state.fighters[2], 40, 80, 0)
+		state.projectiles = { projectile(1, 1, -50, 15, 30, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[1].heading == 0.3, "Committed dive turned toward opponent")
+		check(state.projectiles[1].vx == 30 and state.projectiles[1].vy == 0, "Rocket homed after launch")
+	end)
+
+	test("dive commitment survives a hit and recovery within one broadcast interval", function()
+		local state = Simulation.newRound(1, { powerId = "Meteor", modifierId = "None" })
+		passive(state.fighters[1], -8, 50, 0)
+		passive(state.fighters[2], 0, 50, 0)
+		state.fighters[1].phase, state.fighters[1].phaseLeft = "Windup", 0
+		Simulation.step(state, 1 / 20)
+		check(state.fighters[1].phase == "Recover" and state.fighters[2].armor == 2, "Fixture did not commit and hit before next snapshot")
+		local count, commitment, impact = 0, nil, nil
+		for _, entry in ipairs(state.events) do
+			if entry.kind == "dive" then count, commitment = count + 1, entry end
+			if entry.kind == "hit" then impact = entry end
+		end
+		check(count == 1 and commitment and impact and commitment.serial < impact.serial, "Commit event missing, duplicated, or out of order")
+		check(commitment.actor == 1 and commitment.target == 2 and commitment.source == "meteor", "Wrong dive attribution")
+		check(commitment.heading == 0 and commitment.x == -8 and commitment.y == 50, "Commit did not retain its actual origin and heading")
+		check(commitment.at <= 1 / 20 and commitment.at == impact.at, "Immediate commit timing changed")
+	end)
+
+	test("normal Meteor charge creates continuous space before a visible landed dive", function()
+		local state = Simulation.newRound(731, { powerId = "Meteor", angle = 32 }, { powerId = "Firework", angle = 32 })
+		local charge, commitment, impact, waypointX, waypointY, previousHeading
+		local serial = state.eventSerial
+		for _ = 1, 300 do
+			local fighter = state.fighters[1]
+			local oldX, oldY = fighter.x, fighter.y
+			previousHeading = fighter.heading
+			Simulation.step(state, Simulation.FIXED_DT)
+			for _, entry in ipairs(state.events) do
+				if entry.serial > serial and entry.actor == 1 then
+					if entry.kind == "windup" then charge = entry end
+					if entry.kind == "dive" then commitment = entry end
+					if entry.kind == "hit" and entry.source == "meteor" then impact = entry end
+				end
+			end
+			serial = state.eventSerial
+			check((fighter.x - oldX) ^ 2 + (fighter.y - oldY) ^ 2 <= (65 * Simulation.FIXED_DT + 0.00001) ^ 2,
+				"Charging or release teleported the plane")
+			if fighter.phase == "Windup" then
+				check(not fighter.armed and fighter.invulnerable == 0, "Charge gained damage or immunity")
+				check(fighter.windupDuration == Simulation.METEOR_WINDUP, "Renderer charge duration differs")
+				waypointX, waypointY = waypointX or fighter._chargeX, waypointY or fighter._chargeY
+				check(fighter._chargeX == waypointX and fighter._chargeY == waypointY, "Backoff waypoint homed during charge")
+				local turn = (fighter.heading - previousHeading + math.pi) % (math.pi * 2) - math.pi
+				check(math.abs(turn) <= 8 * Simulation.FIXED_DT + 0.00001, "Charge heading snapped")
+			end
+			if impact then break end
+		end
+		check(charge and commitment and impact, "Default charge did not finish in a real strike")
+		check(close(commitment.at - charge.at, Simulation.METEOR_WINDUP), "Charge duration changed")
+		check(impact.at - commitment.at >= 0.25 and impact.at - commitment.at <= 0.7, "Default strike has no visible flight")
+		check(math.abs(commitment.x - charge.x) > 20, "Charge failed to create real separation")
+		check(state.fighters[2].armor == 2 and state.fighters[1].armor == 3, "Strike changed the one-pip damage rule")
+		check(state.fighters[2].windupDuration == 1.05, "Firework windup changed")
+	end)
+
+	test("Meteor remains vulnerable during the backoff charge", function()
+		local state = Simulation.newRound(1)
+		local fighter = state.fighters[1]
+		passive(fighter, 0, 50, 0)
+		fighter.phase, fighter.phaseLeft = "Windup", 0.8
+		fighter._chargeX, fighter._chargeY = -40, 80
+		passive(state.fighters[2], -40, 50, 0)
+		state.projectiles = { projectile(1, 2, -25, 50, 6000, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(fighter.armor == 2 and fighter.phase == "Recover", "Charging Meteor ignored a valid rocket")
+		check(not fighter.armed and fighter.attacks == 0, "Interrupted charge still released a dive")
+	end)
+
+	test("a committed Meteor can visibly miss and bank without damage", function()
+		local state = Simulation.newRound(1)
+		armed(state.fighters[1], -40, 0)
+		passive(state.fighters[2], 30, 80, 0)
+		for _ = 1, 62 do Simulation.step(state, Simulation.FIXED_DT) end
+		local missed = false
+		for _, entry in ipairs(state.events) do
+			if entry.kind == "miss" and entry.actor == 1 then missed = true end
+		end
+		check(missed and state.fighters[1].phase == "Recover", "Miss lacked normal recovery")
+		check(state.fighters[1].hits == 0 and state.fighters[2].armor == 3, "Miss fabricated a hit")
+	end)
+
+	test("simultaneous knockout is a draw without player-index priority", function()
+		local state = Simulation.newRound(1)
+		armed(state.fighters[1], -4, 0)
+		armed(state.fighters[2], 4, math.pi)
+		state.fighters[1].armor, state.fighters[2].armor = 1, 1
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.finished and state.winner == 0 and state.reason == "knockout", "Double knockout was biased")
+		check(state.fighters[1].armor == 0 and state.fighters[2].armor == 0, "One simultaneous hit disappeared")
+	end)
+
+	test("pressure visibly shrinks bounds without dealing damage", function()
+		local state = Simulation.newRound(1)
+		state.elapsed = 26.5
+		passive(state.fighters[1], -72, 8, math.pi)
+		passive(state.fighters[2], 72, 96, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(close(state.pressure, (state.elapsed - 18) / 17), "Pressure timing differs")
+		check(close(state.bounds.left, -72 + 24 * state.pressure) and close(state.bounds.top, 96 - 14 * state.pressure), "Rendered bounds contract differs")
+		for _, fighter in ipairs(state.fighters) do
+			check(fighter.x >= state.bounds.left and fighter.x <= state.bounds.right and fighter.y >= state.bounds.bottom and fighter.y <= state.bounds.top, "Plane escaped pressure")
+			check(fighter.armor == 3, "Invisible edge damage")
+		end
+	end)
+
+	test("time cap awards higher armor and preserves equal armor draws", function()
+		for _, armor in ipairs({ 2, 3 }) do
+			local state = Simulation.newRound(1)
+			state.elapsed = Simulation.MAX_TIME - 0.005
+			state.fighters[2].armor = armor
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(state.finished and state.elapsed == Simulation.MAX_TIME and state.reason == "timeout", "Hard limit failed")
+			check(state.winner == (armor == 3 and 0 or 1), "Armor tiebreak failed")
+			local elapsed, serial, x = state.elapsed, state.eventSerial, state.fighters[1].x
+			Simulation.step(state, 1)
+			check(state.elapsed == elapsed and state.eventSerial == serial and state.fighters[1].x == x, "Finished round changed")
+		end
+	end)
+
+	test("extreme angles both sides stay finite bounded and finish", function()
+		local wins, phases = {}, {}
+		for _, power in ipairs({ "Meteor", "Firework" }) do
+			for _, a in ipairs({ 10, 32, 55 }) do
+				for _, b in ipairs({ 10, 32, 55 }) do
+					local state = Simulation.newRound(104729 + a * 7919 + b, { powerId = power, angle = a },
+						{ powerId = power == "Meteor" and "Firework" or "Meteor", angle = b })
+					for _ = 1, 2102 do
+						Simulation.step(state, Simulation.FIXED_DT)
+						check(#state.events <= 24, "Event history leaked")
+						for _, fighter in ipairs(state.fighters) do
+							check(fighter.x == fighter.x and fighter.y == fighter.y and math.abs(fighter.vx) < 100 and math.abs(fighter.vy) < 100, "Nonfinite/excessive motion")
+							check(fighter.x >= state.bounds.left and fighter.x <= state.bounds.right and fighter.y >= state.bounds.bottom and fighter.y <= state.bounds.top, "Out of bounds")
+							check(fighter.armor >= 0 and fighter.armor <= 3, "Armor out of bounds")
+							phases[fighter.phase] = true
+						end
+						if state.finished then break end
+					end
+					check(state.finished and state.elapsed <= Simulation.MAX_TIME, "Nonterminating match")
+					if state.winner ~= 0 then wins[state.fighters[state.winner].powerId] = true end
+					for index = 2, #state.events do check(state.events[index].serial > state.events[index - 1].serial, "Event order changed") end
+				end
+			end
+		end
+		check(phases.Approach and phases.Windup and phases.Attack and phases.Recover, "A combat phase never occurred")
+		check(wins.Meteor and wins.Firework, "One signature could never win the sample")
+	end)
+
+	test("modifiers validate and reset independently each round", function()
+		local invalid = Simulation.newRound(1, { modifierId = "PaidShield" }, { modifierId = {} })
+		check(invalid.fighters[1].modifierId == "None" and invalid.fighters[2].modifierId == "None", "Invalid modifiers accepted")
+		for _, id in ipairs({ "None", "Afterburner", "SpringBumper", "FizzyFuel" }) do
+			check(Simulation.validModifier(id), "Catalog modifier rejected")
+			local first = Simulation.newRound(12, { modifierId = id }, { modifierId = id })
+			first.fighters[1].armor, first.fighters[1].boostLeft, first.fighters[1].bumperReady = 0, 0.8, false
+			first.wakes = { wake(1, 1, 0, 50) }
+			local nextRound = Simulation.newRound(12, { modifierId = id }, { modifierId = id })
+			check(nextRound.fighters[1].armor == 3 and nextRound.fighters[1].boostLeft == 0 and #nextRound.wakes == 0, "Previous round effects leaked")
+			check(nextRound.fighters[1].bumperReady == (id == "SpringBumper"), "Bumper charge did not reset")
+			check(nextRound.eventSerial == 2, "Activation events leaked into launch")
+		end
+	end)
+
+	if Modifiers then
+		test("shared catalog agrees with validation and returns detached records", function()
+			check(Modifiers.DEFAULT_ID == "None" and #Modifiers.all() == 4, "Catalog default or size differs")
+			for _, entry in ipairs(Modifiers.all()) do
+				check(Simulation.validModifier(entry.id) and Modifiers.valid(entry.id), "Catalog and simulation disagree")
+				check(type(entry.name) == "string" and type(entry.description) == "string", "Missing UI copy")
+				local original = Modifiers.get(entry.id)
+				entry.name, entry.color.r = "mutated", -1
+				check(Modifiers.get(original.id).name == original.name and Modifiers.get(original.id).color.r == original.color.r, "UI mutated catalog")
+			end
+			check(Modifiers.get("unknown") == nil and not Modifiers.valid({}), "Invalid catalog ID accepted")
+		end)
+	end
+
+	test("afterburner starts only after an attack and expires without retriggering", function()
+		local state = Simulation.newRound(1, { powerId = "Firework", modifierId = "Afterburner" })
+		local fighter = state.fighters[1]
+		passive(fighter, -40, 50, 0)
+		passive(state.fighters[2], 50, 80, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(fighter.boostLeft == 0 and close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 30), "Boost appeared without attacking")
+		fighter.phase, fighter.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(fighter.phase == "Attack" and fighter.boostLeft == 0, "Boost altered committed attack")
+		fighter.phaseLeft = 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(fighter.phase == "Recover" and fighter.boostLeft > 0, "Attack did not trigger recovery boost")
+		check(close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 44), "Boost did not change recovery speed")
+		local activations = 0
+		for _, entry in ipairs(state.events) do
+			if entry.kind == "modifier" and entry.modifierId == "Afterburner" then activations = activations + 1 end
+		end
+		check(activations == 1, "Boost activation duplicated")
+		for _ = 1, 60 do Simulation.step(state, Simulation.FIXED_DT) end
+		check(fighter.boostLeft == 0 and fighter.phase == "Recover", "Boost did not expire during recovery")
+		check(close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 30), "Boost speed persisted")
+	end)
+
+	test("spring bumper ignores passive or protected contact and blocks one valid strike", function()
+		local state = Simulation.newRound(1, nil, { modifierId = "SpringBumper" })
+		passive(state.fighters[1], -3, 50, math.pi)
+		passive(state.fighters[2], 3, 50, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[2].bumperReady, "Passive bump spent the bumper")
+		armed(state.fighters[1], -8, 0)
+		passive(state.fighters[2], 0, 50, 0)
+		state.fighters[2].invulnerable = 0.2
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[2].bumperReady and state.fighters[2].armor == 3, "Protected contact spent the bumper")
+		armed(state.fighters[1], -8, 0)
+		passive(state.fighters[2], 0, 50, 0)
+		state.fighters[2].invulnerable = 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(not state.fighters[2].bumperReady and state.fighters[2].armor == 3, "Bumper did not absorb strike")
+		check(state.fighters[1].hits == 0 and state.fighters[1].phase == "Recover", "Blocked strike counted as armor damage")
+		check(state.fighters[1]._knockX < 0 and state.fighters[2]._knockX > 0, "Bumper failed to separate planes")
+		local entry = state.events[#state.events]
+		check(entry.kind == "blocked" and entry.actor == 2 and entry.target == 1 and entry.source == "meteor", "Block attribution differs")
+		state.fighters[2].invulnerable = 0
+		state.projectiles = { projectile(7, 1, -25, state.fighters[2].y, 6000, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[2].armor == 2, "Spent bumper blocked a second hit")
+	end)
+
+	test("spring bumper consumes a rocket without reporting armor loss", function()
+		local state = Simulation.newRound(1, nil, { modifierId = "SpringBumper" })
+		passive(state.fighters[1], -55, 50, 0)
+		passive(state.fighters[2], 0, 50, 0)
+		state.projectiles = { projectile(1, 1, -25, 50, 6000, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(#state.projectiles == 0 and state.fighters[2].armor == 3, "Bumper rocket resolution failed")
+		local entry = state.events[#state.events]
+		check(entry.kind == "blocked" and entry.source == "rocket" and entry.at == state.elapsed, "Blocked rocket has wrong feedback")
+	end)
+
+	test("fizzy wake starts at commitment and visibly arms before damage", function()
+		local state = Simulation.newRound(1, { powerId = "Firework", modifierId = "FizzyFuel" })
+		local fighter = state.fighters[1]
+		passive(fighter, -40, 50, 0)
+		passive(state.fighters[2], 50, 80, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(#state.wakes == 0, "Wake emitted outside attack")
+		fighter.phase, fighter.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(#state.wakes == 1 and state.wakes[1].x < fighter.x, "Attack did not leave a wake behind")
+		check(state.wakes[1].armLeft > 0 and state.wakes[1].radius == Simulation.WAKE_RADIUS, "Wake lacks visible arming/radius")
+		local emitted = state._wakeSerial
+		fighter.phaseLeft = 0
+		for _ = 1, 12 do Simulation.step(state, Simulation.FIXED_DT) end
+		check(fighter.phase == "Recover" and state._wakeSerial > emitted, "An early attack ending truncated its promised wake")
+		local contact = Simulation.newRound(1)
+		passive(contact.fighters[1], -55, 50, 0)
+		passive(contact.fighters[2], 0, 50, 0)
+		contact.wakes = { wake(1, 1, 0, 50, Simulation.WAKE_ARM_TIME) }
+		for _ = 1, 3 do Simulation.step(contact, Simulation.FIXED_DT) end
+		check(contact.fighters[2].armor == 3, "Wake damaged before its cue armed")
+		for _ = 1, 6 do Simulation.step(contact, Simulation.FIXED_DT) end
+		check(contact.fighters[2].armor == 2 and #contact.wakes == 0, "Armed wake failed contact resolution")
+		local count = 0
+		for _, entry in ipairs(contact.events) do
+			if entry.kind == "wake_hit" then count = count + 1 end
+			check(entry.kind ~= "hit", "Wake duplicated its hit event")
+		end
+		check(count == 1, "Wake damage feedback duplicated or missing")
+	end)
+
+	test("wake ownership protection and bumper interactions are consistent", function()
+		local owner = Simulation.newRound(1)
+		passive(owner.fighters[1], 0, 50, 0)
+		passive(owner.fighters[2], 50, 80, 0)
+		owner.wakes = { wake(1, 1, 0, 50) }
+		Simulation.step(owner, Simulation.FIXED_DT)
+		check(owner.fighters[1].armor == 3 and #owner.wakes == 1, "Wake hit its owner")
+		for _, modifier in ipairs({ "None", "SpringBumper" }) do
+			local state = Simulation.newRound(1, nil, { modifierId = modifier })
+			passive(state.fighters[1], -55, 50, 0)
+			passive(state.fighters[2], 0, 50, 0)
+			state.wakes = { wake(1, 1, 0, 50), wake(2, 1, 0, 50) }
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(state.fighters[2].armor == (modifier == "None" and 2 or 3), "Wake bypassed bumper/protection")
+			check(#state.wakes == 0, "Overlapping wake remained inside protected plane")
+			if modifier == "SpringBumper" then
+				local entry = state.events[#state.events]
+				check(not state.fighters[2].bumperReady and entry.kind == "blocked" and entry.source == "wake", "Wake did not consume bumper visibly")
+			end
+		end
+	end)
+
+	test("wake instances are bounded and expire after emission stops", function()
+		local state = Simulation.newRound(1, { modifierId = "FizzyFuel" }, { modifierId = "FizzyFuel" })
+		for _ = 1, 180 do
+			for id, fighter in ipairs(state.fighters) do
+				passive(fighter, 0, id == 1 and 80 or 20, id == 1 and 0 or math.pi)
+				fighter.phase, fighter.phaseLeft, fighter._attackHeading = "Attack", 100, fighter.heading
+				fighter.armed, fighter._wakeLeft = false, 100
+			end
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(#state.wakes <= Simulation.MAX_WAKES, "Wake instance count leaked")
+			local owned = { 0, 0 }
+			for _, entry in ipairs(state.wakes) do owned[entry.owner] = owned[entry.owner] + 1 end
+			check(owned[1] <= 6 and owned[2] <= 6, "One plane exhausted the shared wake budget")
+		end
+		for id, fighter in ipairs(state.fighters) do
+			passive(fighter, id == 1 and -50 or 50, 50, id == 1 and math.pi or 0)
+			fighter._wakeLeft = 0
+		end
+		for _ = 1, math.ceil(Simulation.WAKE_LIFE / Simulation.FIXED_DT) + 2 do Simulation.step(state, Simulation.FIXED_DT) end
+		check(#state.wakes == 0, "Expired wake persisted")
+	end)
+
+	test("all modifier pairs remain deterministic bounded and terminate", function()
+		for _, a in ipairs({ "None", "Afterburner", "SpringBumper", "FizzyFuel" }) do
+			for _, b in ipairs({ "None", "Afterburner", "SpringBumper", "FizzyFuel" }) do
+				local settingsA, settingsB = { powerId = "Meteor", modifierId = a, angle = 10 }, { powerId = "Firework", modifierId = b, angle = 55 }
+				local first, second = run(91273, settingsA, settingsB), run(91273, settingsA, settingsB)
+				check(equal(first, second), "Modifier replay differed: " .. a .. "/" .. b)
+				check(#first.wakes <= Simulation.MAX_WAKES and first.elapsed <= Simulation.MAX_TIME, "Modifier lifecycle escaped bounds")
+				for _, entry in ipairs(first.events) do check(type(entry.at) == "number" and entry.at <= first.elapsed, "Event timestamp missing") end
+			end
+		end
+	end)
+
+	return string.format("BattleSimulation: %d tests passed (determinism, fixed ticks, collisions, protection, endings, modifiers, wakes)", passed)
+end

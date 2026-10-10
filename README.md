@@ -1,8 +1,24 @@
-# Skybound — 1v1 flight prototype
+# Skybound — Battle Lab and flight prototype
 
 A bright arcade flight club with a walkable aircraft hangar, earned flight effects and independent two-pilot duels. Choose one superpower and a launch angle, then watch your transformed plane bounce, eat missiles or dive into a forward blast. Flight is automatic after takeoff.
 
-Product research and proposed next experiments are in [Skybound research and retention strategy](docs/RETENTION-STRATEGY.md), including competitors, replay improvements, progression ideas and success measures. Technical checks and remaining release gaps are in [VALIDATION.md](VALIDATION.md).
+The current direction is documented in [Skybound Clash design](docs/SKYBOUND-CLASH-DESIGN.md): quick automatic plane battles, a few readable choices, and fresh combat builds each match. The earlier [flight retention research](docs/RETENTION-STRATEGY.md) remains background. Technical checks and remaining release gaps are in [VALIDATION.md](VALIDATION.md).
+
+## Try the Battle Lab
+
+Open `Skybound.rbxlx` in Roblox Studio, press **Play**, then select **PLAY PLANE BATTLES / BATTLE LAB** near the bottom of the hangar screen. Choose **Meteor** or **Firework** for each side, add one optional effect, and press **Launch battle**. **Angles** opens optional opening-angle tuning. The opposing plane is explicitly simulated. Both planes attack automatically; glowing committed dives and rockets remove one of three armor pips. Ordinary bumps only push.
+
+The effects are **Afterburner** (a brief speed/turn burst after attacking), **Spring Bumper** (absorb the first damaging hit and spring apart), and **Fizzy Fuel** (a short damaging wake). **No Effect** preserves the original fight movement. Each plane has one slot, so effects do not stack in this experiment. Attack tells, impact feedback, spent-bumper/boost status and distinct sounds show their consequences. **Sound ON/OFF** shares the existing hangar mute preference.
+
+Meteor pulls up and away, visibly charges, then commits to a fast ram that can still miss; Firework fires a slow rocket on its attack pass. Both have visible windup and recovery. Ordinary circling and recovery retain their existing movement. At 18 seconds, amber wind boundaries begin closing. At the 35-second cap, the plane with more armor wins; equal armor is a draw. Simultaneous knockouts also draw.
+
+The signature presentation pass gives Meteor a heavier armored silhouette and comet-like dive, and Firework oversized launch tubes and striped, sputtering rockets. Each has distinct charge, release and hit sounds. Three-segment armor and brief hit flashes track actual damage; extra exhaust, sparks and light accents are cosmetic. The camera stays stable. A plane that loses its last armor segment tumbles to the arena floor, lands with a burst and thud, and remains as a wreck. Timeout survivors stay airborne. Retry is available immediately, including during a crash.
+
+Results offer **Run it again**, **Change setup**, or **Hangar**. This lab uses a fixed seed so identical settings reproduce the same experiment. Retrying resets armor, positions, timers, rockets and effects. Test selections persist for convenience while in the lab; exiting and entering restores the defaults. Lab battles do not award flight stats, currency or cosmetics.
+
+This is the first combat toy. Random offers, human combat matchmaking and multi-round drafting are later milestones. Firework mirrors currently trade into repeated draws; those are exposed honestly for testing. Competitive balance and replay appeal still need player observation.
+
+Simulation checks: `build/testenv/bin/python scripts/sample_battle.py --tests-only`. With the optional Lupa dependency in another environment, use that environment's Python. Add `--samples 20 --mirrors` for reproducible matchup samples. Server-flow checks remain `python scripts/test_server.py`.
 
 The observed BALL vs BALL lobby references and the scope chosen for this pass are in [Hangar references](docs/HANGAR-REFERENCES.md).
 
@@ -12,7 +28,7 @@ Open `Skybound.rbxlx` in Roblox Studio and press **Play**. The hangar builds aut
 
 For a human duel, start a local server with at least two player clients using Studio's multiplayer test controls. Walk one player onto each of the two pads at the same duel station. Standing on a single pad waits for an opponent; walking off or pressing **Leave Queue** cancels that queue. Different stations can host separate matches concurrently.
 
-To test alone, press **Practice vs Ghost**. This explicitly starts a duel against one labelled practice pilot. Ghosts are not added to human duels.
+To test alone, press **Distance Flight · Solo**. This explicitly starts a duel against one labelled practice pilot. Ghosts are not added to human duels.
 
 1. **Pair up:** two occupied pads create an independent 1v1 match and move both players into its match view.
 2. **Vote:** choose Coast, Skyline, or Storm. The vote lasts eight seconds; both pilots receive the same generated course conditions.
@@ -159,7 +175,7 @@ During local Play, the **server** command bar can inspect the first player's aut
 print(game.ServerStorage.FlightDebug:Invoke("snapshot"))
 ```
 
-The Studio-only `FlightDebug` helper also exposes `snapshots`, `tests`, `validateSettings`, `practice`, `queueMove`, `forcePair`, `command`, `configure`, `aim` and `launch`. Player-specific actions accept a `userId` in the second argument. These shortcuts are for local diagnostics, not the player interface.
+The Studio-only `FlightDebug` helper also exposes `battleSnapshot`, `battleCommand`, `snapshots`, `tests`, `validateSettings`, `practice`, `queueMove`, `forcePair`, `command`, `configure`, `aim` and `launch`. Player-specific actions accept a `userId` in the second argument. These shortcuts are for local diagnostics, not the player interface.
 
 For optional server-flow checks outside Studio, install **lupa** in a Python environment, then run the harness:
 

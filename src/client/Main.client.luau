@@ -14,6 +14,8 @@ local Hud = require(script.Parent:WaitForChild("Hud"))
 local EffectsShop = require(script.Parent:WaitForChild("EffectsShop"))
 local FlightAudio = require(script.Parent:WaitForChild("FlightAudio"))
 local PilotAvatar = require(script.Parent:WaitForChild("PilotAvatar"))
+local BattleLab = require(script.Parent:WaitForChild("BattleLab"))
+local battleLab = BattleLab.new(World,shared)
 local audio = FlightAudio.new()
 local command = shared:WaitForChild("Command")
 local snapshots = shared:WaitForChild("Snapshot")
@@ -97,9 +99,17 @@ hud=Hud.new({
     returnLobby=function() send("returnLobby") end,
     rematch=function() send("rematch") end,
     lobby=function() send("returnLobby") end,
-    mute=function(muted) audio:setMuted(muted) end,
+    mute=function(muted) localPlayer:SetAttribute("SkyboundSoundMuted",muted) end,
     powerSelect=function(powerId,confirmed) audio:playSelection(powerId,confirmed) end,
 })
+local function syncMute()
+    local muted=localPlayer:GetAttribute("SkyboundSoundMuted")==true
+    audio:setMuted(muted)
+    hud.soundMuted=muted
+    hud.soundButton.Text=muted and "SOUND OFF" or "SOUND ON"
+end
+localPlayer:GetAttributeChangedSignal("SkyboundSoundMuted"):Connect(syncMute)
+syncMute()
 pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack,false) end)
 pcall(function() StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList,false) end)
 
@@ -143,6 +153,14 @@ snapshots.OnClientEvent:Connect(function(data)
         manualSpectate=false
         if previewPlane then previewPlane:Destroy(); previewPlane=nil end
     end
+    if data.phase=="BattleLab" then
+        clearPlanes()
+        if previewPlane then previewPlane:Destroy(); previewPlane=nil end
+        if renderedCourse then World.destroyCourse(renderedCourse); renderedCourse=nil; courseKey="" end
+        lastPhase=data.phase
+        localPlayer:SetAttribute("SkyboundPhase",data.phase)
+        return
+    end
     local key=tostring(data.courseSeed)..data.courseName
     if key~=courseKey and not lobbyView then
         if renderedCourse then World.destroyCourse(renderedCourse) end
@@ -173,7 +191,7 @@ local function adjust(key, amount, low, high)
     if hud.setLocalSettings then hud:setLocalSettings(current) else send("configure",{settings=current}) end
 end
 UserInputService.InputBegan:Connect(function(input,processed)
-    if processed or UserInputService:GetFocusedTextBox() then return end
+    if battleLab:isActive() or processed or UserInputService:GetFocusedTextBox() then return end
     if input.KeyCode==Enum.KeyCode.R or input.KeyCode==Enum.KeyCode.ButtonY then
         if latest and (latest.phase=="Configure" or latest.phase=="Aim") then
             if hud.toggleReady then hud:toggleReady()
@@ -241,12 +259,22 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
     if not latest or not camera then return end
     local phase=latest.phase
     -- Roblox may re-enable avatar controls when a character finishes spawning.
-    local allowMovement=lobbyView and not effectsShop:isOpen()
+    local allowMovement=lobbyView and not effectsShop:isOpen() and not battleLab:isActive()
     if characterControls and (controlsEnabled~=allowMovement or characterControls.controlsEnabled~=allowMovement) then
         controlsEnabled=allowMovement
         if allowMovement then characterControls:Enable() else characterControls:Disable() end
         localPlayer:SetAttribute("SkyboundLobbyControls",characterControls.controlsEnabled)
     end
+    local inLab=battleLab:isActive()
+    hud.gui.Enabled=not inLab and phase~="BattleLab"
+    effectsShop.gui.Enabled=not inLab and phase~="BattleLab"
+    if inLab or phase=="BattleLab" then
+        if effectsShop:isOpen() then effectsShop:close() end
+        audio:update({},"battle-lab",localPlayer.UserId,false)
+        battleLab:update(dt,false)
+        return
+    end
+    battleLab:update(dt,phase=="Lobby" and not effectsShop:isOpen())
     local active=phase=="Flight" or phase=="Results"
     local target=getEntry(watchedUserId)
     if active and (not target or not target.flight) then
