@@ -4,6 +4,67 @@ Decision date: October 9, 2026. Status: agreed product direction; the first auth
 
 The [README](../README.md) describes implemented behavior. [VALIDATION.md](../VALIDATION.md) records completed checks and remaining gaps. Earlier distance-flight research remains in [Retention strategy](RETENTION-STRATEGY.md); this document supersedes its proposed implementation sequence.
 
+## Direction update: Sky Battle (October 10, 2026)
+
+Owner decision, made after looking at Ball VS Ball, RIVALS, Blade Ball and Roblox's monetization guidance. Where this section conflicts with a later one, this section wins. The later sections stay as the record of how the combat toy was built.
+
+**Promise: draft a build one pick at a time, watch it fight, want one more match.**
+
+### Skins and skills are separate
+
+- **Aircraft are skins.** They are the main cosmetic and the first thing sold. A skin never changes combat.
+- Every skin shares one hitbox and one set of mount points (nose, belly, wings, tail, centre). Skills attach to mount points, never to a particular model, so every skill works on every skin. Later skins need not be planes (a gryphon, a broom, an airship) as long as they honour the same contract.
+- **Skills come in three slots.**
+
+| Slot | Role | Built | Planned first |
+| --- | --- | --- | --- |
+| Offence | How you remove armor | Meteor, Firework | Machine Gun |
+| Defence | How you avoid losing armor | Spring Bumper | Dodge |
+| Wild card | Changes movement or the arena | Afterburner, Fizzy Fuel | One more |
+
+No skill is strictly stronger than the starter skills. Rarity means stranger, not stronger. Advantages, not hard counters, still applies.
+
+### Match
+
+- First to two round wins.
+- One pick per round: offence before round one, defence before round two, wild card before the deciding round three. The build resets every match.
+- Each pick is an offer of three random skills from the ones the player owns in that slot. Each player gets one free reroll and one free "pick any skill I own" per match.
+- Both players draft under the same rules. The rival's existing build is visible; the new pick is hidden until both lock.
+- Move to first to three, with swap picks in rounds four and five, once each slot has at least four skills.
+
+### Skills are earned, looks are bought
+
+- Everyone starts with two skills per slot. The rest come from coin crates and level-ups. Coins come from playing: more for a win, some for a loss.
+- Skills are not sold for Robux, and coins are not sold for Robux. This keeps skill crates outside Roblox's paid random items rules and keeps a loss from feeling bought.
+- Robux products, in order:
+  1. Plane skins at fixed prices, a one-time starter pack shown from first spawn, and a Double Coins pass.
+  2. A season pass with a free track and a paid track of skins.
+  3. Gems, extra rerolls and cosmetic cases. These are paid random items: they need exact odds shown before purchase and a `PolicyService` check per player.
+- No trading for now.
+
+### Opponents
+
+Human 1v1, with a bot when nobody is queued. Bots are named but always marked as bots.
+
+### Build order
+
+1. The draft loop, and skills that work on any skin.
+2. Human 1v1 with bot fallback; the hangar shows other pilots' planes.
+3. Coins, skill crates, levels, daily quests and playtime rewards.
+4. Plane skin shop, starter pack and Double Coins.
+5. Season pass, then gems and cases.
+
+### What this replaces below
+
+| Earlier text | Now |
+| --- | --- |
+| "Each plane has one signature" | Signatures are offence skills and work on any skin |
+| One signature plus one modifier | Three slots: offence, defence, wild card |
+| "Permanent combat-stat growth is outside this direction" | Still no stat growth. The skill collection is permanent and widens what a player can be offered |
+| "Defer trading, crates, a battle pass, daily chores" | Coin crates, daily quests and playtime rewards arrive in step 3; the season pass in step 5; trading stays deferred |
+| First rivalry MVP draft table | The match rules above |
+| "Stable camera" | A dynamic camera, approved in [the battle audit](BATTLE-AUDIT.md) |
+
 ## Product promise
 
 **Choose a ridiculous plane power. Watch it clash with a rival. Make one useful adjustment and fight again.**
@@ -211,5 +272,9 @@ These sources establish mechanics and examples. They do not prove those mechanic
 | October 9, 2026 | Preserve the natural fighting movement; improve feedback and test one optional effect slot | User play feedback and authorization; broader playtesting remains open |
 | October 9, 2026 | Give Meteor and Firework stronger visual and sound identities before expanding the roster | User likes consequential choices and explicitly requests more visual impact; presentation quality needs playtesting |
 | October 9, 2026 | Give Meteor real charge-to-impact spacing and add ground crashes after knockout; retain three-hit armor | Explicit user authorization; ordinary flight/recovery remain the reference feel |
+| October 10, 2026 | Aircraft are skins and the main cosmetic; every skill works on every skin | Owner decision |
+| October 10, 2026 | Three skill slots drafted one per round from random offers of owned skills, with one free reroll and one free pick-any per match | Owner decision; modelled on Ball VS Ball, untested with players |
+| October 10, 2026 | Skills are earned with coins; Robux buys skins, a starter pack and Double Coins first, a season pass later | Owner decision; informed by RIVALS, Blade Ball and Roblox's guidance, from public sources only |
+| October 10, 2026 | Human 1v1 with bot fallback comes before the shop | Owner decision |
 
 After each experiment, append the build, participant/cohort count, device and acquisition context, observations, measured outcomes, relevant uncertainty and a keep/change/drop decision. Update this document when the direction changes, the README when behavior exists, and validation records when it has actually been checked.
