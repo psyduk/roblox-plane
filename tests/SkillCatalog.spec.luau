@@ -39,6 +39,17 @@ return function(Catalog)
 		check(not Catalog.valid("Paid") and not Catalog.valid({}) and not Catalog.valid(nil) and Catalog.get("Paid") == nil, "Unknown id accepted")
 	end)
 
+	test("the public first-test roster is equal and excludes expansion", function()
+		local wanted = { Meteor = true, Firework = true, MachineGun = true, Pinball = true,
+			Afterburner = true, SpringBumper = true, FizzyFuel = true, Magnet = true, SecondWind = true }
+		check(#Catalog.all("offence") == 4 and #Catalog.all("wild") == 5, "Approved roster changed")
+		for _, entry in ipairs(Catalog.all()) do
+			check(wanted[entry.id] and entry.starter, "Skill is gated or outside agreed roster")
+		end
+		check(not Catalog.valid("Copycat") and not Catalog.valid("Harpoon"), "Expansion leaked into active roster")
+		check(Catalog.ROSTER_VERSION == "sky-battle-public-v1", "Roster has no version")
+	end)
+
 	test("records are detached from the catalog", function()
 		for _, entry in ipairs(Catalog.all()) do
 			local original = Catalog.get(entry.id)

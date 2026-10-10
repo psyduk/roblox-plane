@@ -1,0 +1,4 @@
+2026-10-10 final candidate: native Studio Server checks after syncing source modules.
+{"view":"BattleView: 12 native presentation tests passed","cosmetic":"11 CosmeticCatalog tests passed","catalog":"SkillCatalog: 5 tests passed (copy, kinds, starters, detached records, build rules)","telemetry":"Telemetry: 14 tests passed","simulation":"BattleSimulation: 40 tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes)","match":"BattleLab: 28 orchestration cases passed","client":"BattleClient: 6 command and feedback tests passed","stats":"44 player-stats tests passed","audio":"24 battle-audio tests passed"}
+Final follow-up: BattleClient 7 tests and Telemetry 14 tests passed natively after reward-shown delivery and roster-context fixes.
+185 native assertions/cases passed across the nine suites. Controlled fixtures are not published two-player or real-phone proof.

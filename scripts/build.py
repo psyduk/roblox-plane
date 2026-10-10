@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
 
 def build(output: Path):
+    output = output.resolve()
     doc = ET.Element("roblox", {"version": "4"})
     ET.SubElement(doc, "External").text = "null"
     ET.SubElement(doc, "External").text = "nil"
@@ -34,14 +35,16 @@ def build(output: Path):
     for filename in ("PlayerStats", "Telemetry", "BattleLab"):
         source(server,"ModuleScript",filename,f"src/server/{filename}.luau")
     storage,_=item(doc,"ServerStorage","ServerStorage")
-    for filename in ("Simulation", "BattleSimulation", "SkillCatalog", "PlaneCatalog", "PowerCatalog", "CosmeticCatalog", "PlayerStats", "Telemetry", "FlightAudio", "BattleAudio", "BattleView"):
+    for filename in ("Simulation", "BattleSimulation", "BattleMatch", "SkillCatalog", "PlaneCatalog", "PowerCatalog", "CosmeticCatalog", "PlayerStats", "Telemetry", "FlightAudio", "BattleAudio", "BattleView", "BattleClient"):
         test_path=ROOT/f"tests/{filename}.spec.luau"
         if test_path.exists():
             source(storage,"ModuleScript",f"{filename}Tests",f"tests/{filename}.spec.luau")
+    _,gui_props=item(doc,"StarterGui","StarterGui")
+    ET.SubElement(gui_props,"token",{"name":"ScreenOrientation"}).text="4"  # Sensor: permit portrait and landscape.
     starter,_=item(doc,"StarterPlayer","StarterPlayer")
     player_scripts,_=item(starter,"StarterPlayerScripts","StarterPlayerScripts")
     source(player_scripts,"LocalScript","FlightClient","src/client/Main.client.luau")
-    for filename in ("Hud", "EffectsShop", "HangarBay", "FlightAudio", "PilotAvatar", "BattleLab", "BattleView", "BattleAudio"):
+    for filename in ("Hud", "EffectsShop", "HangarBay", "FlightAudio", "PilotAvatar", "BattleLab", "BattleView", "BattleAudio", "ChallengePanel"):
         source(player_scripts,"ModuleScript",filename,f"src/client/{filename}.luau")
     lighting,props=item(doc,"Lighting","Lighting")
     ET.SubElement(props,"float",{"name":"ClockTime"}).text="14"
@@ -50,7 +53,17 @@ def build(output: Path):
     ET.indent(doc)
     ET.ElementTree(doc).write(output,encoding="utf-8",xml_declaration=True)
     print(f"Built {output} ({output.stat().st_size:,} bytes)")
-    print("Open in Roblox Studio and press Play. Studio uses session-only stats; published live servers enable cloud saving. No paid products.")
+    playtest = output
+    if output == (ROOT / "Skybound.rbxlx").resolve():
+        # A distinct Studio document title prevents confusing this candidate with
+        # older Skybound.rbxlx copies still open from other worktrees.
+        playtest = ROOT / "build" / "Sky-Battle-Playtest.rbxlx"
+        playtest.parent.mkdir(parents=True, exist_ok=True)
+        playtest.write_bytes(output.read_bytes())
+        print(f"Identical playtest copy: {playtest}")
+    print(f"Stop old Play sessions, then reopen this exact file in Roblox Studio: {playtest}")
+    print("Press Studio Play. Verify the plane-battle hangar; its main PLAY must lead to rival search, card picks, and a first-to-two battle.")
+    print("A distance/furthest-flight screen means the wrong place is running. Studio uses session-only stats; this command does not publish.")
 
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description=__doc__)

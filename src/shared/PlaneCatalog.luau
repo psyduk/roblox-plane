@@ -7,6 +7,14 @@ PlaneCatalog.DEFAULT_ID = "cruiser"
 PlaneCatalog.ORDER = { "cruiser", "skyhopper", "dart" }
 PlaneCatalog.MIN_ANGLE = 15
 PlaneCatalog.MAX_ANGLE = 60
+-- Battle geometry is cosmetic. These sizes/mounts never enter BattleSimulation.
+PlaneCatalog.BATTLE_CONTRACT_VERSION = 1
+PlaneCatalog.BATTLE_MOUNTS = {Nose={5.2,0,0},Belly={0,-1.8,0},WingLeft={-0.5,0,-4.5},
+	WingRight={-0.5,0,4.5},Tail={-4.7,0,0},Centre={0,0,0},Top={-1,2.8,0}}
+
+function PlaneCatalog.battleVisualSize(id)
+	return id == "skyhopper" and 15 or (id == "dart" and 13 or 12)
+end
 
 local profiles = {
 	cruiser = { id = "cruiser", name = "Cruiser", angle = 35, defaultAngle = 35, speed = 72.25,

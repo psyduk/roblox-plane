@@ -2,7 +2,7 @@
 return function(CosmeticCatalog)
 	local seen, cheapest = {}, math.huge
 	local all = CosmeticCatalog.all()
-	assert(#all == 6 and CosmeticCatalog.get(CosmeticCatalog.DEFAULT_ID).price == 0)
+	assert(#all == 9 and CosmeticCatalog.get(CosmeticCatalog.DEFAULT_ID).price == 0)
 	for _, item in ipairs(all) do
 		assert(not seen[item.id] and type(item.name) == "string" and type(item.description) == "string")
 		assert(item.price >= 0 and item.price % 1 == 0 and item.lifetime > 0 and item.width > 0)
@@ -21,5 +21,7 @@ return function(CosmeticCatalog)
 	assert(CosmeticCatalog.get("classic").secondaryColor.r == 160)
 	for _, id in ipairs({ "", "unknown", "Skyblue", {}, 0, false }) do assert(CosmeticCatalog.get(id) == nil) end
 	assert(CosmeticCatalog.get(nil) == nil)
-	return "9 CosmeticCatalog tests passed"
+	assert(CosmeticCatalog.get(CosmeticCatalog.BATTLE_GOAL_ID).price == CosmeticCatalog.BATTLE_COMPLETION_REWARD * 5)
+    for _,id in ipairs(CosmeticCatalog.STARTER_CHOICES) do assert(CosmeticCatalog.get(id).earnedOnly and CosmeticCatalog.get(id).price==0) end
+    return "11 CosmeticCatalog tests passed"
 end

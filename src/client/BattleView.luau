@@ -329,7 +329,7 @@ local function makeRocket(parent)
 		Lifetime = NumberRange.new(0.35, 0.7), Speed = NumberRange.new(2, 9), Size = fade(1.5, 0),
 		LightEmission = 1, Color = ColorSequence.new(COLORS.yellow, COLORS.fire), ZOffset = 1,
 	})
-	return { fizz = fizz, model = model, nose = nose, fin = fin, crossFin = crossFin, trail = trail, pieces = pieces,
+	return { fizz = fizz, model = model, body = body, nose = nose, fin = fin, crossFin = crossFin, trail = trail, pieces = pieces,
 		stripes = stripes, sparks = sparks, exhaust = exhaust, core = core }
 end
 
@@ -350,6 +350,21 @@ function BattleView.new(World, onPresentationCue, options)
 	self.folder.Name = "SkyboundBattleView"
 	self.folder.Parent = Workspace
 	self.edges, self.wind, self.floorLip, self.clouds, self.crowd = makeArena(self.folder)
+	-- Bounded decoration sits behind the exact, authoritative inner rails.
+	self.stormClouds, self.windStreaks, self.lightning = {}, {}, {}
+	for side = 1, 4 do
+		self.stormClouds[side], self.windStreaks[side] = {}, {}
+		for n = 1, 6 do
+			local cloud = ellipsoid(self.folder, "StormCloud", Vector3.one, CFrame.identity, Color3.fromRGB(47, 54, 91))
+			cloud.Transparency = 1; self.stormClouds[side][n] = cloud
+		end
+		for n = 1, 3 do
+			local streak = part(self.folder, "InwardWind", Vector3.one, CFrame.identity, COLORS.cream, Enum.Material.Neon)
+			streak.Transparency = 1; self.windStreaks[side][n] = streak
+		end
+		local bolt = part(self.folder, "StormLightning", Vector3.one, CFrame.identity, COLORS.cream, Enum.Material.Neon)
+		bolt.Transparency = 1; self.lightning[side] = bolt
+	end
 	-- Glow and grade belong to this view and leave with it.
 	self.bloom = Instance.new("BloomEffect")
 	self.bloom.Name = "SkyboundBattleBloom"
@@ -373,13 +388,16 @@ function BattleView:_resetRound(roundId)
 	self.roundId, self.lastEvent, self.sampleElapsed, self.sampleAge = roundId, 0, nil, 0
 	self.finishTime, self.finishReal = nil, nil
 	self.shake, self.punch, self.freeze, self.screenFlash = 0, 0, 0, 0
+	self.stormStarted, self.stormAt = false, nil
+	self.grade.Brightness, self.grade.Contrast, self.grade.Saturation = 0, 0.06, 0.14
+	for side = 1, 4 do hide(self.stormClouds[side]); hide(self.windStreaks[side]); self.lightning[side].Transparency = 1 end
 	for _, fighter in pairs(self.fighters) do
 		fighter.damageSmoke.Rate, fighter.damageFire.Rate = 0, 0
 		fighter.damageSmoke:Clear()
 		fighter.damageFire:Clear()
 		fighter.position, fighter.pose, fighter.armor = nil, nil, nil
 		fighter.hitTime, fighter.blockTime, fighter.lastHitBurst = -100, -100, -100
-		fighter.shotTime = -100
+		fighter.shotTime, fighter.secondWindTime, fighter.magnetTime = -100, -100, -100
 		fighter.finishRotation, fighter.finishPosition = nil, nil
 		fighter.crash, fighter.crashLanded, fighter.crashContactY = nil, false, nil
 		fighter.crashGroundY = nil
@@ -392,9 +410,12 @@ function BattleView:_resetRound(roundId)
 		hide(fighter.aimDots)
 		hide(fighter.statusRing)
 		hide(fighter.speedLines)
+		hide(fighter.magnetRing)
+		hide(fighter.windRing)
 		hide(fighter.cometFlames)
 		hide(fighter.signatureSparks)
 		hide(fighter.muzzleFlashes)
+		for _, ghost in ipairs(fighter.afterimages or {}) do hide(ghost.pieces) end
 		fighter.chargeShell.Transparency = 1
 		fighter.noseLight.Brightness = 0
 		fighter.trail.Enabled = false
@@ -426,25 +447,24 @@ function BattleView:_resetRound(roundId)
 	end
 end
 
--- Fighter one is the local pilot's own hangar plane: paint and trail carry
--- over. The rival gets a paint that cannot be confused with it.
+-- Server snapshots map the recipient to side one and preserve both identities.
+-- Paint never distinguishes sides by changing someone's equipped appearance.
 function BattleView:_look(index)
 	local player = Players.LocalPlayer
-	local own = { colorIndex = 1, planeId = "cruiser", trailId = nil }
-	if player then
-		own.colorIndex = math.clamp(math.floor(numeric(player:GetAttribute("SkyboundColor"), 1)), 1, #PLANE_COLORS)
-		own.planeId = player:GetAttribute("SkyboundPlane") or "cruiser"
-		own.trailId = player:GetAttribute("SkyboundTrail")
-		own.userId = player.UserId
-	end
-	local look = own
-	if index ~= 1 then
-		look = { colorIndex = own.colorIndex == 2 and 1 or 2, planeId = own.planeId == "dart" and "cruiser" or "dart" }
-	end
+	local identity = self.identities and self.identities[index]
+	local look
+	if identity then
+		look = { colorIndex = math.clamp(math.floor(numeric(identity.color, 1)), 1, #PLANE_COLORS),
+			planeId = identity.planeId or "cruiser", trailId = identity.trailId,
+			userId = not identity.bot and identity.userId or nil, name = identity.name, bot = identity.bot }
+	elseif index == 1 and player then
+		look = { colorIndex = math.clamp(math.floor(numeric(player:GetAttribute("SkyboundColor"), 1)), 1, #PLANE_COLORS),
+			planeId = player:GetAttribute("SkyboundPlane") or "cruiser", trailId = player:GetAttribute("SkyboundTrail"), userId = player.UserId }
+	else look = { colorIndex = 2, planeId = "dart", bot = true } end
 	look.color = PLANE_COLORS[look.colorIndex]
 	look.trailColor, look.trailLife, look.trailEmission, look.trailWidth =
 		ColorSequence.new(look.color, COLORS.cream), 0.55, 0.6, 1
-	if index == 1 and self.World.trailLook then
+	if self.World.trailLook then
 		local ok, first, second, entry = pcall(self.World.trailLook, look.trailId)
 		if ok and entry then
 			look.trailColor = ColorSequence.new(first, second)
@@ -454,6 +474,13 @@ function BattleView:_look(index)
 		end
 	end
 	return look
+end
+
+-- A mount offset is relative to the model pivot after its one display scale.
+local function mount(fighter, name)
+	local attachment = fighter.model.PrimaryPart:FindFirstChild(name)
+	assert(attachment and attachment:IsA("Attachment"), "Battle skin missing mount: " .. name)
+	return fighter.model:GetPivot():ToObjectSpace(attachment.WorldCFrame)
 end
 
 -- Both pilots' paints, for a HUD that matches the planes.
@@ -474,10 +501,17 @@ function BattleView:_fighter(id, index)
 	model:ScaleTo(SCALE)
 	local pivot = model.PrimaryPart
 	local trail = pivot:FindFirstChild("Contrail")
+	if not trail then
+		trail = Instance.new("Trail"); trail.Name = "Contrail"; trail.Parent = pivot
+		local first, last = Instance.new("Attachment"), Instance.new("Attachment")
+		first.Parent, last.Parent = pivot, pivot; trail.Attachment0, trail.Attachment1 = first, last
+	end
 	-- The shared racing trail spans the wing axis, which is edge-on here. Give
 	-- it vertical separation for a readable ribbon in the side camera.
-	trail.Attachment0.Position = Vector3.new(-4.1, -0.75 * look.trailWidth, 0) * SCALE
-	trail.Attachment1.Position = Vector3.new(-4.1, 0.75 * look.trailWidth, 0) * SCALE
+	local tail = pivot:FindFirstChild("Tail")
+	assert(tail and tail:IsA("Attachment"), "Battle skin missing Tail")
+	trail.Attachment0.Position = tail.Position + Vector3.new(0, -0.75 * look.trailWidth, 0) * SCALE
+	trail.Attachment1.Position = tail.Position + Vector3.new(0, 0.75 * look.trailWidth, 0) * SCALE
 	trail.Color = look.trailColor
 	trail.Transparency = NumberSequence.new(0.12, 1)
 	trail.Lifetime = look.trailLife
@@ -486,13 +520,13 @@ function BattleView:_fighter(id, index)
 	if self.pilots then
 		pcall(self.pilots.attach, model, look.userId, look.userId == nil)
 	end
-	local noseGlow = part(model, "ArmedNose", Vector3.one * 2.7, CFrame.new(5.6 * SCALE, 0, 0), color, Enum.Material.Neon, Enum.PartType.Ball)
+	local noseGlow = part(model, "ArmedNose", Vector3.one * 2.7, pivot.Nose.WorldCFrame, color, Enum.Material.Neon, Enum.PartType.Ball)
 	noseGlow.Transparency = 1
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "AttackTell"
-	gui.Adornee = pivot
+	gui.Adornee = pivot:FindFirstChild("Top") or pivot
 	gui.Size = UDim2.fromOffset(260, 44)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, 10, 0)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, 5.5, 0)
 	gui.AlwaysOnTop = true
 	gui.LightInfluence = 0
 	gui.MaxDistance = 10000
@@ -513,13 +547,25 @@ function BattleView:_fighter(id, index)
 	stroke.Parent = label
 	local pop = Instance.new("UIScale")
 	pop.Parent = label
+	local identityGui = Instance.new("BillboardGui")
+	identityGui.Name = "PilotIdentity"; identityGui.Adornee = pivot:FindFirstChild("Top") or pivot
+	identityGui.Size = UDim2.fromOffset(160, 22); identityGui.StudsOffsetWorldSpace = Vector3.new(0, 2.5, 0)
+	identityGui.AlwaysOnTop = true; identityGui.MaxDistance = 10000; identityGui.Parent = pivot
+	local identityText = Instance.new("TextLabel")
+	identityText.BackgroundTransparency = 1; identityText.Size = UDim2.fromScale(1, 1)
+	identityText.Font = Enum.Font.GothamBold; identityText.TextSize = 13
+	identityText.Text = index == 1 and "▼ YOU" or ((look.name or "RIVAL") .. (look.bot and " · BOT" or ""))
+	identityText.TextColor3 = index == 1 and Color3.fromRGB(87, 224, 248) or Color3.fromRGB(255, 141, 119)
+	identityText.TextTruncate = Enum.TextTruncate.AtEnd; identityText.Parent = identityGui
+	local identityEdge = Instance.new("UIStroke"); identityEdge.Thickness = 2; identityEdge.Color = COLORS.ink; identityEdge.Parent = identityText
 	-- Always on: a dark ink outline makes any paint read against the sky. A hit
 	-- fills it white for an instant; the winner's outline turns gold.
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "CombatFeedback"
 	highlight.Adornee = model
 	highlight.DepthMode = Enum.HighlightDepthMode.Occluded
-	highlight.FillTransparency, highlight.OutlineColor, highlight.OutlineTransparency = 1, COLORS.ink, 0
+	local sideColor = index == 1 and Color3.fromRGB(87, 224, 248) or Color3.fromRGB(255, 141, 119)
+	highlight.FillTransparency, highlight.OutlineColor, highlight.OutlineTransparency = 1, sideColor, 0
 	highlight.Parent = model
 	-- Keep the FX outside the aircraft model so the full-model hit highlight
 	-- cannot accidentally outline distant aim markers or a victory halo.
@@ -568,7 +614,8 @@ function BattleView:_fighter(id, index)
 		fragment.Color = index % 2 == 0 and COLORS.steel or color
 	end
 	fighter = {
-		model = model, color = color, body = model:FindFirstChild("Fuselage"),
+		model = model, color = color, sideColor = sideColor, visualScale = math.clamp(numeric(model:GetAttribute("BattleVisualSize"), 12) / 12, 0.8, 1.25),
+		body = model:FindFirstChild("Fuselage") or pivot,
 		propeller = model:FindFirstChild("Propeller"), trail = trail,
 		flare = model:FindFirstChild("FlightFlare"), noseGlow = noseGlow,
 		smoke = { model:FindFirstChild("HitSmoke1"), model:FindFirstChild("HitSmoke2"), model:FindFirstChild("HitSmoke3") },
@@ -582,12 +629,32 @@ function BattleView:_fighter(id, index)
 		speedLines = makeRing(fx, "AfterburnerStreak", 2, COLORS.boost),
 		chargeShell = chargeShell, cometFlames = cometFlames, muzzleFlashes = muzzleFlashes,
 		signatureSparks = makeRing(fx, "SignatureSpark", 8, COLORS.yellow),
-		lampAnchor = lampAnchor, noseLight = noseLight, shotTime = -100,
+		lampAnchor = lampAnchor, noseLight = noseLight, shotTime = -100, secondWindTime = -100, magnetTime = -100,
+		magnetRing = makeRing(fx, "MagnetPull", 10, Color3.fromRGB(255, 120, 190)),
+		windRing = makeRing(fx, "SecondWind", 10, Color3.fromRGB(130, 255, 190)),
 		scuff = scuff, debris = debris, crashLanded = false, index = index,
 	}
 	-- Smoke is positioned in world space and must never enlarge aircraft
 	-- bounds or the damage highlight while a disabled plane falls.
 	for _, puff in ipairs(fighter.smoke) do puff.Parent = fx end
+	-- Two bounded silhouettes copy this exact equipped skin. They are purely
+	-- translucent trailing images, without trails, pilots or particle emitters.
+	fighter.afterimages = {}
+	for number = 1, 2 do
+		local ghost = Instance.new("Model"); ghost.Name = "SkinAfterimage" .. number; ghost.Parent = fx
+		local pieces = {}
+		for _, original in ipairs(model:GetChildren()) do
+			if original:IsA("BasePart") and original.Transparency < 0.5 then
+				local copy = original:Clone()
+				for _, child in ipairs(copy:GetChildren()) do if not child:IsA("DataModelMesh") then child:Destroy() end end
+				copy.Anchored, copy.CanCollide, copy.CanTouch, copy.CanQuery = true, false, false, false
+				copy.Material = Enum.Material.Neon; copy.Color = fighter.color; copy.Transparency = 1; copy.Parent = ghost
+				pieces[#pieces + 1] = copy
+			end
+		end
+		ghost.WorldPivot = model:GetPivot()
+		fighter.afterimages[number] = { model = ghost, pieces = pieces }
+	end
 	self.fighters[id] = fighter
 	return fighter
 end
@@ -600,7 +667,7 @@ function BattleView:_crashPose(fighter, state, target)
 		-- Freeze the propeller before sampling the solid geometry. Visual
 		-- flames, hidden race wings, and smoke never determine floor contact.
 		local modelPose = fighter.model:GetPivot()
-		fighter.propeller:PivotTo(modelPose * CFrame.new(5.1 * SCALE, 0, 0) * CFrame.Angles(fighter.stoppedPropeller, 0, 0))
+		if fighter.propeller then fighter.propeller:PivotTo(modelPose * mount(fighter, "Nose") * CFrame.Angles(fighter.stoppedPropeller, 0, 0)) end
 		local geometry = {}
 		for _, object in ipairs(fighter.model:GetDescendants()) do
 			if object:IsA("BasePart") and object.Transparency < 0.95
@@ -671,6 +738,15 @@ function BattleView:_crashPose(fighter, state, target)
 			fragment.Transparency = 0
 		end
 	end
+	-- One small presentation-only hop after first contact. Near-floor crashes
+	-- settle directly; contact attributes/cue still fire on the first touch.
+	if fighter.crashLanded and crash.clearance >= 16 then
+		local bounce = math.clamp((self.clock - crash.landedAt) / 0.28, 0, 1)
+		position = position + Vector3.new(fighter.facing * math.sin(bounce * math.pi) * 0.5, math.sin(bounce * math.pi) * 0.8, 0)
+		fighter.position = position
+		fighter.crashContactY = position.Y + lower
+		fighter.model:SetAttribute("CrashContactY", fighter.crashContactY)
+	end
 	return CFrame.new(position) * rotation
 end
 
@@ -679,51 +755,36 @@ function BattleView:_setSignature(fighter, offenceId)
 	if fighter.signature then fighter.signature:Destroy() end
 	fighter.offenceId = offenceId
 	fighter.signature = Instance.new("Folder")
-	fighter.signature.Name = "Signature"
-	fighter.signature.Parent = fighter.model
-	local pose = fighter.model:GetPivot()
+	fighter.signature.Name = "Signature"; fighter.signature.Parent = fighter.model
 	fighter.chargePieces, fighter.muzzleOffsets = {}, {}
-	-- The power reshapes the airframe, whichever hangar plane it started as.
-	local stock = { MainWing = true, LeftWingTip = true, RightWingTip = true, TailWing = true, TailFin = true,
-		UpperWing = true, WingStrut = true, UpperWingTip = true, SweptWing = true, RacerWingTip = true, RacingStripe = true }
-	for _, original in ipairs(fighter.model:GetChildren()) do
-		if stock[original.Name] and original:IsA("BasePart") then original.Transparency = 1 end
+	local pose, size = fighter.model:GetPivot(), fighter.visualScale * SCALE
+	local function piece(name, dimensions, mountName, offset, color, material, shape)
+		local localPose = mount(fighter, mountName) * CFrame.new(offset * size)
+		local item = part(fighter.signature, name, dimensions * size, pose * localPose, color, material, shape)
+		return item, localPose.Position
 	end
-	local function piece(name, size, offset, color, material, shape, rotation)
-		return part(fighter.signature, name, size * SCALE, pose * CFrame.new(offset * SCALE) * (rotation or CFrame.identity), color, material, shape)
-	end
-	if offenceId == "Firework" then
-		fighter.body.Size = Vector3.new(9.7, 2.35, 2.6) * SCALE
-		piece("ForkedTail", Vector3.new(1.8, 0.25, 6.8), Vector3.new(-3.9, 0.2, 0), COLORS.cream)
-		for _, side in ipairs({ -1, 1 }) do
-			piece("SweptLaunchWing", Vector3.new(2.6, 0.32, 6.5), Vector3.new(-1.4, -0.45, side * 2.9), fighter.color,
-				nil, nil, CFrame.Angles(0, -side * 0.58, 0))
-			piece("TwinTailFin", Vector3.new(1.7, 1.7, 0.3), Vector3.new(-3.8, 1.05, side * 1.55), fighter.color,
-				nil, nil, CFrame.Angles(0, 0, -0.35))
-			piece("RocketPod", Vector3.new(4.1, 1.8, 1.8), Vector3.new(0.8, -0.65, side * 3.75), COLORS.cream, nil, Enum.PartType.Cylinder)
-			for _, stripeX in ipairs({ -0.45, 1.0 }) do
-				piece("LauncherStripe", Vector3.new(0.5, 1.85, 1.85), Vector3.new(stripeX, -0.65, side * 3.75), fighter.color, nil, Enum.PartType.Cylinder)
-			end
-			piece("LauncherRim", Vector3.new(0.38, 2.15, 2.15), Vector3.new(2.9, -0.65, side * 3.75), COLORS.steel, nil, Enum.PartType.Cylinder)
-			local mouth = piece("IgnitionChamber", Vector3.new(0.12, 1.6, 1.6), Vector3.new(3.11, -0.65, side * 3.75), COLORS.fire, Enum.Material.Neon, Enum.PartType.Cylinder)
-			table.insert(fighter.chargePieces, mouth)
-			table.insert(fighter.muzzleOffsets, Vector3.new(3.25, -0.65, side * 3.75) * SCALE)
+	-- All stock geometry remains visible. A skill is equipment and a tell,
+	-- never a replacement fuselage or wing silhouette.
+	if offenceId == "Firework" or offenceId == "MachineGun" then
+		local gun = offenceId == "MachineGun"
+		for _, mountName in ipairs({ "WingLeft", "WingRight" }) do
+			piece(gun and "GunBarrel" or "RocketPod", Vector3.new(gun and 2.8 or 3.1, gun and 0.7 or 1.25, gun and 0.7 or 1.25),
+				mountName, Vector3.new(0, -0.65, 0), gun and COLORS.steel or COLORS.cream, nil, Enum.PartType.Cylinder)
+			local chamber, offset = piece("IgnitionChamber", Vector3.new(0.15, gun and 0.65 or 1.15, gun and 0.65 or 1.15),
+				mountName, Vector3.new(gun and 1.45 or 1.6, -0.65, 0), gun and COLORS.yellow or COLORS.fire, Enum.Material.Neon, Enum.PartType.Cylinder)
+			table.insert(fighter.chargePieces, chamber); table.insert(fighter.muzzleOffsets, offset)
 		end
-	else
-		fighter.body.Size = Vector3.new(8.9, 3.6, 3.8) * SCALE
-		piece("HeavyMainWing", Vector3.new(4.3, 0.65, 13.4), Vector3.new(-0.7, -0.15, 0), fighter.color)
-		piece("WingArmor", Vector3.new(2.4, 0.18, 10.6), Vector3.new(-0.8, 0.28, 0), COLORS.steel)
-		piece("HeavyTailWing", Vector3.new(2.2, 0.42, 6.0), Vector3.new(-3.5, 0.35, 0), COLORS.cream)
-		piece("HeavyTailFin", Vector3.new(2.5, 2.8, 0.55), Vector3.new(-3.3, 1.6, 0), fighter.color, nil, nil, CFrame.Angles(0, 0, -0.23))
-		piece("ImpactCollar", Vector3.new(1.15, 3.9, 3.9), Vector3.new(3.65, 0, 0), COLORS.yellow, nil, Enum.PartType.Cylinder)
-		piece("NoseArmorBand", Vector3.new(0.35, 4.05, 4.05), Vector3.new(3.25, 0, 0), COLORS.steel, nil, Enum.PartType.Cylinder)
+	elseif offenceId == "Pinball" then
+		local cap = piece("ReboundRing", Vector3.new(0.65, 2.9, 2.9), "Nose", Vector3.new(-0.55, 0, 0),
+			Color3.fromRGB(110, 220, 255), Enum.Material.Neon, Enum.PartType.Cylinder)
+		table.insert(fighter.chargePieces, cap)
+	elseif offenceId == "Meteor" then
+		piece("ImpactCollar", Vector3.new(0.6, 2.8, 2.8), "Nose", Vector3.new(-0.5, 0, 0), COLORS.yellow, nil, Enum.PartType.Cylinder)
 		for _, side in ipairs({ -1, 1 }) do
-			piece("ArmoredWingTip", Vector3.new(3.9, 0.85, 1.2), Vector3.new(-0.7, -0.05, side * 6.3), COLORS.cream)
-			local vent = piece("ChargeVent", Vector3.new(2.0, 0.22, 0.32), Vector3.new(0.3, 1.0, side * 1.65), COLORS.yellow, Enum.Material.Neon)
+			local vent = piece("ChargeVent", Vector3.new(1.4, 0.22, 0.32), "Top", Vector3.new(0, 0, side * 0.8), COLORS.yellow, Enum.Material.Neon)
 			table.insert(fighter.chargePieces, vent)
 		end
 	end
-	-- Signature geometry is cosmetic. Collision and damage remain in the sim.
 	fighter.model:SetAttribute("OffenceId", offenceId)
 end
 
@@ -756,7 +817,7 @@ function BattleView:_particles(x, y, color, sparks, smoke, fire, speed)
 	burst.spark.Speed = NumberRange.new(speed * 0.4, speed)
 	burst.smoke.Speed = NumberRange.new(speed * 0.1, speed * 0.35)
 	burst.fire.Speed = NumberRange.new(speed * 0.1, speed * 0.4)
-	if sparks > 0 then burst.spark:Emit(sparks) end
+	if sparks > 0 and not self.reducedMotion then burst.spark:Emit(sparks) end
 	if smoke > 0 then burst.smoke:Emit(smoke) end
 	if fire > 0 then burst.fire:Emit(fire) end
 end
@@ -764,7 +825,7 @@ end
 -- Camera kick, freeze-frame and screen flash. Presentation only: the
 -- simulation keeps running and the view catches up after the freeze.
 function BattleView:_jolt(shake, punch, freeze, flash, hype)
-	if self.reducedMotion then shake, punch, freeze = 0, 0, 0 end
+	if self.reducedMotion then shake, punch, freeze, flash = 0, 0, 0, 0 end
 	self.shake = math.max(self.shake, shake)
 	self.punch = math.max(self.punch, punch)
 	self.freeze = math.max(self.freeze, freeze)
@@ -845,10 +906,22 @@ function BattleView:_events(simulation)
 					-- Record only a short streak at its real launch point; never keep
 					-- the plane looking armed after the simulation has recovered.
 					self:_burst(x, y, COLORS.yellow, false, "dive", numeric(event.heading, 0))
-				elseif kind == "rocket" then
+				elseif kind == "rocket" or kind == "burst" then
 					if actor then actor.shotTime = self.clock - math.max(0, age) end
 					self:_particles(x, y, COLORS.yellow, 14, 5, 6, 35)
 					self:_jolt(0.7, 0.15, 0, 0, 0.1)
+				elseif kind == "tracer_hit" then
+					self:_particles(x, y, COLORS.yellow, 5, 0, 0, 16)
+				elseif kind == "ricochet" then
+					if actor then actor.shotTime = self.clock end
+					self:_burst(x, y, Color3.fromRGB(110, 220, 255), false, "dive", numeric(event.heading, 0))
+					self:_jolt(0.5, 0.15, 0, 0, 0.1)
+				elseif kind == "skill" and event.skillId == "Magnet" and actor then
+					actor.magnetTime = self.clock
+				elseif kind == "skill" and event.skillId == "SecondWind" and actor then
+					actor.secondWindTime = self.clock
+				elseif kind == "miss" and actor and actor.offenceId == "Meteor" then
+					self:_particles(x, y, COLORS.fire, 7, 3, 0, 14)
 				elseif kind == "miss" and actor and actor.offenceId == "Firework" then
 					self:_burst(x, y, COLORS.steel, false, "fizzle")
 					self:_particles(x, y, actor.color, 26, 6, 0, 45)
@@ -874,11 +947,16 @@ function BattleView:_signatureEffects(fighter, state, simulation, moving, pose)
 	local armed = moving and state.armed == true
 	local charge = windup and chargeProgress(fighter, state, self.sampleAge) or 0
 	local shotAge = self.clock - fighter.shotTime
-	local shooting = moving and not meteor and shotAge < 0.2
+	local shooting = moving and (fighter.offenceId == "Firework" or fighter.offenceId == "MachineGun") and shotAge < 0.2
 	local winner = simulation.finished == true and simulation.winner == state.id
 	local finishAge = self.finishTime and self.clock - self.finishTime or 100
 	local pulse = 1 + math.sin(self.clock * 34) * 0.08
-	fighter.lampAnchor.CFrame = pose * CFrame.new(6, 0, 0)
+	for index, ghost in ipairs(fighter.afterimages or {}) do
+		local visible = meteor and armed and not self.reducedMotion
+		if visible then ghost.model:PivotTo(pose * CFrame.new(-index * 6 * fighter.visualScale, 0, 0)) end
+		for _, item in ipairs(ghost.pieces) do item.Transparency = visible and (0.8 + index * 0.055) or 1 end
+	end
+	fighter.lampAnchor.CFrame = pose * mount(fighter, "Nose")
 	fighter.noseLight.Color = meteor and COLORS.fire or fighter.color
 	fighter.noseLight.Brightness = armed and 0.85 or (shooting and 1 or charge * 0.5)
 	for index, piece in ipairs(fighter.chargePieces or {}) do
@@ -886,12 +964,12 @@ function BattleView:_signatureEffects(fighter, state, simulation, moving, pose)
 		piece.Transparency = (windup or armed or shooting) and (0.05 + (1 - charge) * 0.15) or 0.62
 		if not meteor and windup then piece.Transparency = 0.15 + (math.sin(self.clock * 24 + index * math.pi) + 1) * 0.2 end
 	end
-	if meteor and (windup or armed) then
+	if (meteor or fighter.offenceId == "Pinball") and (windup or armed) then
 		local shellCharge = armed and 1 or charge
-		fighter.chargeShell.Size = Vector3.new(9 + shellCharge * 4, 3.8 + shellCharge * 3, 3.6 + shellCharge * 2.6) * SCALE
-		fighter.chargeShell.CFrame = pose * CFrame.new(0.8, 0, 0)
-		fighter.chargeShell.Color = armed and COLORS.yellow or COLORS.fire
-		fighter.chargeShell.Transparency = armed and 0.62 or (0.95 - charge * 0.4)
+		fighter.chargeShell.Size = Vector3.new(7 + shellCharge * 2, 3.2 + shellCharge * 1.4, 3.2 + shellCharge * 1.4) * SCALE * fighter.visualScale
+		fighter.chargeShell.CFrame = pose * mount(fighter, "Centre")
+		fighter.chargeShell.Color = fighter.offenceId == "Pinball" and Color3.fromRGB(110, 220, 255) or (armed and COLORS.yellow or COLORS.fire)
+		fighter.chargeShell.Transparency = armed and 0.72 or (0.88 - charge * 0.2)
 	else
 		fighter.chargeShell.Transparency = 1
 	end
@@ -900,12 +978,12 @@ function BattleView:_signatureEffects(fighter, state, simulation, moving, pose)
 			local length = (21 - index * 4) * pulse
 			local width = 5.8 - index * 1.4
 			flame.Size = Vector3.new(length, width, width * 0.8)
-			flame.CFrame = pose * CFrame.new(-7.4 - length * 0.3, 0, index * 0.2)
+			flame.CFrame = pose * mount(fighter, "Tail") * CFrame.new(-length * 0.3, 0, index * 0.2)
 			flame.Transparency = 0.42 - index * 0.1
 		else flame.Transparency = 1 end
 	end
 	for index, flash in ipairs(fighter.muzzleFlashes) do
-		if shooting and fighter.muzzleOffsets[index] then
+		if shooting and not self.reducedMotion and fighter.muzzleOffsets[index] then
 			local strength = 1 - shotAge / 0.2
 			flash.Size = Vector3.new(2 + strength * 4.5, 1 + strength * 1.8, 1.2)
 			flash.CFrame = pose * CFrame.new(fighter.muzzleOffsets[index] + Vector3.new(1.5, 0, 0))
@@ -940,9 +1018,9 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 	local knockedOut = simulation.finished == true and numeric(state.armor, 3) <= 0
 	local flashing = hitAge < 0.18
 	fighter.highlight.FillColor = flashing and Color3.new(1, 1, 1) or COLORS.yellow
-	fighter.highlight.OutlineColor = flashing and Color3.new(1, 1, 1) or (winner and COLORS.yellow or COLORS.ink)
+	fighter.highlight.OutlineColor = flashing and Color3.new(1, 1, 1) or (winner and COLORS.yellow or fighter.sideColor)
 	fighter.highlight.FillTransparency = flashing and (0.05 + math.min(1, hitAge / 0.18) * 0.85) or (winner and 0.88 or 1)
-	local center = fighter.position + Vector3.new(0, 0, 9)
+	local center = (displayPose * mount(fighter, "Centre")).Position + Vector3.new(0, 0, 9)
 	if winner then
 		ring(fighter.statusRing, center, 10.5 + math.sin(self.clock * 3) * 0.3, COLORS.yellow, 0.2, self.clock * 0.2, 0.5)
 	elseif not knockedOut and table.find(fighter.wildIds or {}, "SpringBumper") then
@@ -975,18 +1053,28 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 			local side = index == 1 and -1 or 1
 			local length = 6 + math.sin(self.clock * 28 + index) * 2
 			streak.Size = Vector3.new(length, 0.36, 0.25)
-			streak.CFrame = displayPose * CFrame.new(-10 - length * 0.2, side * 3.1, 3)
+			streak.CFrame = displayPose * mount(fighter, "Tail") * CFrame.new(-length * 0.2, side * 3.1, 3)
 			streak.Color, streak.Transparency = COLORS.boost, 0.18
 		else
 			streak.Transparency = 1
 		end
 	end
+	local magnet = moving and numeric(state.magnetLeft, 0) > self.sampleAge
+	local secondWindAge = self.clock - fighter.secondWindTime
+	if magnet then
+		ring(fighter.magnetRing, center, 9 + math.sin(self.clock * 6) * 1.2, Color3.fromRGB(255, 120, 190), 0.4, -self.clock * 0.8, 0.32)
+	else hide(fighter.magnetRing) end
+	if moving and state.secondWind == true then
+		ring(fighter.windRing, center, 8.4, Color3.fromRGB(130, 255, 190), 0.45, self.reducedMotion and 0 or self.clock * 0.6, 0.24)
+	else hide(fighter.windRing) end
 	local offence = self.skills and self.skills.get(fighter.offenceId)
 	local tell
 	if winner then tell = "WINNER!"
 	elseif knockedOut then tell = "K.O.!"
 	elseif hitAge < 0.45 then tell = "POW!"
 	elseif blockAge < 0.45 then tell = "BOING!"
+	elseif secondWindAge < 0.85 then tell = "SECOND WIND!"
+	elseif magnet then tell = "PULL!"
 	elseif windup then tell = offence and offence.windupTell or "LOCKED ON"
 	elseif moving and state.phase == "Attack" then tell = offence and offence.attackTell or "FIRE!"
 	elseif boosted then tell = "BOOST!" end
@@ -1030,7 +1118,7 @@ function BattleView:_wakes(simulation, moving)
 		local fraction = math.clamp(life / math.max(0.01, numeric(state.maxLife, 3.2)), 0, 1)
 		local arming = numeric(state.armLeft, 0) > self.sampleAge
 		local center = ORIGIN + Vector3.new(numeric(state.x, 0), numeric(state.y, CENTER_Y), 4)
-		local owner = self.fighters[state.owner]
+		local owner = self.fighters[state.owner or state.actor]
 		local edgeColor = owner and owner.color or COLORS.fire
 		-- Keep the authoritative collision footprint fixed as it fades. These
 		-- bright discs are hazardous, unlike the thin cosmetic contrails.
@@ -1094,12 +1182,20 @@ function BattleView:_camera(rect, simulation, dt)
 	end
 	-- Widen quickly so nobody leaves the frame; close in gently.
 	local follow = 1 - math.exp(-6 * dt)
-	local widen, tighten = 1 - math.exp(-6 * dt), 1 - math.exp(-3 * dt)
+	local widen, tighten = 1, 1 - math.exp(-3 * dt)
 	view.x = view.x + (targetX - view.x) * follow
 	view.y = view.y + (targetY - view.y) * follow
 	view.width = view.width + (targetWidth - view.width) * (targetWidth > view.width and widen or tighten)
 	view.height = view.height + (targetHeight - view.height) * (targetHeight > view.height and widen or tighten)
-	local zoom = 1 - 0.07 * self.punch
+	-- Smoothing may never push a pilot outside the selected frame, including a
+	-- fast cross-arena Meteor on a portrait display.
+	for _, fighter in pairs(self.fighters) do
+		if fighter.position and not fighter.crash then
+			view.width = math.max(view.width, 2 * (math.abs(fighter.position.X - ORIGIN.X - view.x) + 16))
+			view.height = math.max(view.height, 2 * (math.abs(fighter.position.Y - ORIGIN.Y - view.y) + 14))
+		end
+	end
+	local zoom = 1 - 0.035 * self.punch
 	local fullHeight = math.max(view.width * zoom / (regionWidth / width) / aspect, view.height * zoom / (regionHeight / height))
 	local fullWidth = fullHeight * aspect
 	local shakeX = math.sin(self.realClock * 83) * self.shake
@@ -1112,6 +1208,7 @@ function BattleView:_camera(rect, simulation, dt)
 	local distance = fullHeight / (2 * math.tan(math.rad(fieldOfView) / 2))
 	local focus = Vector3.new(centerX, centerY, ORIGIN.Z)
 	camera.CameraType = Enum.CameraType.Scriptable
+	camera.FieldOfViewMode = Enum.FieldOfViewMode.Vertical
 	camera.FieldOfView = fieldOfView
 	camera.CFrame = CFrame.lookAt(focus + Vector3.new(0, 0, distance), focus)
 	camera.Focus = CFrame.new(focus)
@@ -1124,6 +1221,15 @@ function BattleView:update(snapshot, dt, viewportRect)
 	local realDt = dt
 	self.realClock = self.realClock + realDt
 	if snapshot.roundId ~= self.roundId then self:_resetRound(snapshot.roundId) end
+	local identityKey = ""
+	for _, identity in ipairs(snapshot.players or {}) do
+		identityKey = identityKey .. tostring(identity.userId) .. ":" .. tostring(identity.name) .. ":" .. tostring(identity.planeId) .. ":" .. tostring(identity.color) .. ":" .. tostring(identity.trailId) .. ";"
+	end
+	if self.identityKey ~= identityKey then
+		for _, fighter in pairs(self.fighters) do fighter.model:Destroy(); fighter.fx:Destroy() end
+		self.fighters = {}; self.identityKey = identityKey
+	end
+	self.identities = snapshot.players
 	local simulation = snapshot.simulation or {}
 	if simulation.finished == true then self.finishReal = self.finishReal or self.realClock
 	else self.finishReal = nil end
@@ -1137,9 +1243,10 @@ function BattleView:update(snapshot, dt, viewportRect)
 	self.punch = self.punch * math.exp(-6 * realDt)
 	self.screenFlash = self.screenFlash * math.exp(-11 * realDt)
 	self.hype = self.hype * math.exp(-0.9 * realDt)
-	self.grade.Brightness = self.screenFlash * 0.16
-	self.grade.Contrast = 0.06 + self.screenFlash * 0.2
-	self.grade.Saturation = slowMotion and -0.35 or 0.14
+	local atmosphere = snapshot.phase == "Fight" and math.clamp(numeric(simulation.pressure, 0), 0, 1) or 0
+	self.grade.Brightness = self.screenFlash * 0.16 - atmosphere * 0.065
+	self.grade.Contrast = 0.06 + self.screenFlash * 0.2 + atmosphere * 0.04
+	self.grade.Saturation = slowMotion and -0.35 or (0.14 - atmosphere * 0.22)
 	for _, cloud in ipairs(self.clouds) do
 		cloud.x = cloud.x + cloud.drift * realDt
 		if cloud.x > cloud.span then cloud.x = -cloud.span end
@@ -1169,7 +1276,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 			local direction = index == 1 and 1 or -1
 			local angle = math.rad(numeric(settings.angle, 25))
 			local wildIds = type(settings.wildIds) == "table" and settings.wildIds or {}
-			states[index] = { id = index, offenceId = settings.offenceId or (index == 1 and "Meteor" or "Firework"),
+			states[index] = { id = index, offenceId = settings.offenceId or "",
 				wildIds = wildIds, bumperReady = table.find(wildIds, "SpringBumper") ~= nil,
 				x = -direction * 44, y = 34, vx = math.cos(angle) * direction, vy = math.sin(angle), armor = 3 }
 		end
@@ -1189,7 +1296,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 		seenFighters[id] = true
 		local fighter = self:_fighter(id, index)
 		local settings = snapshot.settings and snapshot.settings[index]
-		self:_setSignature(fighter, state.offenceId or (settings and settings.offenceId) or "Meteor")
+		self:_setSignature(fighter, state.offenceId or (settings and settings.offenceId) or "")
 		fighter.wildIds = type(state.wildIds) == "table" and state.wildIds
 			or (settings and type(settings.wildIds) == "table" and settings.wildIds) or {}
 		if state.phase == "Windup" and fighter.previousPhase ~= "Windup" then
@@ -1216,7 +1323,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 		end
 		fighter.model:PivotTo(displayPose)
 		local propellerPhase = knockedOut and fighter.stoppedPropeller or self.clock * (moving and 52 or 16)
-		fighter.propeller:PivotTo(displayPose * CFrame.new(5.1 * SCALE, 0, 0) * CFrame.Angles(propellerPhase, 0, 0))
+		if fighter.propeller then fighter.propeller:PivotTo(displayPose * mount(fighter, "Nose") * CFrame.Angles(propellerPhase, 0, 0)) end
 		if fighter.armor and armor < fighter.armor then self:_hit(fighter, state.x, state.y) end
 		fighter.armor = armor
 		fighter.model:SetAttribute("Armor", armor)
@@ -1234,13 +1341,16 @@ function BattleView:update(snapshot, dt, viewportRect)
 		fighter.noseGlow.Transparency = armed and 0.18 or (windup and (0.48 + math.sin(self.clock * 25) * 0.18) or 1)
 		fighter.trail.Enabled = moving and armor > 0 and vx * vx + vy * vy > 4
 		fighter.trail.Lifetime = fighter.look.trailLife * (armed and 1.5 or 1)
-		fighter.flare.Transparency = (armed or boosted) and 0.12 or 1
-		fighter.flare.Color = boosted and COLORS.boost or (fighter.offenceId == "Meteor" and COLORS.yellow or fighter.color)
-		fighter.flare.Size = Vector3.new(boosted and 11 or (armed and 9 or 5), boosted and 2 or 1.5, 1.5) * SCALE
+		if fighter.flare then
+			fighter.flare.Transparency = (armed or boosted) and 0.12 or 1
+			fighter.flare.Color = boosted and COLORS.boost or (fighter.offenceId == "Meteor" and COLORS.yellow or fighter.color)
+			fighter.flare.Size = Vector3.new(boosted and 11 or (armed and 9 or 5), boosted and 2 or 1.5, 1.5) * SCALE
+			fighter.flare.CFrame = displayPose * mount(fighter, "Tail") * CFrame.new(-3 * SCALE, 0, 0)
+		end
 		self:_fighterEffects(fighter, state, simulation, moving, displayPose)
 		-- Damage shows on the airframe: smoke after one hit, fire after two.
-		local hurt = (snapshot.phase == "Fight" or snapshot.phase == "Results") and 3 - armor or 0
-		fighter.smokeAnchor.CFrame = displayPose * CFrame.new(-2.2 * SCALE, 0.5, 0)
+		local hurt = (snapshot.phase == "Fight" or snapshot.phase == "Results" or snapshot.phase == "RoundOver" or snapshot.phase == "MatchOver") and 3 - armor or 0
+		fighter.smokeAnchor.CFrame = displayPose * mount(fighter, "Belly")
 		fighter.damageSmoke.Rate = knockedOut and (fighter.crashLanded and 12 or 46) or (hurt >= 2 and 24 or (hurt == 1 and 10 or 0))
 		fighter.damageFire.Rate = knockedOut and (fighter.crashLanded and 6 or 28) or (hurt >= 2 and 16 or 0)
 		for smokeIndex, puff in ipairs(fighter.smoke) do
@@ -1304,8 +1414,16 @@ function BattleView:update(snapshot, dt, viewportRect)
 			for _, piece in ipairs(rocket.pieces) do piece.Transparency = 0 end
 			rocket.trail:Clear()
 		end
-		local owner = self.fighters[state.owner]
+		local owner = self.fighters[state.owner or state.actor]
 		local color = owner and owner.color or PLAYER_COLORS[tonumber(state.owner) or 1] or COLORS.yellow
+		local tracer = state.source == "machinegun"
+		rocket.body.Size = tracer and Vector3.new(3.4, 0.36, 0.36) or Vector3.new(5, 1.65, 1.65)
+		rocket.body.Material = tracer and Enum.Material.Neon or Enum.Material.SmoothPlastic
+		rocket.body.Color = tracer and COLORS.yellow or COLORS.cream
+		rocket.nose.Transparency = tracer and 1 or 0
+		rocket.fin.Transparency = tracer and 1 or 0
+		rocket.crossFin.Transparency = tracer and 1 or 0
+		for _, stripe in ipairs(rocket.stripes) do stripe.Transparency = tracer and 1 or 0 end
 		rocket.nose.Color, rocket.fin.Color, rocket.crossFin.Color = color, color, color
 		for _, stripe in ipairs(rocket.stripes) do stripe.Color = color end
 		local vx, vy = numeric(state.vx, 0), numeric(state.vy, 0)
@@ -1316,19 +1434,21 @@ function BattleView:update(snapshot, dt, viewportRect)
 		local sputter = 1 + math.sin(self.clock * 49 + numeric(tonumber(id), 0)) * 0.23
 		rocket.exhaust.Size = Vector3.new(3.6 * sputter, 1.25, 1.25)
 		rocket.exhaust.CFrame = rocketPose * CFrame.new(-3.9, 0, 0)
-		rocket.exhaust.Transparency = moving and (0.18 + (sputter - 0.77) * 0.2) or 1
+		rocket.exhaust.Transparency = moving and not tracer and (0.18 + (sputter - 0.77) * 0.2) or 1
 		rocket.core.Size = Vector3.new(2.4 * sputter, 0.62, 0.62)
 		rocket.core.CFrame = rocketPose * CFrame.new(-3.55, 0, 0.25)
-		rocket.core.Transparency = moving and 0.08 or 1
+		rocket.core.Transparency = moving and not tracer and 0.08 or 1
 		for index, spark in ipairs(rocket.sparks) do
 			local progress = (self.clock * 7 + index / 3) % 1
 			spark.Size = Vector3.new(0.55 * (1 - progress) + 0.12, 0.3, 0.25)
 			spark.CFrame = rocketPose * CFrame.new(-4.5 - progress * 3.5, (index % 2 == 0 and 1 or -1) * progress, 1)
-			spark.Transparency = moving and progress or 1
+			spark.Transparency = moving and not tracer and not self.reducedMotion and progress or 1
 		end
 		rocket.trail.Enabled = moving
-		rocket.trail.Color = ColorSequence.new(COLORS.yellow, color)
-		rocket.fizz.Rate = moving and 55 or 0
+		rocket.trail.Color = ColorSequence.new(color, COLORS.cream)
+		rocket.trail.Lifetime = tracer and 0.12 or 0.55
+		rocket.trail.WidthScale = NumberSequence.new(tracer and 0.25 or 1, 0)
+		rocket.fizz.Rate = moving and not tracer and not self.reducedMotion and 28 or 0
 		rocket.fizz.Color = ColorSequence.new(COLORS.cream, color)
 	end
 	self:_wakes(simulation, moving)
@@ -1374,7 +1494,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 				end
 				effect.flash.Size = Vector3.new(3 + progress * 7, effect.style == "crash" and 2 or (3 + progress * 7), 0.5)
 				effect.flash.CFrame = arenaPose(effect.x, effect.y + (effect.style == "crash" and 1 or 0), effect.style == "crash" and 10 or 8.5)
-				effect.flash.Transparency = progress < 0.3 and (0.2 + progress * 2.5) or 1
+				effect.flash.Transparency = not self.reducedMotion and progress < 0.3 and (0.2 + progress * 2.5) or 1
 			end
 			if progress >= 1 then effect.active = false; hide(effect.ring); effect.flash.Transparency = 1 end
 		end
@@ -1399,11 +1519,42 @@ function BattleView:update(snapshot, dt, viewportRect)
 	for index, zone in ipairs(windZones) do
 		self.wind[index].Size = Vector3.new(math.max(0.05, zone[1]), math.max(0.05, zone[2]), 0.2)
 		self.wind[index].CFrame = arenaPose(zone[3], zone[4], -5)
-		self.wind[index].Transparency = pressured and (0.6 + 0.08 * math.sin(self.clock * 4 + index)) or 1
+		self.wind[index].Transparency = pressured and (0.6 + (self.reducedMotion and 0 or 0.08 * math.sin(self.clock * 4 + index))) or 1
+	end
+	if pressured and not self.stormStarted then self.stormStarted, self.stormAt = true, self.realClock end
+	if not pressured then self.stormStarted, self.stormAt = false, nil end
+	local pressure = math.clamp(numeric(simulation.pressure, 0), 0, 1)
+	for side = 1, 4 do
+		local vertical = side <= 2
+		local rail = side == 1 and bounds.left or side == 2 and bounds.right or side == 3 and bounds.top or bounds.bottom
+		local outward = (side == 1 or side == 4) and -1 or 1
+		local span = vertical and fieldHeight or fieldWidth
+		local middle = vertical and fieldY or fieldX
+		for n, cloud in ipairs(self.stormClouds[side]) do
+			local along = middle - span / 2 + (n - 0.5) * span / 6
+			local breathe = self.reducedMotion and 0 or math.sin(self.clock * 0.7 + n + side) * 1.4
+			cloud.Size = vertical and Vector3.new(7 + pressure * 5, span / 6 + 6, 4) or Vector3.new(span / 6 + 6, 7 + pressure * 5, 4)
+			cloud.CFrame = vertical and arenaPose(rail + outward * (5 + breathe), along, -10) or arenaPose(along, rail + outward * (5 + breathe), -10)
+			cloud.Transparency = pressured and 0.16 or 1
+		end
+		for n, streak in ipairs(self.windStreaks[side]) do
+			local sweep = self.reducedMotion and 0.5 or (self.clock * (0.65 + pressure * 0.5) + n / 3) % 1
+			local along = middle - span * 0.4 + n * span * 0.2
+			local across = rail + outward * (2 + (1 - sweep) * 10)
+			streak.Size = vertical and Vector3.new(2 + pressure * 3, 0.16, 0.15) or Vector3.new(0.16, 2 + pressure * 3, 0.15)
+			streak.CFrame = vertical and arenaPose(across, along, -7) or arenaPose(along, across, -7)
+			streak.Transparency = pressured and (0.5 + sweep * 0.45) or 1
+		end
+		local initial = self.stormAt and self.realClock - self.stormAt < 0.12
+		local flash = not self.reducedMotion and pressured and (initial or ((self.realClock * (0.15 + pressure * 0.3) + side * 0.17) % 1 < 0.035))
+		local bolt = self.lightning[side]
+		bolt.Size = vertical and Vector3.new(0.4, 11, 0.2) or Vector3.new(11, 0.4, 0.2)
+		bolt.CFrame = (vertical and arenaPose(rail + outward * 6, middle, -6) or arenaPose(middle, rail + outward * 6, -6)) * CFrame.Angles(0, 0, 0.3)
+		bolt.Transparency = flash and 0.35 or 1
 	end
 	for index, edge in ipairs(self.edges) do
 		edge.Color = pressured and COLORS.yellow or (index <= 2 and self:accent(index) or COLORS.cream)
-		edge.Transparency = pressured and (0.05 + 0.12 * math.sin(self.clock * 5)) or (index <= 2 and 0.2 or 0.55)
+		edge.Transparency = pressured and (0.05 + (self.reducedMotion and 0 or 0.12 * math.sin(self.clock * 5))) or (index <= 2 and 0.2 or 0.55)
 	end
 	self.folder:SetAttribute("Phase", snapshot.phase or "Configure")
 	self.folder:SetAttribute("RoundId", tostring(snapshot.roundId or ""))

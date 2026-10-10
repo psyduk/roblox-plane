@@ -1,12 +1,13 @@
 --!nonstrict
 -- One atomic record per player. UpdateAsync owns acquisition, renewal and release
--- of a fenced session lease. A failed load is NEVER eligible for a later write.
+-- of a fenced session lease. Writes require a verified load and an owned lease.
 -- Reference: https://create.roblox.com/docs/cloud-services/data-stores/player-data-purchasing
 local CosmeticCatalog = require(game:GetService("ReplicatedStorage"):WaitForChild("FlightGame"):WaitForChild("CosmeticCatalog"))
+local SkillCatalog = require(game:GetService("ReplicatedStorage"):WaitForChild("FlightGame"):WaitForChild("SkillCatalog"))
 local PlayerStats = {}
 PlayerStats.__index = PlayerStats
 PlayerStats.DATASTORE_NAME = "Skybound_PlayerStats_v1"
-PlayerStats.SCHEMA_VERSION = 2
+PlayerStats.SCHEMA_VERSION = 3
 PlayerStats.MAX_CREDITS = 1e12
 PlayerStats.RECEIPT_LIMIT = 128
 
@@ -24,6 +25,32 @@ local function copyArray(source)
 	for _, value in ipairs(source or {}) do table.insert(result, value) end
 	return result
 end
+local BATTLE_FIELDS = { "matches", "wins", "losses", "draws", "currentStreak", "bestStreak" }
+local function copyBattle(source)
+    local result = { mastery = {}, starterAvailable = source and source.starterAvailable == true or false,
+        starterChoice = source and source.starterChoice or nil, goalId = source and source.goalId or CosmeticCatalog.BATTLE_GOAL_ID }
+    for _,field in ipairs(BATTLE_FIELDS) do result[field] = source and source[field] or 0 end
+    for id,value in pairs(source and source.mastery or {}) do result.mastery[id] = value end
+    return result
+end
+local function starter(id)
+    for _,choice in ipairs(CosmeticCatalog.STARTER_CHOICES) do if choice == id then return true end end
+    return false
+end
+local function decodeBattle(value)
+    if type(value) ~= "table" or type(value.mastery) ~= "table" or type(value.starterAvailable) ~= "boolean" then return nil end
+    for _,field in ipairs(BATTLE_FIELDS) do
+        if not finite(value[field]) or value[field] < 0 or value[field] % 1 ~= 0 or value[field] > 1e12 then return nil end
+    end
+    for id,amount in pairs(value.mastery) do
+        if not SkillCatalog.valid(id) or not finite(amount) or amount < 0 or amount % 1 ~= 0 or amount > 1e12 then return nil end
+    end
+    if value.starterChoice ~= nil and not starter(value.starterChoice) then return nil end
+    if value.starterChoice and value.starterAvailable then return nil end
+    local goal = CosmeticCatalog.get(value.goalId)
+    if not goal or goal.earnedOnly or goal.price <= 0 then return nil end
+    return copyBattle(value)
+end
 local function copyEconomy(source)
 	local owned = { [CosmeticCatalog.DEFAULT_ID] = true }
 	for id, value in pairs(source and source.owned or {}) do if value then owned[id] = true end end
@@ -40,8 +67,8 @@ local function decodeEconomy(value)
 	return copyEconomy(value)
 end
 local function decode(value)
-	if value == nil then return { schemaVersion = PlayerStats.SCHEMA_VERSION, stats = copyStats(), receipts = {}, economy = copyEconomy() } end
-	if type(value) ~= "table" or (value.schemaVersion ~= 1 and value.schemaVersion ~= PlayerStats.SCHEMA_VERSION)
+	if value == nil then return { schemaVersion = PlayerStats.SCHEMA_VERSION, stats = copyStats(), receipts = {}, economy = copyEconomy(), battle = copyBattle() } end
+	if type(value) ~= "table" or (value.schemaVersion ~= 1 and value.schemaVersion ~= 2 and value.schemaVersion ~= PlayerStats.SCHEMA_VERSION)
 		or type(value.stats) ~= "table" then return nil end
 	local stats = copyStats(value.stats)
 	for _, field in ipairs(FIELDS) do
@@ -58,7 +85,9 @@ local function decode(value)
 	while #receipts > PlayerStats.RECEIPT_LIMIT do table.remove(receipts, 1) end
 	local economy = value.schemaVersion == 1 and copyEconomy() or decodeEconomy(value.economy)
 	if not economy then return nil end
-	return { schemaVersion = PlayerStats.SCHEMA_VERSION, stats = stats, receipts = receipts, economy = economy,
+    local battle = value.schemaVersion < 3 and copyBattle() or decodeBattle(value.battle)
+    if not battle or (battle.starterChoice and not economy.owned[battle.starterChoice]) then return nil end
+	return { schemaVersion = PlayerStats.SCHEMA_VERSION, stats = stats, receipts = receipts, economy = economy, battle = battle,
 		lease = value.lease, lastWrite = value.lastWrite }
 end
 
@@ -85,7 +114,8 @@ function PlayerStats:open(userId)
 	local token = self.sessionId .. ":" .. tostring(userId) .. ":" .. tostring(self.sequence)
 	local record = { userId = userId, token = token, key = "player_" .. tostring(userId), stats = copyStats(),
 		status = self.sessionOnly and "session_only" or "loading", safe = false, busy = false,
-		version = 0, savedVersion = 0, writeSequence = 0, receipts = {}, seen = {}, pending = {}, economy = copyEconomy(),
+		loaded = self.sessionOnly, loadFailures = 0,
+		version = 0, savedVersion = 0, writeSequence = 0, receipts = {}, seen = {}, pending = {}, economy = copyEconomy(), battle = copyBattle(),
 		nextSave = self.clock() + self.saveInterval + math.abs(userId) % 15 }
 	self.records[token] = record
 	return record
@@ -100,10 +130,23 @@ function PlayerStats:canShop(record)
 		and (record.status == "session_only" or (record.safe and (record.status == "saved" or record.status == "pending")))
 end
 
+function PlayerStats:getBattle(record)
+    local result = copyBattle(record and record.battle)
+    result.title = result.matches >= 15 and "Sky Rival" or result.matches >= 5 and "Wingmate" or result.matches >= 1 and "Rookie" or "New Pilot"
+    result.nextTitleAt = result.matches < 1 and 1 or result.matches < 5 and 5 or result.matches < 15 and 15 or nil
+    result.status = record and record.status or "unavailable"
+    result.confirmed = result.status == "saved"
+    return result
+end
 function PlayerStats:getEconomy(record)
-	local result = copyEconomy(record and record.economy)
-	result.canShop = self:canShop(record)
-	return result
+    local result = copyEconomy(record and record.economy)
+    result.canShop = self:canShop(record)
+    result.progression = self:getBattle(record)
+    result.starterChoices = copyArray(CosmeticCatalog.STARTER_CHOICES)
+    local goal = CosmeticCatalog.get(result.progression.goalId)
+    result.goal = {id=goal.id,name=goal.name,price=goal.price,owned=result.owned[goal.id]==true,
+        remaining=result.owned[goal.id] and 0 or math.max(0,goal.price-result.credits)}
+    return result
 end
 
 local function feedback(ok, code, message, itemId)
@@ -118,6 +161,7 @@ function PlayerStats:_cosmetic(record, itemId, equip)
 			loading and "Your collection is still loading. Try again in a moment." or "Saving is unavailable. The shop will reopen when your data is safe.", itemId)
 	end
 	local economy = record.economy
+    if not equip and item.earnedOnly then return feedback(false,"earned_only","Choose this trail after your first completed battle.",itemId) end
 	if equip then
 		if not economy.owned[itemId] then return feedback(false, "not_owned", "Unlock this trail before equipping it.", itemId) end
 		if economy.equippedTrail == itemId then return feedback(true, "already_equipped", item.name .. " is already equipped.", itemId) end
@@ -144,6 +188,29 @@ end
 
 function PlayerStats:equipCosmetic(record, itemId)
 	return self:_cosmetic(record, itemId, true)
+end
+
+function PlayerStats:claimStarter(record, itemId)
+    if not starter(itemId) then return feedback(false,"invalid_item","Choose one of the two first-battle trails.",itemId) end
+    if not self:canShop(record) then return feedback(false,"unavailable","Your collection must finish saving before this choice.",itemId) end
+    if record.battle.starterChoice then return feedback(false,"already_claimed","Your first-battle trail is already in your collection.",record.battle.starterChoice) end
+    if not record.battle.starterAvailable then return feedback(false,"not_earned","Complete a battle to choose your first trail.",itemId) end
+    record.battle.starterAvailable = false; record.battle.starterChoice = itemId
+    record.economy.owned[itemId] = true; record.economy.equippedTrail = itemId
+    record.version = record.version + 1
+    if not self.sessionOnly then record.status = "pending" end
+    self:_changed(record)
+    return feedback(true,"claimed",CosmeticCatalog.get(itemId).name.." chosen and equipped!",itemId)
+end
+function PlayerStats:selectGoal(record, itemId)
+    local item=CosmeticCatalog.get(itemId)
+    if not item or item.earnedOnly or item.price<=0 then return feedback(false,"invalid_goal","Choose an earned-coin cosmetic goal.",itemId) end
+    if not self:canShop(record) then return feedback(false,"unavailable","Your collection is not ready. Try again after saving.",itemId) end
+    if record.battle.goalId==itemId then return feedback(true,"already_selected",item.name.." is your goal.",itemId) end
+    record.battle.goalId=itemId;record.version=record.version+1
+    if not self.sessionOnly then record.status="pending" end
+    self:_changed(record)
+    return feedback(true,"goal_selected",item.name.." is your new goal.",itemId)
 end
 
 function PlayerStats:_retry(callback)
@@ -199,19 +266,104 @@ function PlayerStats:recordFlight(record, resultId, input)
 		forfeit = input.forfeit == true, aborted = input.aborted == true, outcome = input.outcome }
 	local applied, credits = self:_apply(record, resultId, outcome)
 	if not applied then return false, 0 end
-	if record.status == "loading" then table.insert(record.pending, { id = resultId, outcome = outcome })
+	if not record.loaded then table.insert(record.pending, { id = resultId, outcome = outcome })
 	elseif record.safe and record.status ~= "unavailable" then record.status = "pending" end
 	self:_changed(record)
 	return true, credits
 end
 
+-- A terminal battle is a separate ledger operation from the archived distance
+-- game. Coins, entitlement, mastery and receipt advance in one fenced record.
+function PlayerStats:_applyBattle(record, id, outcome)
+    if record.seen[id] then return false,0 end
+    record.seen[id]=true;table.insert(record.receipts,id)
+    while #record.receipts>PlayerStats.RECEIPT_LIMIT do table.remove(record.receipts,1) end
+    local credits=0
+    if outcome.eligible then
+        local battle=record.battle
+        battle.matches=battle.matches+1
+        if outcome.outcome=="win" then
+            battle.wins=battle.wins+1;battle.currentStreak=battle.currentStreak+1;battle.bestStreak=math.max(battle.bestStreak,battle.currentStreak)
+        elseif outcome.outcome=="loss" then battle.losses=battle.losses+1;battle.currentStreak=0
+        else battle.draws=battle.draws+1 end
+        if battle.matches==1 and not battle.starterChoice then battle.starterAvailable=true end
+        local used={}
+        for _,skill in ipairs(outcome.skills) do
+            if not used[skill] then battle.mastery[skill]=(battle.mastery[skill] or 0)+1;used[skill]=true end
+        end
+        credits=CosmeticCatalog.BATTLE_COMPLETION_REWARD+(outcome.outcome=="win" and CosmeticCatalog.BATTLE_WIN_BONUS or 0)
+        credits=math.min(credits,PlayerStats.MAX_CREDITS-record.economy.credits)
+        record.economy.credits=record.economy.credits+credits
+    elseif outcome.abandoned then
+        -- A real quit breaks a streak without granting completion, coins or
+        -- mastery. Diagnostic matches never alter the public streak.
+        record.battle.currentStreak=0
+    end
+    record.version=record.version+1
+    return true,credits
+end
+function PlayerStats:recordBattle(record, resultId, input)
+    if not record or record.closed or record.closing or type(resultId)~="string" or #resultId==0 or #resultId>160 or type(input)~="table" then return false end
+    if not finite(input.completedRounds) or input.completedRounds<0 or input.completedRounds>5 or input.completedRounds%1~=0
+        or not finite(input.fightSeconds) or input.fightSeconds<0 or input.fightSeconds>240 then return false end
+    local outcome=input.outcome
+    local abandoned=input.abandoned==true or outcome=="abandoned"
+    if outcome=="abandoned" then outcome="loss" end
+    if outcome==nil and (input.winner==0 or input.winner==1 or input.winner==2) then outcome=input.winner==0 and "draw" or input.winner==1 and "win" or "loss" end
+    if outcome~="win" and outcome~="loss" and outcome~="draw" then return false end
+    local normal=input.reason=="first_to_two" or input.reason=="round_cap" or input.reason=="wall_cap"
+    local departure=input.reason=="exit" or input.reason=="disconnect"
+    local eligible=not abandoned and not input.diagnostic and input.mode~="experimental"
+        and ((normal and input.completedRounds>=1) or (departure and (input.completedRounds>=1 or input.fightSeconds>=30)))
+    local reason=eligible and (departure and "opponent_departed" or "completed") or abandoned and "abandoned"
+        or (input.diagnostic or input.mode=="experimental") and "diagnostic" or departure and "early_departure" or "uncompleted"
+    local skills={}
+    if input.offenceId~=nil then
+        if not SkillCatalog.valid(input.offenceId,"offence") then return false end
+        skills[#skills+1]=input.offenceId
+    elseif eligible then return false end
+    if input.wildIds~=nil and type(input.wildIds)~="table" then return false end
+    if input.offenceId and not SkillCatalog.build(input.offenceId,input.wildIds) then return false end
+    local seen={};local count=0
+    for _,id in ipairs(input.wildIds or {}) do
+        if not SkillCatalog.valid(id,"wild") or seen[id] then return false end
+        count=count+1;if count>2 then return false end;seen[id]=true;skills[#skills+1]=id
+    end
+    local operation={eligible=eligible,outcome=outcome,skills=skills,
+        abandoned=abandoned and not input.diagnostic and input.mode~="experimental"}
+    local applied,credits=self:_applyBattle(record,resultId,operation)
+    if applied then
+        if not record.loaded then table.insert(record.pending,{id=resultId,kind="battle",outcome=operation})
+        elseif record.safe and record.status~="unavailable" then record.status="pending" end
+        self:_changed(record)
+    end
+    return applied,{coins=credits,balance=record.economy.credits,eligible=eligible,reason=reason,
+        duplicate=not applied,status=record.status,confirmed=record.status=="saved",version=record.version,progression=self:getBattle(record)}
+end
+
+function PlayerStats:_loadFailed(record, reason)
+	record.safe = false
+	record.status = "unavailable"
+	record.loadFailures = math.min(record.loadFailures + 1, 5)
+	-- Keep pending ledger operations until a verified load can replay them.
+	-- Corrupt data must not be retried into a replacement/default profile.
+	if reason == "corrupt" or reason == "closed" then
+		record.loadRetryAt = nil
+	else
+		local delay = math.min(60, 5 * 2 ^ (record.loadFailures - 1) + self.jitter() * 0.25)
+		record.loadRetryAt = self.clock() + delay
+	end
+end
+
 function PlayerStats:load(record)
 	if not record or record.closed or record.closing or record.busy then return false end
 	if self.sessionOnly then record.status = "session_only"; self:_changed(record); return true end
-	if record.status ~= "loading" then return record.safe end
-	if not self.store then record.status = "unavailable"; self:_changed(record); return false end
+	if record.loaded then return record.safe end
+	if record.status ~= "loading" and (not record.loadRetryAt or self.clock() < record.loadRetryAt) then return false end
+	if not self.store then self:_loadFailed(record, "store_unavailable"); self:_changed(record); return false end
 	record.busy = true
 	local ok, loaded = self:_retry(function()
+		if record.closed or record.closing then return false, "closed" end
 		local rejection
 		local timestamp = self.clock()
 		local result = self.store:UpdateAsync(record.key, function(old)
@@ -228,18 +380,24 @@ function PlayerStats:load(record)
 	if ok then
 		record.stats = copyStats(loaded.stats)
 		record.economy = copyEconomy(loaded.economy)
+        record.battle = copyBattle(loaded.battle)
 		record.receipts = copyArray(loaded.receipts)
 		record.seen = {}
 		for _, id in ipairs(record.receipts) do record.seen[id] = true end
 		record.version, record.savedVersion = 0, 0
-		for _, pending in ipairs(record.pending) do self:_apply(record, pending.id, pending.outcome) end
+		for _, pending in ipairs(record.pending) do
+            if pending.kind=="battle" then self:_applyBattle(record,pending.id,pending.outcome)
+            else self:_apply(record, pending.id, pending.outcome) end
+        end
 		record.pending = {}
+		record.loaded = true
+		record.loadFailures = 0
+		record.loadRetryAt = nil
 		record.safe = true
 		record.status = record.version > 0 and "pending" or "saved"
+		record.nextSave = self.clock() + (record.version > 0 and 0 or self.saveInterval)
 	else
-		record.safe = false
-		record.pending = {}
-		record.status = "unavailable"
+		self:_loadFailed(record, loaded)
 	end
 	record.busy = false
 	self:_changed(record)
@@ -252,7 +410,7 @@ function PlayerStats:save(record, releaseLease)
 	record.busy = true
 	record.writeSequence = record.writeSequence + 1
 	local operationId = record.token .. ":write:" .. tostring(record.writeSequence)
-	local stats, receipts, economy, version = copyStats(record.stats), copyArray(record.receipts), copyEconomy(record.economy), record.version
+	local stats, receipts, economy, battle, version = copyStats(record.stats), copyArray(record.receipts), copyEconomy(record.economy), copyBattle(record.battle), record.version
 	local ok, reason = self:_retry(function()
 		local rejection, alreadyCommitted
 		local timestamp = self.clock()
@@ -264,7 +422,7 @@ function PlayerStats:save(record, releaseLease)
 			-- receipt without reacquiring or touching a newer server's lease.
 			if releaseLease and value.lastWrite and value.lastWrite.id == operationId then alreadyCommitted = true; return nil end
 			if not value.lease or value.lease.id ~= record.token then rejection = "lease_lost"; return nil end
-			return { schemaVersion = PlayerStats.SCHEMA_VERSION, stats = copyStats(stats), receipts = copyArray(receipts), economy = copyEconomy(economy),
+			return { schemaVersion = PlayerStats.SCHEMA_VERSION, stats = copyStats(stats), receipts = copyArray(receipts), economy = copyEconomy(economy), battle = copyBattle(battle),
 				lease = not releaseLease and { id = record.token, expiresAt = timestamp + self.leaseSeconds } or nil,
 				lastWrite = { id = operationId, version = version } }
 		end)
@@ -305,7 +463,14 @@ function PlayerStats:step()
 	if timestamp < self.nextSweep then return end
 	self.nextSweep = timestamp + 1
 	for _, record in pairs(self.records) do
-		if record.safe and not record.busy and not record.closing and timestamp >= record.nextSave then
+		if not record.loaded and record.loadRetryAt and timestamp >= record.loadRetryAt
+			and not record.busy and not record.closing and not record.loadRetryQueued then
+			record.loadRetryQueued = true
+			self.spawn(function()
+				self:load(record)
+				record.loadRetryQueued = false
+			end)
+		elseif record.safe and not record.busy and not record.closing and timestamp >= record.nextSave then
 			record.nextSave = timestamp + self.saveInterval
 			self.spawn(function() self:save(record, false) end)
 		end

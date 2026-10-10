@@ -122,5 +122,112 @@ return function(View, World, Simulation)
             assert(#cues==before+1,"Near-floor landing cue repeated")
         end
     end)
-    return string.format("BattleView: %d native crash tests passed",passed)
+    test("every equipped skin keeps its geometry under every active offence",function(view,cues,advance,snapshot)
+        for skinIndex,skin in ipairs({"cruiser","skyhopper","dart"}) do
+            local s=snapshot(100+skinIndex,"Pick",3,3)
+            s.players={{userId=1,name="You",planeId=skin,color=1},{userId=2,name="Rival",planeId=skin,color=1}}
+            s.simulation.finished=false; s.simulation.fighters[1].offenceId=""
+            s.simulation.fighters[2].offenceId=""
+            view:update(s,1/60)
+            local fighter=view.fighters[1]; local bodySize=fighter.body.Size
+            local geometry={}
+            for _,piece in ipairs(fighter.model:GetChildren()) do
+                if piece:IsA("BasePart") and piece.Transparency<0.5 then geometry[piece]=piece.Size end
+            end
+            for _,name in ipairs({"Nose","Belly","WingLeft","WingRight","Tail","Centre","Top"}) do
+                assert(fighter.model.PrimaryPart:FindFirstChild(name):IsA("Attachment"),"Missing "..skin.." "..name)
+            end
+            for _,offence in ipairs({"Meteor","Firework","MachineGun","Pinball"}) do
+                view:_setSignature(fighter,offence)
+                assert(fighter.body.Size==bodySize,"Skill reshaped equipped fuselage")
+                for piece,size in pairs(geometry) do assert(piece.Size==size and piece.Transparency<0.5,"Skill hid or reshaped "..piece.Name) end
+                assert(fighter.model:GetAttribute("PlaneId")==skin,"Wrong equipped skin")
+            end
+            assert(view.fighters[2].model:GetAttribute("PlaneId")==skin,"Mirror replaced rival skin")
+            assert(view.fighters[1].color==view.fighters[2].color,"Mirror replaced rival paint")
+            assert(view.fighters[1].sideColor~=view.fighters[2].sideColor,"Mirror lost side identity")
+        end
+    end)
+    test("match phases retain authoritative crash and clear new-skill effects",function(view,cues,advance,snapshot)
+        local s=snapshot(200,"Fight",1,2)
+        s.simulation.fighters[1].offenceId="MachineGun"; s.simulation.fighters[1].magnetLeft=1
+        s.simulation.fighters[1].secondWind=true
+        view:update(s,1/60)
+        assert(view.fighters[1].magnetRing[1].Transparency<1,"Magnet missing its cue")
+        assert(view.fighters[1].windRing[1].Transparency<1,"Second Wind missing its cue")
+        s.phase="RoundOver";s.simulation.finished=true;s.simulation.reason="knockout";s.simulation.fighters[1].armor=0
+        advance(s,2.5)
+        assert(#cues==1,"RoundOver did not land the authoritative knockout")
+        local nextRound=snapshot(201,"Pick",3,3)
+        advance(nextRound,0.1)
+        assert(view.fighters[1].magnetRing[1].Transparency==1 and view.fighters[1].windRing[1].Transparency==1,"Pick retained old cues")
+    end)
+    test("reduced motion suppresses afterimages and flashes while preserving skill tells",function(view,cues,advance,snapshot)
+        view.reducedMotion=true
+        local s=snapshot(202,"Fight",3,3)
+        s.simulation.fighters[1].offenceId="Meteor";s.simulation.fighters[1].phase="Attack";s.simulation.fighters[1].armed=true
+        view:update(s,1/60)
+        local fighter=view.fighters[1]
+        assert(fighter.chargeShell.Transparency<1,"Reduced motion hid commitment cue")
+        for _,ghost in ipairs(fighter.afterimages) do for _,piece in ipairs(ghost.pieces) do assert(piece.Transparency==1,"Reduced motion left afterimage") end end
+        assert(view.screenFlash==0,"Reduced motion flashed")
+    end)
+    test("storm follows every authoritative boundary and resets grade on results",function(view,cues,advance,snapshot)
+        for index,pressure in ipairs({0.1,0.5,1}) do
+            local s=snapshot(300+index,"Fight",3,3)
+            s.simulation.pressure=pressure
+            s.simulation.bounds={left=-72+24*pressure,right=72-24*pressure,bottom=8+10*pressure,top=96-14*pressure}
+            view:update(s,1/60)
+            local bounds=s.simulation.bounds
+            local origin=Vector3.new(0,80,-4000)
+            assert(math.abs(view.edges[1].Position.X-origin.X-bounds.left)<0.001)
+            assert(math.abs(view.edges[2].Position.X-origin.X-bounds.right)<0.001)
+            assert(math.abs(view.edges[3].Position.Y-origin.Y-bounds.top)<0.001)
+            assert(math.abs(view.edges[4].Position.Y-origin.Y-bounds.bottom)<0.001)
+            assert(view.stormClouds[1][1].Transparency<1 and view.grade.Brightness<0,"Storm did not track pressure")
+            view.reducedMotion=true;view:update(s,1/60)
+            for _,bolt in ipairs(view.lightning) do assert(bolt.Transparency==1,"Reduced motion lightning") end
+            s.phase="MatchOver";view:update(s,1/60)
+            assert(math.abs(view.grade.Brightness)<0.001 and math.abs(view.grade.Saturation-0.14)<0.001,"Result kept storm grade")
+            view.reducedMotion=false
+        end
+        view:_resetRound(400)
+        for side=1,4 do assert(view.stormClouds[side][1].Transparency==1 and view.lightning[side].Transparency==1,"Round reset left storm") end
+    end)
+    test("generic non-aircraft contract supports equipment and crash without plane parts",function(view,cues,advance,snapshot)
+        local originalWorld=view.World
+        view.World={trailLook=originalWorld.trailLook,createPlane=function(parent,name,colorIndex,planeId)
+            local model=Instance.new("Model");model.Name=name;model:SetAttribute("PlaneId",planeId);model:SetAttribute("BattleVisualSize",8)
+            local body=Instance.new("Part");body.Name="BroomBody";body.Size=Vector3.new(8,1,1);body.Anchored=true;body.CanCollide=false;body.Parent=model;model.PrimaryPart=body
+            for mountName,position in pairs({Nose=Vector3.new(4,0,0),Tail=Vector3.new(-4,0,0),Belly=Vector3.new(0,-0.5,0),Centre=Vector3.zero,Top=Vector3.new(0,1,0),WingLeft=Vector3.new(0,0,-1),WingRight=Vector3.new(0,0,1)}) do
+                local attachment=Instance.new("Attachment");attachment.Name=mountName;attachment.Position=position;attachment.Parent=body
+            end
+            model.Parent=parent;return model
+        end}
+        local s=snapshot(410,"Fight",2,3);s.simulation.fighters[1].offenceId="Firework"
+        view:update(s,1/60);assert(view.fighters[1].propeller==nil and view.fighters[1].body.Name=="BroomBody")
+        s.phase="MatchOver";s.simulation.finished=true;s.simulation.reason="knockout";s.simulation.fighters[1].armor=0
+        advance(s,2.5)
+        assert(#cues==1 and view.fighters[1].crashLanded,"Generic skin failed to land once")
+        assert(#view.fighters[1].debris==5,"Generic fallback grew unbounded debris")
+    end)
+    test("bounce stays bounded after one ground cue and cleanup cancels the sequence",function(view,cues,advance,snapshot)
+        local s=snapshot(420,"Fight",1,3);view:update(s,1/60)
+        s.phase="MatchOver";s.simulation.finished=true;s.simulation.reason="knockout";s.simulation.fighters[1].armor=0
+        local landed=false;local bounced=false
+        for frame=1,180 do
+            view:update(s,1/60)
+            if view.fighters[1].crashLanded then
+                landed=true
+                local gap=view.fighters[1].crashContactY-view.groundY
+                assert(gap>=-0.002 and gap<=0.81,"Bounce left bounded floor region")
+                if gap>0.05 then bounced=true end
+            end
+            if frame%12==0 then task.wait() end
+        end
+        assert(landed and bounced and #cues==1,"Bounce failed or repeated first contact")
+        assert(math.abs(view.fighters[1].crashContactY-view.groundY)<0.002,"Bounce did not settle")
+        advance(snapshot(421,"Pick",3,3),0.1);assert(view.fighters[1].crash==nil,"Next draft kept old fall")
+    end)
+    return string.format("BattleView: %d native presentation tests passed",passed)
 end

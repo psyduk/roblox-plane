@@ -214,6 +214,14 @@ local function makePlane(parent, name, colorIndex, planeId)
 	local pivot = part(model, "FlightPivot", Vector3.one, CFrame.identity, color)
 	pivot.Transparency = 1
 	model.PrimaryPart = pivot
+	model:SetAttribute("BattleContractVersion", PlaneCatalog.BATTLE_CONTRACT_VERSION)
+	model:SetAttribute("BattleVisualSize", PlaneCatalog.battleVisualSize(planeId))
+	for mountName, coordinates in pairs(PlaneCatalog.BATTLE_MOUNTS) do
+		local mount = Instance.new("Attachment")
+		mount.Name = mountName
+		mount.Position = Vector3.new(coordinates[1], coordinates[2], coordinates[3])
+		mount.Parent = pivot
+	end
 	local bodySize = planeId == "dart" and Vector3.new(9.6, 2.3, 2.2) or Vector3.new(8.7, 3.1, 3.1)
 	local body = part(model, "Fuselage", bodySize, CFrame.identity, color, nil, false, Enum.PartType.Ball)
 	if planeId == "skyhopper" then
@@ -833,8 +841,8 @@ end
 function World.updateLobbyBoard(flying, best)
 	local nowFlying, clubBest = boardLabels.flying, boardLabels.best
 	if not lobbyDistanceMode then
-		if nowFlying and nowFlying.Parent then nowFlying.Text = "PRESS PLAY  -  CHOOSE YOUR SETUP" end
-		if clubBest and clubBest.Parent then clubBest.Text = "PICK A POWER  -  FIGHT A SIMULATED OPPONENT" end
+		if nowFlying and nowFlying.Parent then nowFlying.Text = "PRESS PLAY  -  MEET YOUR RIVAL" end
+		if clubBest and clubBest.Parent then clubBest.Text = "PICK YOUR SKILLS  -  FIRST TO TWO WINS" end
 		return
 	end
 	if nowFlying and nowFlying.Parent then

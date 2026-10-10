@@ -56,13 +56,14 @@ BattleAudio.ROUND_TIME = 35
 local KINDS = {
     launch=true, windup=true, dive=true, rocket=true, hit=true, bump=true,
     bumper_block=true, wake_hit=true, afterburner=true, finish=true, knockout=true,
+    burst=true, tracer_hit=true, ricochet=true, magnet=true, secondwind=true,
 }
 local function finite(value)
     return type(value)=="number" and value==value and value>-math.huge and value<math.huge
 end
 local function audibleKind(event)
     if event.kind=="skill" then
-        return event.skillId=="Afterburner" and "afterburner" or nil
+        return ({Afterburner="afterburner",Magnet="magnet",SecondWind="secondwind"})[event.skillId]
     elseif event.kind=="blocked" then
         return event.skillId=="SpringBumper" and "bumper_block" or nil
     end
@@ -154,7 +155,7 @@ function BattleAudio:_ambience(snapshot)
     local fighting=phase=="Fight"
     local closing=fighting and pressure>0
     -- The battle loop steps right back at the result so the sting can land.
-    self:_loop("music",active and ((fighting or phase=="Countdown") and 0.24 or (phase=="Results" and 0.05 or 0.13)) or 0,closing and 1.04 or 1)
+    self:_loop("music",active and ((fighting or phase=="Countdown") and 0.24 or ((phase=="Results" or phase=="RoundOver" or phase=="MatchOver") and 0.05 or 0.13)) or 0,closing and 1.04 or 1)
     self:_loop("crowd",active and ((fighting or phase=="Countdown") and 0.22 or 0.1) or 0,1)
     self:_loop("storm",closing and 0.14+pressure*0.3 or 0,1)
     if phase=="Countdown" and finite(snapshot.endsAt) then
@@ -162,6 +163,7 @@ function BattleAudio:_ambience(snapshot)
         local remaining=snapshot.endsAt-workspace:GetServerTimeNow()
         if self.countRound~=snapshot.roundId then
             self.countRound,self.countSpan,self.countBeat=snapshot.roundId,math.max(0.3,remaining),0
+            if snapshot.matchPoint then self:_shot("whistle",0.3,1.25) end
         end
         local beat=math.clamp(math.floor((1-remaining/self.countSpan)*3)+1,1,3)
         if beat>self.countBeat then self.countBeat=beat; self:_shot("beep",0.5,0.85+beat*0.1) end
@@ -186,11 +188,23 @@ function BattleAudio:_stopShot(name)
     for _,sound in ipairs(self.shots and self.shots[name] or {}) do sound:Stop() end
 end
 
--- Menu feedback: a click for a choice, a whoosh for committing to the fight.
-function BattleAudio:ui(confirm)
+-- One quiet vocabulary shared by battle and hangar controls. Boolean callers
+-- retain the old select/confirm contract. Duplicate helper/callback pulses are
+-- suppressed without delaying the actual command.
+function BattleAudio:ui(action)
+    if self.muted or self.destroyed then return end
+    if action==true then action="confirm" elseif action==false or action==nil then action="select" end
+    local now=os.clock()
+    if self.lastUi==action and now-(self.lastUiAt or -100)<0.06 then return end
+    self.lastUi,self.lastUiAt=action,now
     self:_stopShot("fanfare")
-    if confirm then self:_shot("whoosh",0.45,1.1); self:_shot("click",0.5,0.8)
-    else self:_shot("click",0.5,1.15) end
+    if action=="confirm" then self:_shot("whoosh",0.22,1.1); self:_shot("click",0.2,0.9)
+    elseif action=="back" then self:_shot("click",0.16,0.72)
+    elseif action=="error" then self:_shot("beep",0.16,0.65)
+    elseif action=="purchase" then self:_voice("chime",0.16,1.1,0.3,1.7); self:_shot("click",0.18,1.25)
+    elseif action=="select" then self:_shot("click",0.2,1.15); self:_voice("chime",0.045,1.7,0.12)
+    else self:_shot("click",0.13,1.1) end
+    if self.folder then self.folder:SetAttribute("LastUI",action) end
 end
 
 function BattleAudio:setMuted(muted)
@@ -291,8 +305,24 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
         voice("jump",0.22,1.15,0.3,1.9)
         voice("boom",0.12,2.1,0.14,1.6)
         shot("ignite",0.55,1.15)
+    elseif kind=="burst" then
+        voice("land",0.12,2.5,0.12)
+        shot("click",0.36,1.7); shot("beep",0.13,1.5)
+    elseif kind=="tracer_hit" then
+        -- Connections are light ticks; only the threshold event breaks armor.
+        voice("chime",0.065,2.1,0.08)
+    elseif kind=="ricochet" then
+        voice("jump",0.22,0.8,0.24,1.9); shot("comic",0.4,1.4)
+    elseif kind=="magnet" then
+        voice("jump",0.13,1.6,0.35,0.7); voice("chime",0.1,0.8,0.3)
+    elseif kind=="secondwind" then
+        voice("chime",0.18,0.9,0.5,1.7); shot("whoosh",0.22,1.2)
     elseif kind=="hit" then
-        if event.source=="meteor" then
+        if event.source=="machinegun" then
+            voice("land",0.2,1.4,0.16); shot("punch",0.55,1.35); shot("thump",0.35,1.3)
+        elseif event.source=="pinball" then
+            voice("jump",0.2,1.3,0.25,0.7); shot("comic",0.5,0.85); shot("thump",0.6,1.2)
+        elseif event.source=="meteor" then
             voice("boom",0.30,0.8,0.46,0.55)
             voice("land",0.30,0.55,0.18)
             -- A slam: low thump, a knuckle crack and bending metal.
@@ -374,7 +404,7 @@ function BattleAudio:update(snapshot)
     end
     local key=tostring(snapshot.roundId)
     if self.key~=key then self:stop(); self.key=key end
-    local phase=snapshot.phase
+    local phase=(snapshot.phase=="RoundOver" or snapshot.phase=="MatchOver") and "Results" or snapshot.phase
     local previousPhase=self.phase
     self.phase=phase
     self.crashAllowed=false

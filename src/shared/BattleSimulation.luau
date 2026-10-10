@@ -6,6 +6,10 @@
 local Skills = require(script.Parent.BattleSkills)
 local BattleSimulation = {}
 
+BattleSimulation.CONTRACT_VERSION = "sky-battle-combat-v1"
+BattleSimulation.MAX_TOTAL_SPEED = 88
+BattleSimulation.MAX_TURN_RATE = 9.6
+BattleSimulation.MAGNET_SPEED = 7
 BattleSimulation.FIXED_DT = 1 / 60
 BattleSimulation.MAX_STEP_DT = 0.25
 BattleSimulation.MAX_TIME = 35
@@ -17,9 +21,9 @@ BattleSimulation.APPROACH_TIME = 4
 BattleSimulation.RECOVERY_TIME = 2.6
 BattleSimulation.MAX_WILD = 2
 BattleSimulation.METEOR_WINDUP = Skills.offence.Meteor.windup
-BattleSimulation.WAKE_LIFE = 3.2
-BattleSimulation.WAKE_ARM_TIME = 0.12
-BattleSimulation.WAKE_RADIUS = 5
+BattleSimulation.WAKE_LIFE = 0.9
+BattleSimulation.WAKE_ARM_TIME = 0.2
+BattleSimulation.WAKE_RADIUS = 2.5
 BattleSimulation.MAX_WAKES = 12
 
 local PI, TAU = math.pi, math.pi * 2
@@ -174,9 +178,12 @@ function BattleSimulation.newRound(seed, settingsA, settingsB)
 		local fighter = {
 			id = id, offenceId = config.offenceId, settings = config,
 			wildIds = config.wildIds, boostLeft = 0,
+			_cadence = (seed * 48271 + (seed % 2 == 0 and id or 3 - id) * 1299709) % 2147483647,
+			_approachOffset = ((seed * 48271 + (seed % 2 == 0 and id or 3 - id) * 1299709) % 2147483647) / 2147483647 * 2.4 - 1.2,
 			x = -52 * side, y = 31 + random() * 13,
 			heading = heading, vx = math.cos(heading) * 29, vy = math.sin(heading) * 29,
-			armor = 3, phase = "Approach", phaseLeft = BattleSimulation.APPROACH_TIME,
+			armor = 3, phase = "Approach", phaseLeft = (Skills.offence[config.offenceId].approachTime or BattleSimulation.APPROACH_TIME) +
+				(configs[1].offenceId == "Meteor" and configs[2].offenceId == "Meteor" and id == seed % 2 + 1 and (0.25 + (seed * 69621 % 9999) / 9999 * 0.35) or 0),
 			windupDuration = Skills.offence[config.offenceId].windup,
 			armed = false, invulnerable = 0, attacks = 0, hits = 0,
 			radius = BattleSimulation.PLANE_RADIUS, lockX = 0, lockY = 50,
@@ -208,7 +215,13 @@ end
 
 local function recover(state, fighter, opponent, duration)
 	wild(fighter, "recover", state, fighter, opponent)
-	fighter.phase, fighter.phaseLeft = "Recover", duration or BattleSimulation.RECOVERY_TIME
+	-- Both pilots still see full tells. Vary only the next visible approach
+	-- to prevent identical recovery cycles from becoming permanent trades or
+	-- interruptions. The seed records every pass; no accuracy/winner roll.
+	fighter._cadence = (fighter._cadence * 16807) % 2147483647
+	fighter._approachOffset = fighter._cadence / 2147483647 * 2.4 - 1.2
+	fighter.phase, fighter.phaseLeft = "Recover", ((duration or Skills.offence[fighter.offenceId].recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.84 or 1)
+	fighter._bumperRecovery = nil
 	fighter.armed = false
 	local awayX, awayY = direction(fighter.x - opponent.x, fighter.y - opponent.y, fighter.id == 1 and -1 or 1)
 	fighter._recoverX = clamp(fighter.x + awayX * 32, -48, 48)
@@ -241,6 +254,7 @@ local function prepare(state, fighter, opponent, dt)
 	local offence = Skills.offence[fighter.offenceId]
 	fighter.invulnerable = math.max(0, fighter.invulnerable - dt)
 	fighter.boostLeft = math.max(0, fighter.boostLeft - dt)
+	if fighter.magnetLeft then fighter.magnetLeft = math.max(0, fighter.magnetLeft - dt) end
 	fighter.phaseLeft = fighter.phaseLeft - dt
 	local dx, dy = opponent.x - fighter.x, opponent.y - fighter.y
 	if fighter.phase == "Approach" then
@@ -252,14 +266,17 @@ local function prepare(state, fighter, opponent, dt)
 			event(state, "windup", fighter.x, fighter.y, fighter.id, opponent.id)
 		end
 	elseif fighter.phase == "Windup" and fighter.phaseLeft <= 0 then
-		beginAttack(state, fighter, opponent)
+		if offence.wallRam then
+			event(state, "miss", fighter.x, fighter.y, fighter.id, opponent.id, "pinball")
+			recover(state, fighter, opponent)
+		else beginAttack(state, fighter, opponent) end
 	elseif fighter.phase == "Attack" and fighter.phaseLeft <= 0 then
 		if offence.ram and not fighter._attackHit then
 			event(state, "miss", fighter.x, fighter.y, fighter.id, opponent.id)
 		end
 		recover(state, fighter, opponent)
 	elseif fighter.phase == "Recover" and fighter.phaseLeft <= 0 then
-		fighter.phase, fighter.phaseLeft = "Approach", BattleSimulation.APPROACH_TIME
+		fighter.phase, fighter.phaseLeft = "Approach", (offence.approachTime or BattleSimulation.APPROACH_TIME) + fighter._approachOffset
 	end
 
 	local targetX, targetY = opponent.x, opponent.y
@@ -279,6 +296,7 @@ local function prepare(state, fighter, opponent, dt)
 	elseif fighter.phase == "Attack" then
 		speed = offence.attackSpeed
 		fighter.heading = fighter._attackHeading
+		if offence.attackTick then offence.attackTick(api, state, fighter, dt) end
 	elseif fighter.phase == "Recover" then
 		targetX, targetY = fighter._recoverX, fighter._recoverY
 		speed, turnRate = 30, 3.5
@@ -286,6 +304,8 @@ local function prepare(state, fighter, opponent, dt)
 	end
 	targetX, targetY = wantX or targetX, wantY or targetY
 	speed, turnRate = wantSpeed or speed, wantTurn or turnRate
+	if fighter.secondWind then speed, turnRate = speed * 1.12, turnRate * 1.2 end
+	turnRate = math.min(turnRate, BattleSimulation.MAX_TURN_RATE)
 	if fighter.phase ~= "Attack" then
 		-- Looking ahead turns the plane away from the visible edge before impact.
 		local lookX = fighter.x + math.cos(fighter.heading) * speed * 0.45
@@ -321,6 +341,7 @@ local function damage(state, actorId, targetId, x, y, dirX, dirY, source, skillI
 	actor.hits = actor.hits + 1
 	actor._attackHit = true
 	event(state, source == "wake" and "wake_hit" or "hit", x, y, actorId, targetId, source, skillId)
+	wild(target, "damaged", state, target)
 	return true
 end
 
@@ -335,12 +356,35 @@ local function tick(state)
 	end
 	-- Both plans read the same pre-tick snapshot, avoiding first-player bias.
 	for id, fighter in ipairs(state.fighters) do prepare(state, fighter, previous[3 - id], dt) end
+	-- One symmetric bounded pull regardless of whether one or both magnets are
+	-- active. It cannot overwhelm even the slowest attack thrust, and never
+	-- touches projectiles or wakes. Cap final velocity after knockback and pull.
+	local pulling = (state.fighters[1].magnetLeft or 0) > 0 or (state.fighters[2].magnetLeft or 0) > 0
+	for id, fighter in ipairs(state.fighters) do
+		if pulling then
+			local opponent = previous[3 - id]
+			local nx, ny = direction(opponent.x - fighter.x, opponent.y - fighter.y)
+			fighter.vx, fighter.vy = fighter.vx + nx * BattleSimulation.MAGNET_SPEED, fighter.vy + ny * BattleSimulation.MAGNET_SPEED
+		end
+		local magnitude = math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2)
+		if magnitude > BattleSimulation.MAX_TOTAL_SPEED then
+			fighter.vx, fighter.vy = fighter.vx * BattleSimulation.MAX_TOTAL_SPEED / magnitude, fighter.vy * BattleSimulation.MAX_TOTAL_SPEED / magnitude
+		end
+	end
 	local edgeHit = {}
 	for id, fighter in ipairs(state.fighters) do
 		local x, y = fighter.x + fighter.vx * dt, fighter.y + fighter.vy * dt
 		fighter.x = clamp(x, state.bounds.left, state.bounds.right)
 		fighter.y = clamp(y, state.bounds.bottom, state.bounds.top)
 		edgeHit[id] = x ~= fighter.x or y ~= fighter.y
+		if edgeHit[id] and fighter.phase == "Windup" and Skills.offence[fighter.offenceId].wallRam then
+			local dx, dy = math.cos(fighter.heading), math.sin(fighter.heading)
+			if x ~= fighter.x then dx = -dx end
+			if y ~= fighter.y then dy = -dy end
+			fighter.heading = atan2(dy, dx)
+			beginAttack(state, fighter, previous[3 - id])
+			edgeHit[id] = false
+		end
 		wild(fighter, "moved", state, fighter, dt)
 	end
 
@@ -388,8 +432,31 @@ local function tick(state)
 			old.x, old.y, target.x, target.y, target.radius + (projectile.radius or 3.5))
 		if hit then
 			local nx, ny = direction(projectile.vx, projectile.vy)
-			local successful, absorbed = damage(state, projectile.owner, targetId,
-				oldX + (projectile.x - oldX) * hit, oldY + (projectile.y - oldY) * hit, nx, ny, projectile.source or "rocket")
+			local successful, absorbed = false, false
+			local actor = state.fighters[projectile.owner]
+			if projectile.source == "machinegun" then
+				if projectile.burstId == actor.attacks and not actor.burstCancelled and not actor._burstDamaged then
+					-- Protection cancels this burst without spending a bumper. A
+					-- bumper cancels the WHOLE burst on its first tracer contact.
+					if target.invulnerable > 0 then actor.burstCancelled = true
+					elseif target.bumperReady then
+						absorbed = Skills.wild.SpringBumper.hit(api, state, target, actor, projectile.x, projectile.y, nx, ny, "machinegun")
+						actor.burstCancelled = true
+					else
+						actor.burstConnections = actor.burstConnections + 1
+						local spark = event(state, "tracer_hit", projectile.x, projectile.y, actor.id, targetId, "machinegun", "MachineGun")
+						spark.connections, spark.threshold = actor.burstConnections, 3
+						target._knockX, target._knockY = nx * 2, ny * 2
+						if actor.burstConnections >= 3 then
+							successful, absorbed = damage(state, actor.id, targetId, projectile.x, projectile.y, nx, ny, "machinegun", "MachineGun")
+							actor._burstDamaged = successful
+						end
+					end
+				end
+			else
+				successful, absorbed = damage(state, projectile.owner, targetId,
+					oldX + (projectile.x - oldX) * hit, oldY + (projectile.y - oldY) * hit, nx, ny, projectile.source or "rocket")
+			end
 			if successful then landed[projectile.owner] = true end
 			if successful or absorbed then resolved[projectile.owner] = true end
 			-- Impact protection absorbs subsequent projectiles visibly at contact;

@@ -7,10 +7,12 @@ local SkillCatalog = {}
 SkillCatalog.KINDS = { "offence", "wild" }
 SkillCatalog.MAX_WILD = 2
 SkillCatalog.DEFAULT_OFFENCE = "Meteor"
+SkillCatalog.ROSTER_VERSION = "sky-battle-public-v1"
+SkillCatalog.CONTRACT_VERSION = "sky-battle-combat-v1"
 
 -- Order is display order. `starter` skills are owned from the first fight.
 -- Rarity says how strange a skill is, never how strong.
-local order = { "Meteor", "Firework", "Afterburner", "SpringBumper", "FizzyFuel" }
+local order = { "Meteor", "Firework", "MachineGun", "Pinball", "Afterburner", "SpringBumper", "FizzyFuel", "Magnet", "SecondWind" }
 local skills = {
 	Meteor = { id = "Meteor", kind = "offence", name = "Meteor", icon = "☄️", word = "BOOOM!",
 		promise = "Charge up, then dive-bomb your rival.",
@@ -20,15 +22,29 @@ local skills = {
 		promise = "Fire a big rocket on every pass.",
 		windupTell = "LOCKED ON", attackTell = "FIRE!",
 		color = { r = 160, g = 128, b = 255 }, starter = true, rarity = "common" },
+	MachineGun = { id = "MachineGun", kind = "offence", name = "Machine Gun", icon = "💥", word = "RAT-A-TAT!",
+		promise = "Land three tracers in a six-shot burst to break one armor.",
+		windupTell = "SPINNING UP", attackTell = "RAT-A-TAT!",
+		color = { r = 255, g = 220, b = 90 }, starter = true, rarity = "common" },
+	Pinball = { id = "Pinball", kind = "offence", name = "Pinball", icon = "↗️", word = "RICOCHET!",
+		promise = "Charge a rail, then rebound into a fast ram.",
+		windupTell = "BANKING...", attackTell = "RICOCHET!",
+		color = { r = 110, g = 220, b = 255 }, starter = true, rarity = "common" },
 	Afterburner = { id = "Afterburner", kind = "wild", name = "Afterburner", icon = "🔥", word = "ZOOM!",
 		promise = "Burst forward and turn tighter after attacking.",
 		color = { r = 255, g = 168, b = 66 }, starter = true, rarity = "common" },
 	SpringBumper = { id = "SpringBumper", kind = "wild", name = "Spring Bumper", icon = "🛡️", word = "BOING!",
-		promise = "Block the first hit and spring apart.",
+		promise = "Block the first hit, then take a longer recovery.",
 		color = { r = 196, g = 255, b = 91 }, starter = true, rarity = "common" },
 	FizzyFuel = { id = "FizzyFuel", kind = "wild", name = "Fizzy Fuel", icon = "🥤", word = "FIZZ!",
 		promise = "Leave a brief wake that damages rivals.",
 		color = { r = 96, g = 255, b = 214 }, starter = true, rarity = "common" },
+	Magnet = { id = "Magnet", kind = "wild", name = "Magnet", icon = "🧲", word = "PULL!",
+		promise = "Pull both planes together briefly after your attack.",
+		color = { r = 255, g = 120, b = 190 }, starter = true, rarity = "common" },
+	SecondWind = { id = "SecondWind", kind = "wild", name = "Second Wind", icon = "💨", word = "SECOND WIND!",
+		promise = "At your last armor, fly and recover faster for this round.",
+		color = { r = 130, g = 255, b = 190 }, starter = true, rarity = "common" },
 }
 
 function SkillCatalog.valid(id, kind)

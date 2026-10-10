@@ -254,5 +254,42 @@ return function(Audio)
         mix:setMuted(false); mix:update(snapshot("Fight",0.1,{event(1,"hit",0.1)}))
         assert(#calls==0 and mix.folder.destroyed==1 and next(mix.voices)==nil)
     end)
+    test("new skills have distinct lightweight cues and connection ticks do not break armor",function()
+        local mix,calls,attributes=fixture()
+        mix:update(snapshot("Fight",0,{}))
+        mix:update(snapshot("Fight",0.1,{event(1,"burst",0.1)}))
+        assert(attributes.LastEvent=="burst" and #calls==1)
+        mix:update(snapshot("Fight",0.2,{event(2,"tracer_hit",0.2)}))
+        assert(attributes.LastEvent=="tracer_hit" and #calls==2 and calls[2].name=="chime")
+        mix:update(snapshot("Fight",0.3,{event(3,"ricochet",0.3)}))
+        assert(attributes.LastEvent=="ricochet")
+        local magnet=event(4,"skill",0.4);magnet.skillId="Magnet"
+        mix:update(snapshot("Fight",0.4,{magnet}));assert(attributes.LastEvent=="magnet")
+        local wind=event(5,"skill",0.5);wind.skillId="SecondWind"
+        mix:update(snapshot("Fight",0.5,{wind}));assert(attributes.LastEvent=="secondwind")
+    end)
+    test("RoundOver and MatchOver use result crash eligibility and reset on next Pick",function()
+        local mix,calls=fixture()
+        mix:update(snapshot("Fight",0,{}))
+        local s=results(1,0,2);s.phase="RoundOver";mix:update(s)
+        assert(mix:playCrash(1,1),"RoundOver crash was silent")
+        mix:update(snapshot("Pick",0,{},2));assert(not mix:playCrash(1,1),"Old crash survived next draft")
+        mix:update(snapshot("Fight",0,{},2));s=results(2,2,0);s.phase="MatchOver";mix:update(s)
+        assert(mix:playCrash(2,2),"MatchOver crash was silent")
+    end)
+    test("quiet UI vocabulary suppresses duplicate action pulses and obeys mute",function()
+        local mix,calls,attributes=fixture();local shots={}
+        mix._shot=function(_,name,volume,pitch)shots[#shots+1]={name=name,volume=volume,pitch=pitch}end
+        mix:ui("select");local count=#shots;local voices=#calls
+        mix:ui("select");assert(#shots==count and #calls==voices,"Double helper/callback sound")
+        mix:ui("confirm");assert(attributes.LastUI=="confirm")
+        mix:ui("back");assert(attributes.LastUI=="back")
+        mix:ui("error");assert(shots[#shots].name=="beep")
+        mix:ui("purchase");assert(attributes.LastUI=="purchase")
+        for _,shot in ipairs(shots)do assert(shot.volume<=0.22,"UI louder than intended")end
+        mix:setMuted(true);count=#shots;voices=#calls;mix:ui("tap")
+        assert(#shots==count and #calls==voices,"Mute allowed UI sound")
+        mix:setMuted(false);mix:ui("tap");assert(#shots==count+1,"Unmute did not restore tap")
+    end)
     return tostring(passed).." battle-audio tests passed"
 end

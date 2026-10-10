@@ -89,9 +89,13 @@ local function flowRibbons(set, pose, scale, color, second, width, length, clock
 end
 
 local function nextUnlock(economy)
+    if shared:GetAttribute("DistanceModeEnabled") ~= true and economy.goal then
+        local goal=Catalog.get(economy.goal.id)
+        if goal and not economy.owned[goal.id] then return goal end
+    end
 	for _, id in ipairs(Catalog.ORDER) do
 		local item = Catalog.get(id)
-		if item.price > 0 and not economy.owned[id] then return item end
+		if item.price > 0 and not item.earnedOnly and not economy.owned[id] then return item end
 	end
 	return nil
 end
@@ -158,7 +162,7 @@ function Bay:_updateHero(snapshot, settings, dt)
 		local best = snapshot.stats and tonumber(snapshot.stats.bestDistance) or 0
 		hero.record.Text = best > 0 and string.format("YOUR BEST  %.1f M", best) or "FLY TO SET YOUR RECORD"
 	else
-		hero.record.Text = "READY FOR PLANE BATTLES"
+		hero.record.Text = snapshot.economy and snapshot.economy.progression and string.upper(snapshot.economy.progression.title).." · "..tostring(snapshot.economy.progression.matches).." MATCHES" or "READY FOR PLANE BATTLES"
 	end
 end
 

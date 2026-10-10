@@ -9,6 +9,11 @@ local PowerCatalog = require(ReplicatedStorage:WaitForChild("FlightGame"):WaitFo
 local CosmeticCatalog = require(ReplicatedStorage:WaitForChild("FlightGame"):WaitForChild("CosmeticCatalog"))
 local Simulation = require(ReplicatedStorage:WaitForChild("FlightGame"):WaitForChild("Simulation"))
 
+local FLIGHT_RECORD_FIELDS = { {"bestDistance", "FURTHEST FLIGHT"}, {"bestStreak", "BEST WIN STREAK"},
+	{"wins", "DUEL WINS"}, {"currentStreak", "CURRENT STREAK"}, {"totalFlights", "FLIGHTS FLOWN"}, {"practiceFlights", "PRACTICE FLIGHTS"} }
+local BATTLE_RECORD_FIELDS = { {"matches", "MATCHES COMPLETED"}, {"bestStreak", "BEST WIN STREAK"},
+	{"wins", "MATCH WINS"}, {"currentStreak", "CURRENT STREAK"}, {"losses", "MATCH LOSSES"}, {"draws", "MATCH DRAWS"} }
+
 local Hud = {}
 Hud.__index = Hud
 
@@ -1023,9 +1028,7 @@ function Hud:_makePersonalHud()
 	label(self.statsCard, "Title", "YOUR FLIGHT RECORD", 18, 13, 380, 30, 24, COLORS.white, true)
 	self.statsClose = button(self.statsCard, "Close", "X", 412, 8, 44, 44, COLORS.coral)
 	self.statsValues = {}
-	local fields = { {"bestDistance", "FURTHEST FLIGHT"}, {"bestStreak", "BEST WIN STREAK"},
-		{"wins", "DUEL WINS"}, {"currentStreak", "CURRENT STREAK"},
-		{"totalFlights", "FLIGHTS FLOWN"}, {"practiceFlights", "PRACTICE FLIGHTS"} }
+	local fields = FLIGHT_RECORD_FIELDS
 	self.statsCells = {}
 	for index, field in ipairs(fields) do
 		local cell = frame(self.statsCard, field[1], 16, 60, 210, 64, index <= 2 and COLORS.gold or COLORS.soft)
@@ -1709,11 +1712,25 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	self.soundButton.Size = inHub and self.hubSoundSize or UDim2.fromOffset(118, 44)
 	self.soundButton.TextSize = inHub and 18 or 14
 	local stats = snapshot.stats or {}
-	for key, value in pairs(self.statsValues) do
-		value.Text = key == "bestDistance" and distance(stats[key] or 0, true) or tostring(stats[key] or 0)
+	-- The default mode owns a separate match record. Read its authoritative
+	-- progression, never substitute the shelved distance counters if loading.
+	local distanceMode = ReplicatedStorage:WaitForChild("FlightGame"):GetAttribute("DistanceModeEnabled") == true
+	local record = distanceMode and stats or (snapshot.economy and snapshot.economy.progression or {})
+	local fields = distanceMode and FLIGHT_RECORD_FIELDS or BATTLE_RECORD_FIELDS
+	self.statsCard.Title.Text = distanceMode and "YOUR FLIGHT RECORD" or "YOUR BATTLE RECORD"
+	for index, field in ipairs(fields) do
+		local cell = self.statsCells[index]
+		cell.Caption.Text = field[2]
+		cell.Distance.Text = distanceMode and field[1] == "bestDistance" and distance(record[field[1]] or 0, true)
+			or tostring(record[field[1]] or 0)
 	end
-	self.statsRecord.Text = tostring(stats.wins or 0) .. " wins  ·  " .. tostring(stats.losses or 0) .. " losses  ·  " .. tostring(stats.draws or 0) .. " draws"
-	local saveCopy = { loading = "Loading your record…", saved = "Record saved. Practice doesn't affect win streaks.",
+	if distanceMode then
+		self.statsRecord.Text = tostring(record.wins or 0) .. " wins  ·  " .. tostring(record.losses or 0) .. " losses  ·  " .. tostring(record.draws or 0) .. " draws"
+	else
+		self.statsRecord.Text = string.upper(record.title or "New Pilot")
+			.. (record.nextTitleAt and (" · NEXT TITLE AT " .. tostring(record.nextTitleAt) .. (record.nextTitleAt == 1 and " MATCH" or " MATCHES")) or " · COSMETIC MASTERY")
+	end
+	local saveCopy = { loading = "Loading your record…", saved = distanceMode and "Record saved. Practice doesn't affect win streaks." or "Battle record saved · Mastery is cosmetic only.",
 		pending = "Saving your record…", session_only = "Session only · cloud saves start in the published game.",
 		unavailable = "Cloud save unavailable · this session may not be saved." }
 	self.statsSave.Text = saveCopy[snapshot.saveStatus] or "Loading your record…"

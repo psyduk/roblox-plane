@@ -23,6 +23,8 @@ def make_runtime(studio=True, published=False, distance_mode=None):
     L=LuaRuntime(unpack_returned_tuples=True)
     L.execute(r'''
     Harness={time=10,sent={},battleSent={},logs={},delays={}}
+    os.time=function()return 1000000+math.floor(Harness.time)end
+    os.clock=function()return Harness.time end
     math.clamp=function(v,lo,hi)return math.max(lo,math.min(hi,v))end
     math.round=function(v)return math.floor(v+0.5)end
     table.clone=function(t)local r={}for k,v in pairs(t)do r[k]=v end return r end
@@ -148,350 +150,163 @@ def make_runtime(studio=True, published=False, distance_mode=None):
     return L
 
 DEFAULT_SCENARIOS = {
-    "default PLAY enters a labelled battle and repeated PLAY cannot restart it": r'''
-        local a=Harness.add(101)
-        assert(script:GetAttribute('DistanceModeEnabled')==nil,'default fixture unexpectedly opted in')
-        assert(Harness.shared:GetAttribute('DistanceModeEnabled')==false and Harness.lobbyDistanceMode==false)
-        Harness.send(a,'play')
-        local first=Harness.battleLatest(a)
-        assert(first.active and first.phase=='Configure' and first.simulatedOpponent==true)
-        assert(Harness.latest(a).phase=='BattleLab' and Harness.latest(a).matchId==0 and Harness.latest(a).queue==nil)
-        Harness.advance(.1);Harness.send(a,'play')
-        assert(Harness.battleLatest(a).roundId==first.roundId)
-        Harness.battleSend(a,'launch');Harness.advance(2.7)
-        Harness.send(a,'play')
-        assert(Harness.battleLatest(a).phase=='Fight' and Harness.battleLatest(a).roundId==first.roundId)
-        Harness.advance(38);Harness.send(a,'play')
-        assert(Harness.battleLatest(a).phase=='Results' and Harness.battleLatest(a).roundId==first.roundId)
-        Harness.battleSend(a,'restart');Harness.advance(.1)
-        assert(Harness.battleLatest(a).phase=='Countdown' and Harness.battleLatest(a).roundId~=first.roundId)
+    'default PLAY queues then pairs human rivals with hidden offers': r'''
+        local a,b=Harness.add(101),Harness.add(102)
+        Harness.send(a,'play');assert(Harness.battleLatest(a).phase=='Searching')
+        Harness.send(b,'play');local sa,sb=Harness.battleLatest(a),Harness.battleLatest(b)
+        assert(sa.phase=='Pick' and sb.phase=='Pick' and sa.matchId==sb.matchId)
+        assert(sa.players[1].userId==101 and sb.players[1].userId==102 and not sa.simulatedOpponent)
+        assert(sa.settings[2].offenceId==nil and sa.offers==nil)
+        assert(a:GetAttribute('SkyboundFlying') and b:GetAttribute('SkyboundFlying'))
+        Harness.battleSend(a,'lock',{matchId=sa.matchId,stage=sa.stage,offerRevision=sa.offerRevision,slot=sa.slot,skillId=sa.offer[1]})
+        assert(Harness.battleLatest(b).settings[2].offenceId==nil)
+        Harness.battleSend(b,'lock',{matchId=sb.matchId,stage=sb.stage,offerRevision=sb.offerRevision,slot=sb.slot,skillId=sb.offer[1]});Harness.advance(2.6)
+        sa,sb=Harness.battleLatest(a),Harness.battleLatest(b)
+        assert(sa.phase=='Fight' and sb.phase=='Fight' and sa.simulation.seed==sb.simulation.seed)
+        assert(sa.simulation.fighters[1].settings.offenceId==sb.simulation.fighters[2].settings.offenceId)
+        assert(Harness.shared:GetAttribute('ActiveDuels')==0)
         Harness.battleSend(a,'exit');Harness.advance(.1)
-        assert(Harness.latest(a).phase=='Lobby' and not a.Character.HumanoidRootPart.Anchored)
-        Harness.send(a,'play')
-        assert(Harness.battleLatest(a).active and Harness.battleLatest(a).phase=='Configure')
-        assert(Harness.battleLatest(a).simulation.elapsed==0 and Harness.shared:GetAttribute('ActiveDuels')==0)
+        assert(Harness.latest(a).phase=='Lobby' and Harness.battleLatest(b).phase=='MatchOver')
+        assert(Harness.battleLatest(b).result.winner==1 and Harness.battleLatest(b).rivalGone)
+        Harness.battleSend(b,'exit');assert(not b.Character.HumanoidRootPart.Anchored)
     ''',
-    "default mode cannot start distance racing through pads practice or Studio pairing": r'''
-        local a,b=Harness.add(101),Harness.add(102)
-        Harness.move(a,1,1);Harness.move(b,1,2);Harness.advance(8)
-        assert(Harness.latest(a).phase=='Lobby' and Harness.latest(b).phase=='Lobby')
-        assert(Harness.latest(a).queue==nil and Harness.queueCounts==nil,'legacy pad scans still ran')
-        Harness.send(a,'practice');Harness.advance(.1)
-        Harness.debug('practice',{userId=b.UserId})
-        assert(Harness.debug('forcePair',{ids={a.UserId,b.UserId}})==nil)
-        Harness.debug('launch',{userId=a.UserId});Harness.advance(8)
-        for _,p in ipairs({a,b})do
-            local s=Harness.latest(p)
-            assert(s.phase=='Lobby' and s.matchId==0 and s.queue==nil)
-            assert(s.stats.totalFlights==0 and not p.Character.HumanoidRootPart.Anchored)
-        end
-        assert(Harness.shared:GetAttribute('ActiveDuels')==0 and Harness.board==nil,'legacy match or board update escaped the gate')
+    'default PLAY bot fallback timeout completes a bounded automatic match': r'''
+        local a=Harness.add(101)
+        Harness.send(a,'play');Harness.advance(8.1)
+        assert(Harness.battleLatest(a).phase=='Pick' and Harness.battleLatest(a).simulatedOpponent)
+        local first=Harness.battleLatest(a).matchId
+        Harness.send(a,'play');assert(Harness.battleLatest(a).matchId==first)
+        Harness.advance(240)
+        local result=Harness.battleLatest(a)
+        assert(result.phase=='MatchOver' and result.result and result.roundNumber<=5)
+        Harness.battleSend(a,'rematch',{matchId=first});Harness.advance(.1)
+        assert(Harness.battleLatest(a).phase=='Pick' and Harness.battleLatest(a).matchId~=first)
+        Harness.battleSend(a,'exit');assert(Harness.latest(a).phase=='Lobby' and not a.Character.HumanoidRootPart.Anchored)
     ''',
-    "default PLAY keeps two pilots in independent clearly simulated battles": r'''
+    'draft rejects bare and stale locks without silently choosing a replacement': r'''
         local a,b=Harness.add(101),Harness.add(102)
-        Harness.send(a,'play');Harness.send(b,'play')
-        local firstA,firstB=Harness.battleLatest(a),Harness.battleLatest(b)
-        assert(firstA.phase=='Configure' and firstB.phase=='Configure')
-        assert(firstA.simulatedOpponent==true and firstB.simulatedOpponent==true)
-        assert(firstA.roundId~=firstB.roundId)
-        Harness.battleSend(a,'configure',{settings={{offenceId='Firework',angle=10},{offenceId='Meteor',angle=55}}})
-        Harness.battleSend(a,'launch');Harness.advance(2.7)
+        Harness.send(a,'play');Harness.send(b,'play');local old=Harness.battleLatest(a)
+        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage})
+        assert(not Harness.battleLatest(a).locked[1] and Harness.battleLatest(a).selected==nil)
+        Harness.battleSend(a,'reroll',{matchId=old.matchId,stage=old.stage,offerRevision=old.offerRevision})
+        local fresh=Harness.battleLatest(a);assert(fresh.offerRevision==old.offerRevision+1)
+        local removed;for _,id in ipairs(old.offer)do if not table.find(fresh.offer,id)then removed=id end end
+        assert(removed);Harness.advance(.1)
+        Harness.battleSend(a,'pick',{matchId=old.matchId,stage=old.stage,slot=old.slot,skillId=removed,offerRevision=old.offerRevision})
+        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,slot=old.slot,skillId=removed,offerRevision=old.offerRevision})
+        assert(not Harness.battleLatest(a).locked[1] and Harness.battleLatest(a).selected==nil)
+        Harness.advance(.1)
+        Harness.battleSend(a,'lock',{matchId=fresh.matchId,stage=fresh.stage,slot=fresh.slot,skillId=fresh.offer[2],offerRevision=fresh.offerRevision})
+        local sb=Harness.battleLatest(b)
+        Harness.battleSend(b,'lock',{matchId=sb.matchId,stage=sb.stage,slot=sb.slot,skillId=sb.offer[1],offerRevision=sb.offerRevision})
+        assert(Harness.battleLatest(a).phase=='Countdown' and Harness.battleLatest(a).settings[1].offenceId==fresh.offer[2])
+    ''',
+    'default queue cancellation and disconnect restore controls and allow a new match': r'''
+        local a,b=Harness.add(101),Harness.add(102)
+        Harness.send(a,'play');Harness.battleSend(a,'exit');Harness.advance(9)
+        assert(not Harness.battleLatest(a).active and Harness.latest(a).phase=='Lobby')
+        Harness.send(a,'play');Harness.send(b,'play');Harness.advance(.1)
+        Harness.remove(a);assert(Harness.battleLatest(b).phase=='MatchOver' and Harness.battleLatest(b).rivalGone)
+        Harness.battleSend(b,'again',{matchId=Harness.battleLatest(b).matchId});Harness.advance(8.1)
+        assert(Harness.battleLatest(b).phase=='Pick' and Harness.battleLatest(b).simulatedOpponent)
+    ''',
+    'default mode cannot start distance racing through pads practice or Studio pairing': r'''
+        local a,b=Harness.add(101),Harness.add(102)
+                Harness.move(a,1,1);Harness.move(b,1,2);Harness.advance(8)
+                assert(Harness.latest(a).phase=='Lobby' and Harness.latest(b).phase=='Lobby')
+                assert(Harness.latest(a).queue==nil and Harness.queueCounts==nil,'legacy pad scans still ran')
+                Harness.send(a,'practice');Harness.advance(.1)
+                Harness.debug('practice',{userId=b.UserId})
+                assert(Harness.debug('forcePair',{ids={a.UserId,b.UserId}})==nil)
+                Harness.debug('launch',{userId=a.UserId});Harness.advance(8)
+                for _,p in ipairs({a,b})do
+                    local s=Harness.latest(p)
+                    assert(s.phase=='Lobby' and s.matchId==0 and s.queue==nil)
+                    assert(s.stats.totalFlights==0 and not p.Character.HumanoidRootPart.Anchored)
+                end
+                assert(Harness.shared:GetAttribute('ActiveDuels')==0 and Harness.board==nil,'legacy match or board update escaped the gate')
+    ''',
+    'default battle routing retains lobby appearance configuration and cosmetics': r'''
+        local a=Harness.add(101)
+                assert(Harness.latest(a).economy.canShop)
+                Harness.send(a,'configure',{settings={planeId='dart',angle=30,gadget='Boost',color=4}})
+                Harness.send(a,'equipCosmetic',{itemId='classic'})
+                local configured=Harness.latest(a)
+                assert(configured.players[1].settings.planeId=='dart' and configured.players[1].settings.color==4)
+                assert(configured.cosmeticFeedback.ok and a:GetAttribute('SkyboundPlane')=='dart')
+                local bay=a:GetAttribute('SkyboundBay')
+                Harness.send(a,'play');Harness.advance(.1)
+                assert(not Harness.latest(a).economy.canShop and a:GetAttribute('SkyboundFlying')==true)
+                Harness.battleSend(a,'exit');Harness.advance(.1)
+                local returned=Harness.latest(a)
+                assert(returned.economy.canShop and a:GetAttribute('SkyboundFlying')==false)
+                assert(a:GetAttribute('SkyboundBay')==bay and a:GetAttribute('SkyboundPlane')=='dart')
+                assert(returned.players[1].settings.color==4 and returned.economy.equippedTrail=='classic')
+    ''',
+    "human terminal awards both perspectives once and first choice never blocks rematch": r'''
+        local a,b=Harness.add(101),Harness.add(102)
+        Harness.send(a,'play');Harness.send(b,'play');Harness.advance(240.2)
+        local sa,sb=Harness.battleLatest(a),Harness.battleLatest(b)
+        assert(sa.phase=='MatchOver' and sb.phase=='MatchOver')
+        assert(sa.reward.eligible and sb.reward.eligible and sa.reward.coins==(sa.result.winner==1 and 75 or 50))
+        assert(sb.reward.coins==(sb.result.winner==1 and 75 or 50))
+        assert(sa.economy.progression.matches==1 and sb.economy.progression.matches==1)
+        assert(sa.reward.status=='session_only' and not sa.reward.confirmed)
+        local coins=sa.economy.credits
+        for i=1,3 do Harness.battleSend(a,'request',{matchId=sa.matchId});Harness.advance(.1)end
+        assert(Harness.battleLatest(a).economy.credits==coins)
+        Harness.send(a,'claimStarter',{itemId='rookieblue'});Harness.advance(.3)
+        assert(Harness.battleLatest(a).economy.owned.rookieblue and a:GetAttribute('SkyboundTrail')=='rookieblue')
+        Harness.send(a,'claimStarter',{itemId='rookiecoral'});Harness.advance(.3)
+        assert(not Harness.battleLatest(a).economy.owned.rookiecoral)
+        Harness.battleSend(a,'rematch',{matchId=sa.matchId});Harness.battleSend(b,'rematch',{matchId=sb.matchId})
+        Harness.advance(.2);local retry=Harness.battleLatest(a)
+        assert(retry.phase=='Pick' and retry.matchId~=sa.matchId and retry.players[1].trailId=='rookieblue')
+        assert(retry.resources.reroll==1 and retry.economy.credits==coins and not retry.economy.progression.starterAvailable)
+    ''',
+    "bot completed award purchases and equips in results while fight mutations are blocked": r'''
+        local a=Harness.add(101);Harness.send(a,'play');Harness.advance(248.2)
+        local result=Harness.battleLatest(a)
+        assert(result.phase=='MatchOver' and result.reward.eligible and result.economy.progression.matches==1)
+        local balance=result.economy.credits
+        Harness.send(a,'buyCosmetic',{itemId='skyblue'});Harness.advance(.3)
+        assert(Harness.battleLatest(a).economy.credits==balance-40 and Harness.battleLatest(a).economy.owned.skyblue)
+        Harness.send(a,'buyCosmetic',{itemId='skyblue'});Harness.advance(.3)
+        assert(Harness.battleLatest(a).economy.credits==balance-40)
+        Harness.send(a,'equipCosmetic',{itemId='skyblue'});Harness.advance(.3)
+        assert(a:GetAttribute('SkyboundTrail')=='skyblue')
+        Harness.battleSend(a,'rematch',{matchId=result.matchId});Harness.advance(.2)
+        local draft=Harness.battleLatest(a)
+        Harness.battleSend(a,'lock',{matchId=draft.matchId,stage=draft.stage,offerRevision=draft.offerRevision,slot=draft.slot,skillId=draft.offer[1]});Harness.advance(2.6)
         assert(Harness.battleLatest(a).phase=='Fight')
-        assert(Harness.battleLatest(b).phase=='Configure' and Harness.battleLatest(b).settings[1].offenceId=='Meteor')
-        Harness.advance(38)
-        assert(Harness.battleLatest(a).phase=='Results' and Harness.battleLatest(b).simulation.elapsed==0)
-        Harness.battleSend(a,'exit');Harness.advance(.1)
-        assert(Harness.latest(a).phase=='Lobby' and Harness.latest(b).phase=='BattleLab')
-        assert(Harness.battleLatest(b).active and Harness.shared:GetAttribute('ActiveDuels')==0)
+        Harness.send(a,'claimStarter',{itemId='rookiecoral'});Harness.send(a,'selectGoal',{itemId='sunset'})
+        Harness.send(a,'equipCosmetic',{itemId='classic'});Harness.advance(.3)
+        local fighting=Harness.battleLatest(a)
+        assert(fighting.economy.progression.starterAvailable and not fighting.economy.owned.rookiecoral)
+        assert(fighting.economy.progression.goalId=='aurora' and a:GetAttribute('SkyboundTrail')=='skyblue')
     ''',
-    "default battle routing retains lobby appearance configuration and cosmetics": r'''
-        local a=Harness.add(101)
-        assert(Harness.latest(a).economy.canShop)
-        Harness.send(a,'configure',{settings={planeId='dart',angle=30,gadget='Boost',color=4}})
-        Harness.send(a,'equipCosmetic',{itemId='classic'})
-        local configured=Harness.latest(a)
-        assert(configured.players[1].settings.planeId=='dart' and configured.players[1].settings.color==4)
-        assert(configured.cosmeticFeedback.ok and a:GetAttribute('SkyboundPlane')=='dart')
-        local bay=a:GetAttribute('SkyboundBay')
-        Harness.send(a,'play');Harness.advance(.1)
-        assert(not Harness.latest(a).economy.canShop and a:GetAttribute('SkyboundFlying')==true)
-        Harness.battleSend(a,'exit');Harness.advance(.1)
-        local returned=Harness.latest(a)
-        assert(returned.economy.canShop and a:GetAttribute('SkyboundFlying')==false)
-        assert(a:GetAttribute('SkyboundBay')==bay and a:GetAttribute('SkyboundPlane')=='dart')
-        assert(returned.players[1].settings.color==4 and returned.economy.equippedTrail=='classic')
+    "instant departure gives neither account coins and same-server challenge plays normally": r'''
+        local a,b=Harness.add(101),Harness.add(102)
+        Harness.battleSend(a,'challenge',{targetUserId=102})
+        local invite=Harness.battleLatest(b).challenge
+        assert(invite.direction=='incoming' and not a.Character.HumanoidRootPart.Anchored)
+        Harness.battleSend(b,'challengeAccept',{inviteId=invite.inviteId})
+        local match=Harness.battleLatest(a);assert(match.phase=='Pick' and match.mode=='challenge')
+        Harness.battleSend(a,'exit',{matchId=match.matchId});Harness.advance(.2)
+        assert(Harness.latest(a).economy.credits==0 and Harness.battleLatest(b).reward.coins==0)
+        assert(not Harness.battleLatest(b).reward.eligible)
+        Harness.battleSend(b,'exit');Harness.advance(3.1)
+        Harness.battleSend(a,'challenge',{targetUserId=102});invite=Harness.battleLatest(b).challenge
+        Harness.battleSend(b,'challengeAccept',{inviteId=invite.inviteId});Harness.advance(240.2)
+        assert(Harness.battleLatest(a).phase=='MatchOver' and Harness.battleLatest(a).reward.eligible)
+        assert(Harness.battleLatest(b).economy.progression.matches==1)
     ''',
+
 }
 
 # These scenarios deliberately opt into the preserved distance mode. The
 # default-mode suite above never sets the Script attribute at all.
 SCENARIOS = {
-    "Battle Lab launch commits visible settings after a throttled setup burst": r'''
-        local a=Harness.add(101)
-        Harness.battleSend(a,'enter');Harness.advance(1)
-        local function payload(angle,id)
-            return {settings={{offenceId='Meteor',angle=angle,wildIds={id or 'Afterburner'}},{offenceId='Firework',angle=30,wildIds={'SpringBumper'}}}}
-        end
-        for _,angle in ipairs({15,20,25,30,35})do Harness.battleSend(a,'configure',payload(angle))end
-        assert(Harness.battleLatest(a).settings[1].angle==30,'burst did not reach throttle')
-        Harness.advance(.1)
-        Harness.battleSend(a,'launch',payload(35,'BadEffect'));Harness.advance(.1)
-        assert(Harness.battleLatest(a).phase=='Configure','invalid launch settings accepted')
-        Harness.battleSend(a,'launch',payload(35));Harness.advance(.1)
-        local s=Harness.battleLatest(a)
-        assert(s.phase=='Countdown' and s.settings[1].angle==35 and s.settings[1].wildIds[1]=='Afterburner')
-        assert(s.simulation.fighters[1].settings.angle==35 and s.simulation.fighters[2].bumperReady)
-    ''',
-    "Battle Lab validates a build of one offence and up to two wild cards and locks it through a battle": r'''
-        local a=Harness.add(101)
-        Harness.battleSend(a,'enter');Harness.advance(.1)
-        local function setup(wild,offence)
-            return {settings={{offenceId=offence or 'Meteor',angle=35,wildIds=wild},{offenceId='Firework',angle=30,wildIds={'SpringBumper'}}}}
-        end
-        local function same(list,expected)
-            if #list~=#expected then return false end
-            for i,id in ipairs(expected)do if list[i]~=id then return false end end
-            return true
-        end
-        for _,wild in ipairs({{},{'Afterburner'},{'SpringBumper'},{'FizzyFuel'},{'SpringBumper','Afterburner'},{'FizzyFuel','SpringBumper'}})do
-            Harness.battleSend(a,'configure',setup(wild));Harness.advance(.1)
-            local s=Harness.battleLatest(a)
-            assert(same(s.settings[1].wildIds,wild),'accepted build was changed')
-            local sorted={};for i,id in ipairs(wild)do sorted[i]=id end;table.sort(sorted)
-            assert(same(s.simulation.fighters[1].wildIds,sorted),'fight did not receive the build')
-        end
-        Harness.battleSend(a,'configure',{settings={{offenceId='Firework',angle=35},{offenceId='Meteor',angle=30}}});Harness.advance(.1)
-        assert(#Harness.battleLatest(a).settings[1].wildIds==0,'a build with no wild cards was refused')
-        local round=Harness.battleLatest(a).roundId
-        local refused={
-            unknown={'unknown'},wrongKind={'Firework'},three={'Afterburner','SpringBumper','FizzyFuel'},
-            duplicate={'Afterburner','Afterburner'},text='Afterburner',number=999,flag=false,
-            nested={{'Afterburner'}},keyed={first='Afterburner'},
-        }
-        for name,wild in pairs(refused)do
-            Harness.battleSend(a,'configure',setup(wild));Harness.advance(.1)
-            assert(Harness.battleLatest(a).roundId==round,'invalid wild cards accepted: '..name)
-        end
-        for _,offence in ipairs({'unknown','Afterburner',false,7,{'Meteor'}})do
-            local bad=setup({});bad.settings[1].offenceId=offence
-            Harness.battleSend(a,'configure',bad);Harness.advance(.1)
-            assert(Harness.battleLatest(a).roundId==round,'invalid offence accepted')
-        end
-        local missing=setup({});missing.settings[1].offenceId=nil
-        Harness.battleSend(a,'configure',missing);Harness.advance(.1)
-        assert(Harness.battleLatest(a).roundId==round,'missing offence accepted')
-        Harness.battleSend(a,'configure',{settings={{powerId='Meteor',modifierId='Afterburner',angle=35},{offenceId='Firework',angle=30}}});Harness.advance(.1)
-        assert(Harness.battleLatest(a).roundId==round,'old power and modifier format accepted')
-        Harness.battleSend(a,'configure',setup({'FizzyFuel','SpringBumper'}));Harness.advance(.1)
-        Harness.battleSend(a,'launch');Harness.advance(.1)
-        Harness.battleSend(a,'configure',setup({'Afterburner'}));Harness.advance(2.6)
-        assert(same(Harness.battleLatest(a).settings[1].wildIds,{'FizzyFuel','SpringBumper'}))
-        Harness.battleSend(a,'configure',setup({}));Harness.advance(38)
-        assert(Harness.battleLatest(a).phase=='Results')
-        Harness.battleSend(a,'restart',{edit=true});Harness.advance(.1)
-        local reset=Harness.battleLatest(a)
-        assert(reset.phase=='Configure' and #reset.simulation.wakes==0)
-        assert(reset.simulation.fighters[2].bumperReady and reset.simulation.fighters[1].bumperReady)
-        assert(reset.simulation.fighters[1].boostLeft==0)
-        assert(same(reset.settings[1].wildIds,{'FizzyFuel','SpringBumper'}))
-        Harness.battleSend(a,'exit');Harness.advance(.1);Harness.battleSend(a,'enter');Harness.advance(.1)
-        assert(#Harness.battleLatest(a).settings[1].wildIds==0)
-    ''',
-    "Battle Lab accepts a bounded ordered burst after network delay": r'''
-        local a=Harness.add(101)
-        Harness.battleSend(a,'enter')
-        Harness.battleSend(a,'configure',{settings={{offenceId='Firework',angle=50},{offenceId='Meteor',angle=15}}})
-        Harness.battleSend(a,'launch')
-        local s=Harness.battleLatest(a)
-        assert(s.phase=='Countdown' and s.settings[1].angle==50 and s.settings[1].offenceId=='Firework')
-        for i=1,100 do Harness.battleSend(a,'request') end
-        Harness.advance(2.6)
-        assert(Harness.battleLatest(a).phase=='Fight')
-    ''',
-    "Battle Lab entry cannot overlap queue membership or any flight match phase": r'''
-        local a=Harness.add(101)
-        Harness.move(a,1,1);Harness.advance(0.3)
-        Harness.battleSend(a,'enter');Harness.advance(0.1)
-        assert(not Harness.battleLatest(a).active and Harness.latest(a).phase=='Queued')
-        assert(Harness.queueCounts.duel1==1)
-        Harness.send(a,'leaveQueue');Harness.advance(0.3)
-        Harness.battleSend(a,'enter');Harness.advance(0.1)
-        assert(Harness.battleLatest(a).active and Harness.battleLatest(a).phase=='Configure')
-        Harness.battleSend(a,'exit');Harness.advance(0.1)
-        for _,phase in ipairs({'Voting','Configure','Aim','Countdown','Flight','Results'})do
-            Harness.send(a,'practice')
-            if phase~='Voting'then Harness.debug('configure',{userId=a.UserId})end
-            if phase=='Aim' or phase=='Countdown'then Harness.debug('aim',{userId=a.UserId})end
-            if phase=='Countdown'then Harness.send(a,'ready',{ready=true});Harness.advance(1.2)end
-            if phase=='Flight' or phase=='Results'then Harness.debug('launch',{userId=a.UserId})end
-            if phase=='Results'then Harness.advance(46)end
-            local matchId=Harness.latest(a).matchId
-            assert(Harness.latest(a).phase==phase)
-            Harness.battleSend(a,'enter');Harness.advance(0.1)
-            assert(not Harness.battleLatest(a).active)
-            assert(Harness.latest(a).phase==phase and Harness.latest(a).matchId==matchId)
-            Harness.send(a,'returnLobby');Harness.advance(0.3)
-        end
-    ''',
-    "PLAY then Battle Lab in one frame preserves the quick search until explicit cancel": r'''
-        local a=Harness.add(101)
-        Harness.send(a,'play')
-        local search=Harness.latest(a)
-        assert(search.phase=='Queued' and search.queue.quick)
-        Harness.battleSend(a,'enter')
-        assert(not Harness.battleLatest(a).active,'quick-search pilot entered Battle Lab')
-        assert(Harness.latest(a).queue.quick and Harness.latest(a).queue.fallbackAt==search.queue.fallbackAt)
-        assert(not a.Character.HumanoidRootPart.Anchored)
-        Harness.send(a,'leaveQueue')
-        Harness.battleSend(a,'enter')
-        assert(Harness.battleLatest(a).active and Harness.latest(a).phase=='BattleLab')
-        assert(Harness.latest(a).queue==nil)
-        Harness.advance(7)
-        assert(Harness.battleLatest(a).phase=='Configure' and Harness.latest(a).matchId==0)
-        assert(Harness.shared:GetAttribute('ActiveDuels')==0,'cancelled search left a ghost fallback behind')
-    ''',
-    "Battle Lab then PLAY in one frame cannot reserve a rival or ghost match": r'''
-        local a,b=Harness.add(101),Harness.add(102)
-        Harness.battleSend(a,'enter')
-        Harness.send(a,'play')
-        assert(Harness.battleLatest(a).active and Harness.latest(a).queue==nil)
-        assert(Harness.latest(a).phase=='BattleLab' and Harness.latest(a).matchId==0)
-        Harness.battleSend(a,'launch')
-        Harness.send(b,'play');Harness.advance(0.3)
-        assert(Harness.latest(b).phase=='Queued' and Harness.latest(b).queue.quick)
-        Harness.advance(6.3)
-        local rival=Harness.latest(b)
-        assert(rival.phase=='Voting' and #rival.players==2 and rival.players[2].bot)
-        assert(rival.players[1].userId==b.UserId,'lab pilot was reserved by quick matchmaking')
-        assert(Harness.battleLatest(a).phase=='Fight' and Harness.latest(a).matchId==0)
-        assert(Harness.shared:GetAttribute('ActiveDuels')==1)
-    ''',
-    "Battle Lab keeps the hangar appearance and bay through respawn and exit": r'''
-        local a,b=Harness.add(101),Harness.add(102)
-        Harness.send(a,'configure',{settings={planeId='dart',angle=30,gadget='Boost',color=4}})
-        local before=Harness.latest(a)
-        local look={}
-        for _,key in ipairs({'SkyboundPlane','SkyboundColor','SkyboundTrail','SkyboundBay'})do look[key]=a:GetAttribute(key)end
-        assert(look.SkyboundBay>0 and look.SkyboundBay~=b:GetAttribute('SkyboundBay'))
-        assert(a:GetAttribute('SkyboundFlying')==false)
-        Harness.battleSend(a,'enter')
-        assert(a:GetAttribute('SkyboundFlying')==true and a.Character.HumanoidRootPart.Anchored)
-        assert(not Harness.latest(a).economy.canShop)
-        Harness.battleSend(a,'configure',{settings={{offenceId='Firework',angle=10,wildIds={'FizzyFuel'}},{offenceId='Meteor',angle=55}}})
-        a.Character.HumanoidRootPart.Anchored=false
-        a.CharacterAdded:Fire(a.Character)
-        assert(a.Character.HumanoidRootPart.Anchored,'respawn escaped active lab isolation')
-        local c=Harness.add(103)
-        assert(c:GetAttribute('SkyboundBay')~=look.SkyboundBay,'active lab released an occupied hangar bay')
-        Harness.battleSend(a,'exit');Harness.advance(0.1)
-        local after=Harness.latest(a)
-        assert(after.phase=='Lobby' and after.economy.canShop)
-        assert(a:GetAttribute('SkyboundFlying')==false and not a.Character.HumanoidRootPart.Anchored)
-        for key,value in pairs(look)do assert(a:GetAttribute(key)==value,'lab changed hangar appearance '..key)end
-        for key,value in pairs(before.players[1].settings)do
-            assert(after.players[1].settings[key]==value,'lab changed flight setting '..key)
-        end
-    ''',
-    "Battle Lab blocks flight commands pad pairing cosmetics and race rewards": r'''
-        local a,b=Harness.add(101),Harness.add(102)
-        local before=Harness.latest(a)
-        Harness.battleSend(a,'enter');Harness.advance(0.1)
-        assert(Harness.battleLatest(a).simulatedOpponent==true)
-        Harness.move(a,1,1);Harness.move(b,1,2);Harness.advance(0.3)
-        assert(Harness.queueCounts.duel1==1 and Harness.latest(b).phase=='Queued')
-        for _,kind in ipairs({'practice','configure','ready','vote','rematch','returnLobby','buyCosmetic','equipCosmetic'})do
-            Harness.send(a,kind,{settings={planeId='dart',angle=55,gadget='Boost',color=4},ready=true,variant='Storm',itemId='skyblue'})
-            Harness.advance(0.1)
-            assert(Harness.battleLatest(a).active and Harness.battleLatest(a).phase=='Configure')
-            assert(Harness.shared:GetAttribute('ActiveDuels')==0)
-        end
-        Harness.battleSend(a,'launch');Harness.advance(38)
-        assert(Harness.battleLatest(a).phase=='Results' and Harness.battleLatest(a).simulation.finished)
-        assert(Harness.latest(b).phase=='Queued' and Harness.shared:GetAttribute('ActiveDuels')==0)
-        Harness.battleSend(a,'exit');Harness.advance(0.3)
-        local after=Harness.latest(a)
-        assert(not Harness.battleLatest(a).active and after.phase=='Lobby')
-        assert(after.players[1].settings.planeId==before.players[1].settings.planeId)
-        assert(after.economy.credits==before.economy.credits and not after.economy.owned.skyblue)
-        assert(after.economy.equippedTrail==before.economy.equippedTrail)
-        for key,value in pairs(before.stats)do assert(after.stats[key]==value,'Battle Lab changed flight stat '..key)end
-        assert(not a.Character.HumanoidRootPart.Anchored)
-    ''',
-    "Battle Lab rejects malformed settings and locks configuration during countdown and fight": r'''
-        local a=Harness.add(101)
-        Harness.battleSend(a,'enter');Harness.advance(0.1)
-        local initial=Harness.battleLatest(a)
-        for _,payload in ipairs({false,12,'launch',{}, {kind=false},{kind='unknown'}})do
-            Harness.shared.BattleCommand.OnServerEvent:Fire(a,payload);Harness.advance(0.06)
-            assert(Harness.battleLatest(a).roundId==initial.roundId)
-        end
-        for _,settings in ipairs({
-            false,12,'Meteor',{},{{offenceId='Meteor',angle=35}},
-            {{offenceId='Unknown',angle=35},{offenceId='Firework',angle=30}},
-            {{offenceId='Meteor',angle=0/0},{offenceId='Firework',angle=30}},
-            {{offenceId='Meteor',angle=math.huge},{offenceId='Firework',angle=30}},
-            {{offenceId='Meteor',angle=35},{offenceId='Firework',angle='30'}}
-        })do
-            Harness.battleSend(a,'configure',{settings=settings});Harness.advance(0.06)
-            local s=Harness.battleLatest(a)
-            assert(s.roundId==initial.roundId and s.phase=='Configure')
-            assert(s.settings[1].offenceId=='Meteor' and s.settings[2].offenceId=='Firework')
-        end
-        Harness.battleSend(a,'configure',{settings={{offenceId='Firework',angle=-500,armor=999},{offenceId='Meteor',angle=500}},winner=1})
-        Harness.advance(0.1)
-        local configured=Harness.battleLatest(a)
-        assert(configured.settings[1].angle==10 and configured.settings[2].angle==55)
-        assert(configured.settings[1].armor==nil and configured.simulation.fighters[1].armor==3)
-        Harness.battleSend(a,'launch');Harness.advance(0.1)
-        for _,phase in ipairs({'Countdown','Fight'})do
-            if phase=='Fight'then Harness.advance(2.5)end
-            assert(Harness.battleLatest(a).phase==phase)
-            Harness.battleSend(a,'configure',{settings={{offenceId='Meteor',angle=35},{offenceId='Firework',angle=30}}})
-            Harness.advance(0.1)
-            Harness.battleSend(a,'restart',{edit=true});Harness.advance(0.1)
-            local s=Harness.battleLatest(a)
-            assert(s.phase==phase and s.roundId==configured.roundId)
-            assert(s.settings[1].offenceId=='Firework' and s.settings[2].offenceId=='Meteor')
-            assert(s.settings[1].angle==10 and s.settings[2].angle==55)
-        end
-    ''',
-    "Battle Lab retries reset combat and exit or disconnect cleans independent sessions": r'''
-        local a,b=Harness.add(101),Harness.add(102)
-        Harness.battleSend(a,'enter');Harness.battleSend(b,'enter');Harness.advance(0.1)
-        Harness.battleSend(a,'launch');Harness.advance(38)
-        local ended=Harness.battleLatest(a)
-        assert(ended.phase=='Results' and ended.simulation.finished)
-        assert(Harness.battleLatest(b).phase=='Configure')
-        Harness.battleSend(a,'restart');Harness.advance(0.1)
-        local retry=Harness.battleLatest(a)
-        assert(retry.phase=='Countdown' and retry.roundId~=ended.roundId)
-        assert(retry.simulation.elapsed==0 and not retry.simulation.finished and retry.simulation.winner==nil)
-        assert(#retry.simulation.projectiles==0)
-        for _,fighter in ipairs(retry.simulation.fighters)do
-            assert(fighter.armor==3 and fighter.attacks==0 and fighter.hits==0 and fighter.invulnerable==0)
-        end
-        assert(retry.settings[1].offenceId==ended.settings[1].offenceId)
-        Harness.advance(37)
-        Harness.battleSend(a,'restart',{edit=true});Harness.advance(0.1)
-        assert(Harness.battleLatest(a).phase=='Configure')
-        Harness.battleSend(a,'launch');Harness.battleSend(b,'launch');Harness.advance(2.7)
-        assert(Harness.battleLatest(a).phase=='Fight' and Harness.battleLatest(b).phase=='Fight')
-        Harness.battleSend(a,'exit');Harness.advance(0.1)
-        assert(not Harness.battleLatest(a).active and not a.Character.HumanoidRootPart.Anchored)
-        Harness.battleSend(a,'launch');Harness.advance(0.1)
-        assert(not Harness.battleLatest(a).active)
-        Harness.send(a,'practice');Harness.advance(0.1)
-        assert(Harness.latest(a).phase=='Voting')
-        assert(Harness.battleLatest(b).phase=='Fight','Exiting one lab disturbed the other')
-        Harness.remove(b);Harness.advance(0.1)
-        local replacement=Harness.add(102)
-        Harness.battleSend(replacement,'request');Harness.advance(0.1)
-        assert(not Harness.battleLatest(replacement).active)
-        Harness.battleSend(replacement,'enter');Harness.advance(0.1)
-        assert(Harness.battleLatest(replacement).phase=='Configure')
-        assert(Harness.battleLatest(replacement).simulation.elapsed==0)
-        assert(Harness.latest(a).phase=='Voting','Battle Lab cleanup disturbed another flight')
-    ''',
     "two practice flights unlock a cosmetic and explicit equip reaches the next flight": r'''
         local a=Harness.add(101)
         local fresh=Harness.latest(a)
@@ -983,7 +798,7 @@ LIVE_SCENARIOS = {
         Harness.send(a,'equipCosmetic',{itemId='skyblue'})
         assert(Harness.latest(a).saveStatus=='saved' and Harness.latest(a).economy.credits==10)
         Harness.remove(a)
-        assert(Harness.store.values.player_101.schemaVersion==2 and Harness.store.values.player_101.lease==nil)
+        assert(Harness.store.values.player_101.schemaVersion==3 and Harness.store.values.player_101.lease==nil)
         local b=Harness.add(101);local restored=Harness.latest(b)
         assert(restored.economy.credits==10 and restored.economy.owned.skyblue and restored.economy.equippedTrail=='skyblue')
         assert(restored.players[1].settings.trailId=='skyblue')
@@ -1032,7 +847,7 @@ LIVE_SCENARIOS = {
         Harness.shutdown()
         assert(Harness.store.values.player_101.lease==nil and Harness.store.values.player_102.lease==nil)
     ''',
-    "live load failure is visible and cannot replace durable history": r'''
+    "live load failure recovers verified durable history before merging one new outcome": r'''
         local a=Harness.add(101)
         Harness.send(a,'practice');Harness.advance(8.2);Harness.readyDuel(a);Harness.advance(46)
         local oldBest=Harness.latest(a).stats.bestDistance
@@ -1040,10 +855,54 @@ LIVE_SCENARIOS = {
         local b=Harness.add(101)
         assert(Harness.latest(b).saveStatus=='unavailable')
         local calls=Harness.store.calls
+        Harness.advance(4)
+        assert(Harness.latest(b).saveStatus=='unavailable' and Harness.store.calls==calls)
+        assert(Harness.store.values.player_101.stats.bestDistance==oldBest and Harness.store.values.player_101.stats.totalFlights==1)
         Harness.send(b,'practice');Harness.advance(8.2);Harness.readyDuel(b);Harness.advance(46)
+        assert(Harness.latest(b).saveStatus=='saved' and Harness.latest(b).stats.totalFlights==2)
         Harness.remove(b);Harness.shutdown()
-        assert(Harness.store.calls==calls and Harness.store.values.player_101.stats.bestDistance==oldBest)
-        assert(Harness.store.values.player_101.stats.totalFlights==1)
+        assert(Harness.store.calls>calls and Harness.store.values.player_101.stats.bestDistance>=oldBest)
+        assert(Harness.store.values.player_101.stats.totalFlights==2)
+    ''',
+}
+
+
+BATTLE_LIVE_SCENARIOS = {
+    "published battle reward choice mastery and saved equipment survive reconnect": r'''
+        local a=Harness.add(101);Harness.send(a,'play');Harness.advance(248.2)
+        local result=Harness.battleLatest(a)
+        assert(result.phase=='MatchOver' and result.reward.confirmed and result.reward.status=='saved')
+        assert(result.economy.progression.matches==1 and result.economy.progression.mastery[result.settings[1].offenceId]==1)
+        local coins=result.economy.credits
+        Harness.send(a,'claimStarter',{itemId='rookiecoral'});Harness.advance(.3)
+        Harness.send(a,'selectGoal',{itemId='aurora'});Harness.advance(.3)
+        Harness.remove(a)
+        assert(Harness.store.values.player_101.lease==nil and Harness.store.values.player_101.economy.credits==coins)
+        local b=Harness.add(101);Harness.advance(.6)
+        local restored=Harness.latest(b)
+        assert(restored.economy.credits==coins and restored.economy.owned.rookiecoral and restored.economy.equippedTrail=='rookiecoral')
+        assert(restored.economy.progression.matches==1 and restored.economy.progression.starterChoice=='rookiecoral' and restored.saveStatus=='saved')
+        assert(not restored.economy.progression.starterAvailable and b:GetAttribute('SkyboundTrail')=='rookiecoral')
+        Harness.shutdown();assert(Harness.store.values.player_101.lease==nil)
+    ''',
+    "published failed award save is unconfirmed and normal retry preserves single award": r'''
+        local a=Harness.add(101);Harness.send(a,'play');Harness.advance(8.1)
+        Harness.store.failures=3
+        local result
+        for i=1,2400 do
+            Harness.advance(.1);result=Harness.battleLatest(a)
+            if result.phase=='MatchOver' then break end
+        end
+        assert(result.phase=='MatchOver' and result.reward.eligible)
+        -- Autosave may have consumed a failure; whichever operation retried,
+        -- confirmed requires a real persisted record, never a local optimistic grant.
+        if result.reward.confirmed then assert(Harness.store.values.player_101.economy.credits==result.economy.credits)end
+        Harness.advance(60)
+        result=Harness.battleLatest(a)
+        assert(result.reward.confirmed and result.economy.progression.matches==1)
+        assert(Harness.store.values.player_101.economy.credits==result.reward.coins)
+        Harness.remove(a);local b=Harness.add(101)
+        assert(Harness.latest(b).economy.progression.matches==1)
     ''',
 }
 
@@ -1055,6 +914,21 @@ def main():
         ("CosmeticCatalog", runtime.globals().Harness.shared.CosmeticCatalog.module),
     ):
         print(runtime.execute((ROOT / f"tests/{name}.spec.luau").read_text())(module))
+    print(runtime.execute((ROOT / "tests/BattleMatch.spec.luau").read_text())(
+        runtime.globals().Harness.services.ServerScriptService.children.BattleLab.module,
+        runtime.globals().Harness.shared.children.SkillCatalog.module))
+    # Load the actual client command methods without constructing Roblox UI.
+    # Native Studio runs these same cases with the real task scheduler.
+    server_script = runtime.globals().script
+    runtime.execute('''
+        Harness.services.GuiService={}
+        Color3={fromRGB=function(r,g,b)return {r=r,g=g,b=b}end}
+        script={Parent={WaitForChild=function()return {module={}}end}}
+    ''')
+    client = runtime.execute((ROOT / "src/client/BattleLab.luau").read_text())
+    runtime.globals().script = server_script
+    print(runtime.execute((ROOT / "tests/BattleClient.spec.luau").read_text())(
+        client, runtime.globals().Harness.shared.children.SkillCatalog.module))
     for name, scenario in DEFAULT_SCENARIOS.items():
         runtime = make_runtime()
         try:
@@ -1078,8 +952,15 @@ def main():
         except Exception as error:
             raise AssertionError(f"FAILED: {name}\n{error}") from error
         print(f"PASS: {name}")
-    print(f"{len(DEFAULT_SCENARIOS) + len(SCENARIOS) + len(LIVE_SCENARIOS)} server scenarios passed "
-          f"({len(DEFAULT_SCENARIOS)} default battle mode; {len(SCENARIOS) + len(LIVE_SCENARIOS)} explicit distance mode)")
+    for name, scenario in BATTLE_LIVE_SCENARIOS.items():
+        runtime = make_runtime(studio=False, published=True)
+        try:
+            runtime.execute(scenario)
+        except Exception as error:
+            raise AssertionError(f"FAILED: {name}\n{error}") from error
+        print(f"PASS: {name}")
+    print(f"{len(DEFAULT_SCENARIOS) + len(SCENARIOS) + len(LIVE_SCENARIOS) + len(BATTLE_LIVE_SCENARIOS)} server scenarios passed "
+          f"({len(DEFAULT_SCENARIOS) + len(BATTLE_LIVE_SCENARIOS)} default battle mode; {len(SCENARIOS) + len(LIVE_SCENARIOS)} explicit distance mode)")
 
 
 if __name__ == "__main__":

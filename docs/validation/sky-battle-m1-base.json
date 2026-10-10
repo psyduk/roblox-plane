@@ -1,0 +1,832 @@
+{
+  "angles": [
+    10,
+    32,
+    55
+  ],
+  "baseline_comparison": {
+    "Firework vs Firework": {
+      "after": {
+        "cap_rate": 0.0,
+        "draw_rate": 0.0,
+        "draws": 0,
+        "duration_seconds": {
+          "max": 24.917,
+          "mean": 21.007,
+          "median": 22.917,
+          "min": 15.117,
+          "p10": 15.667,
+          "p90": 24.6
+        },
+        "flags": [],
+        "independent_seeds": 20,
+        "knockouts": 180,
+        "losses": 81,
+        "round_caps": 0,
+        "rounds": 180,
+        "score": 0.55,
+        "second_wind_trigger_rate": 0.0,
+        "seed_95_interval": [
+          0.3263,
+          0.7737
+        ],
+        "wins": 99
+      },
+      "before": {
+        "cap_rate": 0.0,
+        "draw_rate": 1.0,
+        "draws": 180,
+        "duration_seconds": {
+          "max": 17.717,
+          "mean": 17.568,
+          "median": 17.567,
+          "min": 17.383,
+          "p10": 17.45,
+          "p90": 17.683
+        },
+        "flags": [
+          "draws",
+          "duration"
+        ],
+        "independent_seeds": 20,
+        "knockouts": 180,
+        "losses": 0,
+        "round_caps": 0,
+        "rounds": 180,
+        "score": 0.5,
+        "second_wind_trigger_rate": 0.0,
+        "seed_95_interval": [
+          0.5,
+          0.5
+        ],
+        "wins": 0
+      }
+    },
+    "Firework vs Meteor": {
+      "after": {
+        "cap_rate": 0.0667,
+        "draw_rate": 0.0667,
+        "draws": 12,
+        "duration_seconds": {
+          "max": 35,
+          "mean": 25.18,
+          "median": 24.55,
+          "min": 14.517,
+          "p10": 18.25,
+          "p90": 31.35
+        },
+        "flags": [
+          "pair-score"
+        ],
+        "independent_seeds": 20,
+        "knockouts": 168,
+        "losses": 56,
+        "round_caps": 12,
+        "rounds": 180,
+        "score": 0.6556,
+        "second_wind_trigger_rate": 0.0,
+        "seed_95_interval": [
+          0.5261,
+          0.785
+        ],
+        "wins": 112
+      },
+      "before": {
+        "cap_rate": 0.1889,
+        "draw_rate": 0.1278,
+        "draws": 23,
+        "duration_seconds": {
+          "max": 35,
+          "mean": 28.124,
+          "median": 27.25,
+          "min": 16.35,
+          "p10": 19.967,
+          "p90": 35
+        },
+        "flags": [
+          "draws"
+        ],
+        "independent_seeds": 20,
+        "knockouts": 146,
+        "losses": 87,
+        "round_caps": 34,
+        "rounds": 180,
+        "score": 0.4528,
+        "second_wind_trigger_rate": 0.0,
+        "seed_95_interval": [
+          0.3658,
+          0.5398
+        ],
+        "wins": 70
+      }
+    },
+    "Meteor vs Firework": {
+      "after": {
+        "cap_rate": 0.0111,
+        "draw_rate": 0.0111,
+        "draws": 2,
+        "duration_seconds": {
+          "max": 35,
+          "mean": 24.26,
+          "median": 23.8,
+          "min": 14.317,
+          "p10": 17.367,
+          "p90": 30.617
+        },
+        "flags": [],
+        "independent_seeds": 20,
+        "knockouts": 178,
+        "losses": 112,
+        "round_caps": 2,
+        "rounds": 180,
+        "score": 0.3722,
+        "second_wind_trigger_rate": 0.0,
+        "seed_95_interval": [
+          0.2395,
+          0.5049
+        ],
+        "wins": 66
+      },
+      "before": {
+        "cap_rate": 0.1833,
+        "draw_rate": 0.1111,
+        "draws": 20,
+        "duration_seconds": {
+          "max": 35,
+          "mean": 28.574,
+          "median": 30.5,
+          "min": 16.583,
+          "p10": 19.917,
+          "p90": 35
+        },
+        "flags": [
+          "draws",
+          "duration"
+        ],
+        "independent_seeds": 20,
+        "knockouts": 147,
+        "losses": 69,
+        "round_caps": 33,
+        "rounds": 180,
+        "score": 0.5611,
+        "second_wind_trigger_rate": 0.0,
+        "seed_95_interval": [
+          0.4569,
+          0.6653
+        ],
+        "wins": 91
+      }
+    },
+    "Meteor vs Meteor": {
+      "after": {
+        "cap_rate": 0.0167,
+        "draw_rate": 0.1833,
+        "draws": 33,
+        "duration_seconds": {
+          "max": 35,
+          "mean": 21.503,
+          "median": 20.033,
+          "min": 16.333,
+          "p10": 18.25,
+          "p90": 27.433
+        },
+        "flags": [
+          "draws"
+        ],
+        "independent_seeds": 20,
+        "knockouts": 177,
+        "losses": 73,
+        "round_caps": 3,
+        "rounds": 180,
+        "score": 0.5028,
+        "second_wind_trigger_rate": 0.0,
+        "seed_95_interval": [
+          0.3679,
+          0.6376
+        ],
+        "wins": 74
+      },
+      "before": {
+        "cap_rate": 0.0,
+        "draw_rate": 0.25,
+        "draws": 45,
+        "duration_seconds": {
+          "max": 34.433,
+          "mean": 21.876,
+          "median": 20.117,
+          "min": 18.05,
+          "p10": 19.267,
+          "p90": 26.433
+        },
+        "flags": [
+          "draws"
+        ],
+        "independent_seeds": 20,
+        "knockouts": 180,
+        "losses": 67,
+        "round_caps": 0,
+        "rounds": 180,
+        "score": 0.5028,
+        "second_wind_trigger_rate": 0.0,
+        "seed_95_interval": [
+          0.4186,
+          0.5869
+        ],
+        "wins": 68
+      }
+    }
+  },
+  "contract_version": "sky-battle-combat-v1",
+  "evidence": "Pure deterministic simulation; human comprehension, phone readability, network behavior and fun remain playtest gates.",
+  "flags": [
+    "matchups: Meteor vs Meteor: draws",
+    "matchups: Meteor vs MachineGun: pair-score",
+    "matchups: Meteor vs Pinball: draws, round-cap, duration",
+    "matchups: Firework vs Meteor: pair-score",
+    "matchups: Firework vs MachineGun: duration",
+    "matchups: MachineGun vs Firework: duration",
+    "matchups: MachineGun vs Pinball: draws, round-cap",
+    "matchups: Pinball vs Meteor: draws, round-cap, duration",
+    "matchups: Pinball vs MachineGun: pair-score, draws, round-cap, duration",
+    "matchups: Pinball vs Pinball: draws, round-cap, duration",
+    "offence_field: Meteor: draws",
+    "offence_field: MachineGun: field-score",
+    "offence_field: Pinball: draws, round-cap"
+  ],
+  "independent_seeds": 20,
+  "matchups": {
+    "Firework vs Firework": {
+      "cap_rate": 0.0,
+      "draw_rate": 0.0,
+      "draws": 0,
+      "duration_seconds": {
+        "max": 24.917,
+        "mean": 21.007,
+        "median": 22.917,
+        "min": 15.117,
+        "p10": 15.667,
+        "p90": 24.6
+      },
+      "flags": [],
+      "independent_seeds": 20,
+      "knockouts": 180,
+      "losses": 81,
+      "round_caps": 0,
+      "rounds": 180,
+      "score": 0.55,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.3263,
+        0.7737
+      ],
+      "wins": 99
+    },
+    "Firework vs MachineGun": {
+      "cap_rate": 0.0,
+      "draw_rate": 0.0,
+      "draws": 0,
+      "duration_seconds": {
+        "max": 27.717,
+        "mean": 19.804,
+        "median": 18.867,
+        "min": 14.833,
+        "p10": 15.183,
+        "p90": 24.233
+      },
+      "flags": [
+        "duration"
+      ],
+      "independent_seeds": 20,
+      "knockouts": 180,
+      "losses": 101,
+      "round_caps": 0,
+      "rounds": 180,
+      "score": 0.4389,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.2338,
+        0.644
+      ],
+      "wins": 79
+    },
+    "Firework vs Meteor": {
+      "cap_rate": 0.0667,
+      "draw_rate": 0.0667,
+      "draws": 12,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 25.18,
+        "median": 24.55,
+        "min": 14.517,
+        "p10": 18.25,
+        "p90": 31.35
+      },
+      "flags": [
+        "pair-score"
+      ],
+      "independent_seeds": 20,
+      "knockouts": 168,
+      "losses": 56,
+      "round_caps": 12,
+      "rounds": 180,
+      "score": 0.6556,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.5261,
+        0.785
+      ],
+      "wins": 112
+    },
+    "Firework vs Pinball": {
+      "cap_rate": 0.05,
+      "draw_rate": 0.05,
+      "draws": 9,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 25.202,
+        "median": 26.1,
+        "min": 15.617,
+        "p10": 16.833,
+        "p90": 32.117
+      },
+      "flags": [],
+      "independent_seeds": 20,
+      "knockouts": 171,
+      "losses": 83,
+      "round_caps": 9,
+      "rounds": 180,
+      "score": 0.5139,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.4106,
+        0.6172
+      ],
+      "wins": 88
+    },
+    "MachineGun vs Firework": {
+      "cap_rate": 0.0,
+      "draw_rate": 0.0,
+      "draws": 0,
+      "duration_seconds": {
+        "max": 33.633,
+        "mean": 20.178,
+        "median": 18.367,
+        "min": 14.8,
+        "p10": 15.2,
+        "p90": 24.833
+      },
+      "flags": [
+        "duration"
+      ],
+      "independent_seeds": 20,
+      "knockouts": 180,
+      "losses": 84,
+      "round_caps": 0,
+      "rounds": 180,
+      "score": 0.5333,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.3467,
+        0.72
+      ],
+      "wins": 96
+    },
+    "MachineGun vs MachineGun": {
+      "cap_rate": 0.0056,
+      "draw_rate": 0.0,
+      "draws": 0,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 21.631,
+        "median": 22.867,
+        "min": 14.867,
+        "p10": 15.333,
+        "p90": 24.45
+      },
+      "flags": [],
+      "independent_seeds": 20,
+      "knockouts": 179,
+      "losses": 76,
+      "round_caps": 1,
+      "rounds": 180,
+      "score": 0.5778,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.3904,
+        0.7651
+      ],
+      "wins": 104
+    },
+    "MachineGun vs Meteor": {
+      "cap_rate": 0.1389,
+      "draw_rate": 0.0889,
+      "draws": 16,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 24.46,
+        "median": 23.717,
+        "min": 14.6,
+        "p10": 16.383,
+        "p90": 35
+      },
+      "flags": [],
+      "independent_seeds": 20,
+      "knockouts": 155,
+      "losses": 95,
+      "round_caps": 25,
+      "rounds": 180,
+      "score": 0.4278,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.288,
+        0.5676
+      ],
+      "wins": 69
+    },
+    "MachineGun vs Pinball": {
+      "cap_rate": 0.3444,
+      "draw_rate": 0.15,
+      "draws": 27,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 28.478,
+        "median": 29.733,
+        "min": 14.7,
+        "p10": 19.133,
+        "p90": 35
+      },
+      "flags": [
+        "draws",
+        "round-cap"
+      ],
+      "independent_seeds": 20,
+      "knockouts": 118,
+      "losses": 92,
+      "round_caps": 62,
+      "rounds": 180,
+      "score": 0.4139,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.3154,
+        0.5124
+      ],
+      "wins": 61
+    },
+    "Meteor vs Firework": {
+      "cap_rate": 0.0111,
+      "draw_rate": 0.0111,
+      "draws": 2,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 24.26,
+        "median": 23.8,
+        "min": 14.317,
+        "p10": 17.367,
+        "p90": 30.617
+      },
+      "flags": [],
+      "independent_seeds": 20,
+      "knockouts": 178,
+      "losses": 112,
+      "round_caps": 2,
+      "rounds": 180,
+      "score": 0.3722,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.2395,
+        0.5049
+      ],
+      "wins": 66
+    },
+    "Meteor vs MachineGun": {
+      "cap_rate": 0.15,
+      "draw_rate": 0.0944,
+      "draws": 17,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 26.772,
+        "median": 27.433,
+        "min": 14.2,
+        "p10": 17.417,
+        "p90": 35
+      },
+      "flags": [
+        "pair-score"
+      ],
+      "independent_seeds": 20,
+      "knockouts": 153,
+      "losses": 54,
+      "round_caps": 27,
+      "rounds": 180,
+      "score": 0.6528,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.5408,
+        0.7647
+      ],
+      "wins": 109
+    },
+    "Meteor vs Meteor": {
+      "cap_rate": 0.0167,
+      "draw_rate": 0.1833,
+      "draws": 33,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 21.503,
+        "median": 20.033,
+        "min": 16.333,
+        "p10": 18.25,
+        "p90": 27.433
+      },
+      "flags": [
+        "draws"
+      ],
+      "independent_seeds": 20,
+      "knockouts": 177,
+      "losses": 73,
+      "round_caps": 3,
+      "rounds": 180,
+      "score": 0.5028,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.3679,
+        0.6376
+      ],
+      "wins": 74
+    },
+    "Meteor vs Pinball": {
+      "cap_rate": 0.4611,
+      "draw_rate": 0.2056,
+      "draws": 37,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 30.65,
+        "median": 33.467,
+        "min": 13.4,
+        "p10": 21.733,
+        "p90": 35
+      },
+      "flags": [
+        "draws",
+        "round-cap",
+        "duration"
+      ],
+      "independent_seeds": 20,
+      "knockouts": 97,
+      "losses": 83,
+      "round_caps": 83,
+      "rounds": 180,
+      "score": 0.4361,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.3578,
+        0.5144
+      ],
+      "wins": 60
+    },
+    "Pinball vs Firework": {
+      "cap_rate": 0.05,
+      "draw_rate": 0.0389,
+      "draws": 7,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 25.025,
+        "median": 24.217,
+        "min": 15.05,
+        "p10": 17.45,
+        "p90": 31.883
+      },
+      "flags": [],
+      "independent_seeds": 20,
+      "knockouts": 171,
+      "losses": 95,
+      "round_caps": 9,
+      "rounds": 180,
+      "score": 0.4528,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.3298,
+        0.5757
+      ],
+      "wins": 78
+    },
+    "Pinball vs MachineGun": {
+      "cap_rate": 0.3833,
+      "draw_rate": 0.1611,
+      "draws": 29,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 30.231,
+        "median": 33.333,
+        "min": 15.2,
+        "p10": 21.483,
+        "p90": 35
+      },
+      "flags": [
+        "pair-score",
+        "draws",
+        "round-cap",
+        "duration"
+      ],
+      "independent_seeds": 20,
+      "knockouts": 111,
+      "losses": 39,
+      "round_caps": 69,
+      "rounds": 180,
+      "score": 0.7028,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.6169,
+        0.7887
+      ],
+      "wins": 112
+    },
+    "Pinball vs Meteor": {
+      "cap_rate": 0.4333,
+      "draw_rate": 0.2333,
+      "draws": 42,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 30.559,
+        "median": 33.783,
+        "min": 14.267,
+        "p10": 22.233,
+        "p90": 35
+      },
+      "flags": [
+        "draws",
+        "round-cap",
+        "duration"
+      ],
+      "independent_seeds": 20,
+      "knockouts": 102,
+      "losses": 52,
+      "round_caps": 78,
+      "rounds": 180,
+      "score": 0.5944,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.5242,
+        0.6647
+      ],
+      "wins": 86
+    },
+    "Pinball vs Pinball": {
+      "cap_rate": 0.3944,
+      "draw_rate": 0.1722,
+      "draws": 31,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 31.202,
+        "median": 33.467,
+        "min": 14.417,
+        "p10": 23.25,
+        "p90": 35
+      },
+      "flags": [
+        "draws",
+        "round-cap",
+        "duration"
+      ],
+      "independent_seeds": 20,
+      "knockouts": 109,
+      "losses": 75,
+      "round_caps": 71,
+      "rounds": 180,
+      "score": 0.4972,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.3929,
+        0.6016
+      ],
+      "wins": 74
+    }
+  },
+  "offence_field": {
+    "Firework": {
+      "cap_rate": 0.0222,
+      "draw_rate": 0.0208,
+      "draws": 30,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 22.708,
+        "median": 23.15,
+        "min": 14.317,
+        "p10": 15.917,
+        "p90": 29.9
+      },
+      "equal_opponent_weighting": true,
+      "flags": [],
+      "independent_seeds": 20,
+      "knockouts": 1408,
+      "losses": 660,
+      "round_caps": 32,
+      "rounds": 1440,
+      "score": 0.5312,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.495,
+        0.5675
+      ],
+      "wins": 750
+    },
+    "MachineGun": {
+      "cap_rate": 0.1285,
+      "draw_rate": 0.0618,
+      "draws": 89,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 24.148,
+        "median": 23.383,
+        "min": 14.2,
+        "p10": 15.933,
+        "p90": 35
+      },
+      "equal_opponent_weighting": true,
+      "flags": [
+        "field-score"
+      ],
+      "independent_seeds": 20,
+      "knockouts": 1255,
+      "losses": 751,
+      "round_caps": 185,
+      "rounds": 1440,
+      "score": 0.4476,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.4079,
+        0.4872
+      ],
+      "wins": 600
+    },
+    "Meteor": {
+      "cap_rate": 0.1618,
+      "draw_rate": 0.1333,
+      "draws": 192,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 25.611,
+        "median": 24.65,
+        "min": 13.4,
+        "p10": 17.983,
+        "p90": 35
+      },
+      "equal_opponent_weighting": true,
+      "flags": [
+        "draws"
+      ],
+      "independent_seeds": 20,
+      "knockouts": 1207,
+      "losses": 663,
+      "round_caps": 233,
+      "rounds": 1440,
+      "score": 0.4729,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.4254,
+        0.5205
+      ],
+      "wins": 585
+    },
+    "Pinball": {
+      "cap_rate": 0.3139,
+      "draw_rate": 0.1479,
+      "draws": 213,
+      "duration_seconds": {
+        "max": 35,
+        "mean": 29.069,
+        "median": 29.983,
+        "min": 13.4,
+        "p10": 20.533,
+        "p90": 35
+      },
+      "equal_opponent_weighting": true,
+      "flags": [
+        "draws",
+        "round-cap"
+      ],
+      "independent_seeds": 20,
+      "knockouts": 988,
+      "losses": 544,
+      "round_caps": 452,
+      "rounds": 1440,
+      "score": 0.5483,
+      "second_wind_trigger_rate": 0.0,
+      "seed_95_interval": [
+        0.5158,
+        0.5808
+      ],
+      "wins": 683
+    }
+  },
+  "roster_version": "sky-battle-public-v1",
+  "runtime_seconds": 28.3,
+  "scope": "Active 4/5 roster only. Expansion is not implemented and is outside Milestones 1/2.",
+  "seed_formula": "104729 + sample_index * 7919",
+  "total_simulated_rounds": 3600,
+  "uncertainty": "95% normal interval over seed-cluster mean scores; angles and seats are not independent; one seed has no interval.",
+  "validation": [
+    "BattleSimulation: 40 tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes)",
+    "SkillCatalog: 5 tests passed (copy, kinds, starters, detached records, build rules)"
+  ]
+}

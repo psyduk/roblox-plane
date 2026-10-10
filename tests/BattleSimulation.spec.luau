@@ -171,8 +171,11 @@ return function(Simulation, Catalog, Skills)
 		check(commitment.at <= 1 / 20 and commitment.at == impact.at, "Immediate commit timing changed")
 	end)
 
-	test("normal Meteor charge creates continuous space before a visible landed dive", function()
+	test("controlled Meteor charge creates continuous space before a visible landed dive", function()
 		local state = Simulation.newRound(731, { offenceId = "Meteor", angle = 32 }, { offenceId = "Firework", angle = 32 })
+		-- Hold the rival tell constant: this fixture measures charge geometry,
+		-- not whether the current Firework tuning wins the opening exchange.
+		state.fighters[2].windupDuration = 1.05
 		local charge, commitment, impact, waypointX, waypointY, previousHeading
 		local serial = state.eventSerial
 		for _ = 1, 300 do
@@ -445,7 +448,11 @@ return function(Simulation, Catalog, Skills)
 		contact.wakes = { wake(1, 1, 0, 50, Simulation.WAKE_ARM_TIME) }
 		for _ = 1, 3 do Simulation.step(contact, Simulation.FIXED_DT) end
 		check(contact.fighters[2].armor == 3, "Wake damaged before its cue armed")
-		for _ = 1, 6 do Simulation.step(contact, Simulation.FIXED_DT) end
+		for _ = 1, math.ceil(Simulation.WAKE_ARM_TIME / Simulation.FIXED_DT) do
+			-- Hold contact for this timer unit case; live avoidance is sampled separately.
+			passive(contact.fighters[2], 0, 50, 0)
+			Simulation.step(contact, Simulation.FIXED_DT)
+		end
 		check(contact.fighters[2].armor == 2 and #contact.wakes == 0, "Armed wake failed contact resolution")
 		local count = 0
 		for _, entry in ipairs(contact.events) do
@@ -453,6 +460,15 @@ return function(Simulation, Catalog, Skills)
 			check(entry.kind ~= "hit", "Wake duplicated its hit event")
 		end
 		check(count == 1, "Wake damage feedback duplicated or missing")
+	end)
+
+	test("Spring Bumper trades its full block for visible defender recoil", function()
+		local state = Simulation.newRound(1, nil, { wildIds = { "SpringBumper" } })
+		armed(state.fighters[1], -8, 0); passive(state.fighters[2], 0, 50, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[2].armor == 3 and not state.fighters[2].bumperReady, "Recoil weakened the promised full block")
+		check(close(state.fighters[2].phaseLeft, Simulation.RECOVERY_TIME + 0.7), "Defender did not take visible extra recovery")
+		check(close(state.fighters[1].phaseLeft, Simulation.RECOVERY_TIME), "Attacker inherited defender recoil")
 	end)
 
 	test("wake ownership protection and bumper interactions are consistent", function()
@@ -554,6 +570,119 @@ return function(Simulation, Catalog, Skills)
 				end
 				for _, entry in ipairs(first.events) do check(type(entry.at) == "number" and entry.at <= first.elapsed, "Event timestamp missing") end
 			end
+		end
+	end)
+
+
+	test("Machine Gun requires three connections and caps a burst at one pip", function()
+		local state = Simulation.newRound(1, { offenceId = "MachineGun" })
+		local actor = state.fighters[1]
+		passive(actor, -55, 50, 0); passive(state.fighters[2], 0, 50, 0)
+		actor.attacks, actor.burstConnections, actor.burstCancelled, actor._burstDamaged = 1, 0, false, false
+		local function bullet(id)
+			local shot = projectile(id, 1, -25, state.fighters[2].y, 6000, 0)
+			shot.source, shot.burstId = "machinegun", 1
+			return shot
+		end
+		state.projectiles = { bullet(1), bullet(2) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[2].armor == 3 and actor.burstConnections == 2, "Stray tracers dealt a pip")
+		state.projectiles = { bullet(3), bullet(4), bullet(5), bullet(6) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.fighters[2].armor == 2 and actor.hits == 1 and actor._burstDamaged, "Burst threshold or cap failed")
+		check(#state.projectiles == 0, "Contacting tracers leaked")
+	end)
+
+	test("bumper cancels an entire burst and protection preserves the bumper", function()
+		for _, protected in ipairs({ false, true }) do
+			local state = Simulation.newRound(1, { offenceId = "MachineGun" }, { wildIds = { "SpringBumper" } })
+			local actor, target = state.fighters[1], state.fighters[2]
+			passive(actor, -55, 50, 0); passive(target, 0, 50, 0)
+			actor.attacks, actor.burstConnections, actor.burstCancelled = 1, 0, false
+			target.invulnerable = protected and 1 or 0
+			local shot = projectile(1, 1, -25, 50, 6000, 0)
+			shot.source, shot.burstId = "machinegun", 1
+			state.projectiles = { shot }; Simulation.step(state, Simulation.FIXED_DT)
+			check(actor.burstCancelled and target.bumperReady == protected and target.armor == 3, "Wrong defense precedence")
+			target.invulnerable = 0
+			for id = 2, 6 do
+				local nextShot = projectile(id, 1, -25, target.y, 6000, 0)
+				nextShot.source, nextShot.burstId = "machinegun", 1
+				state.projectiles[#state.projectiles + 1] = nextShot
+			end
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(target.armor == 3 and actor.burstConnections == 0, "Cancelled burst resumed after protection")
+		end
+	end)
+
+	test("Pinball arms only on a true rail reflection", function()
+		local state = Simulation.newRound(1, { offenceId = "Pinball" })
+		local actor = state.fighters[1]
+		passive(actor, -71.8, 50, math.pi); passive(state.fighters[2], 40, 70, 0)
+		actor.phase, actor.phaseLeft, actor._bankX, actor._bankY = "Windup", 1, -150, 50
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(actor.armed and actor.phase == "Attack" and math.abs(actor._attackHeading) < 0.00001, "Rail failed specular reflection")
+		local entry = state.events[#state.events]
+		check(entry.kind == "ricochet" and entry.source == "pinball", "Bounce lacks authoritative cue")
+		check(actor.armor == 3 and state.fighters[2].armor == 3, "Rail dealt damage")
+	end)
+
+	test("Second Wind triggers once at one armor without healing including simultaneous hits", function()
+		local state = Simulation.newRound(1, { wildIds = { "SecondWind" } }, { wildIds = { "SecondWind" } })
+		armed(state.fighters[1], -4, 0); armed(state.fighters[2], 4, math.pi)
+		state.fighters[1].armor, state.fighters[2].armor = 2, 2
+		Simulation.step(state, Simulation.FIXED_DT)
+		for _, fighter in ipairs(state.fighters) do
+			check(fighter.armor == 1 and fighter.secondWind, "Simultaneous last-armor trigger failed")
+			check(close(fighter.phaseLeft, Simulation.RECOVERY_TIME * 0.84), "Trigger did not shorten same-step recovery")
+		end
+		local triggers = 0
+		for _, entry in ipairs(state.events) do if entry.skillId == "SecondWind" then triggers = triggers + 1 end end
+		check(triggers == 2, "Second Wind trigger duplicated or missing")
+	end)
+
+	test("Magnet pulls symmetrically once and recovery can escape at full pressure", function()
+		local function pulled(both)
+			local state = Simulation.newRound(1, { wildIds = { "Magnet" } }, { wildIds = both and { "Magnet" } or {} })
+			state.elapsed = 34
+			passive(state.fighters[1], -25, 50, math.pi); passive(state.fighters[2], 25, 50, 0)
+			state.fighters[1].magnetLeft = 1
+			if both then state.fighters[2].magnetLeft = 1 end
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(state.fighters[1].x < -25 and state.fighters[2].x > 25, "Pull pinned escaping automatic pilots")
+			return state
+		end
+		local one, two = pulled(false), pulled(true)
+		check(close(one.fighters[1].vx, two.fighters[1].vx) and close(one.fighters[2].vx, two.fighters[2].vx), "Two magnets stacked")
+		check(close(math.abs(one.fighters[1].vx), 30 - Simulation.MAGNET_SPEED), "Pull overcame thrust or was asymmetric")
+	end)
+
+	test("final total speed caps knockback plus Second Wind and Afterburner", function()
+		local state = Simulation.newRound(1, { wildIds = { "Afterburner", "SecondWind" } })
+		local actor = state.fighters[1]
+		passive(actor, 0, 50, 0); passive(state.fighters[2], 50, 80, 0)
+		actor.boostLeft, actor.secondWind, actor._knockX, actor._knockY = 1, true, 200, 200
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(math.sqrt(actor.vx ^ 2 + actor.vy ^ 2) <= Simulation.MAX_TOTAL_SPEED + 0.00001, "Stacked force escaped total speed cap")
+	end)
+
+	test("ram and projectile same-step knockout resolve together", function()
+		for _, seat in ipairs({ 1, 2 }) do
+			local state = Simulation.newRound(1)
+			armed(state.fighters[seat], -4, 0); passive(state.fighters[3 - seat], 4, 50, math.pi)
+			state.fighters[1].armor, state.fighters[2].armor = 1, 1
+			state.projectiles = { projectile(1, 3 - seat, 20, 50, -6000, 0) }
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(state.finished and state.winner == 0 and state.fighters[1].armor == 0 and state.fighters[2].armor == 0, "Attack category or seat decided double KO")
+		end
+	end)
+
+	test("every active offence can attack and is deterministic inside the round cap", function()
+		for _, entry in ipairs(Catalog.all("offence")) do
+			local config = { offenceId = entry.id, wildIds = { "Magnet", "SecondWind" }, angle = 32 }
+			local first, second = run(71391, config, config), run(71391, config, config)
+			check(equal(first, second) and first.elapsed <= 35, "Roster replay/cap failed: " .. entry.id)
+			check(first.fighters[1].attacks > 0 and first.fighters[2].attacks > 0, "Automatic pilot never attacks: " .. entry.id)
 		end
 	end)
 

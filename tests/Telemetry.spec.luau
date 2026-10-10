@@ -165,5 +165,38 @@ return function(Telemetry)
 		telemetry:sessionEnd(player)
 		assert(calls[5].value == 86400)
 	end)
+    test("battle funnel counts actual launches not replay requests", function()
+        local telemetry,calls,time=fixture()
+        local player={}
+        telemetry:sessionStart(player)
+        assert(telemetry:battleEvent(player,"join",{cohort="new"}))
+        assert(telemetry:battleEvent(player,"usable_lobby",{device="phone"}))
+        time.value=18
+        assert(telemetry:battleEvent(player,"first_launch",{matchId="a"}))
+        assert(not telemetry:battleEvent(player,"first_launch",{matchId="a"}))
+        time.value=80
+        telemetry:battleEvent(player,"terminal_result",{matchId="a",outcome="loss"})
+        telemetry:battleEvent(player,"replay_requested",{matchId="a"})
+        local count=#telemetry:battleLog()
+        assert(telemetry:battleLog()[count].event=="replay_requested")
+        time.value=90
+        telemetry:battleEvent(player,"first_launch",{matchId="b",rosterVersion="experimental-test"})
+        local log=telemetry:battleLog()
+        assert(log[#log-1].event=="next_actual_launch" and log[#log-1].elapsed==10)
+        assert(log[#log-1].outcome=="loss" and log[#log-1].voluntary==true)
+        assert(log[#log-1].rosterVersion=="experimental-test")
+        assert(log[#log].event=="match_launch" and log[#log].firstLaunchSeconds==nil)
+        assert(log[3].firstLaunchSeconds==8 and log[3].device=="phone")
+        telemetry:battleLeave(player)
+        assert(telemetry._battle[player]==nil)
+    end)
+    test("Studio diagnostic events are bounded and never submitted", function()
+        local telemetry,calls=fixture({isStudio=true})
+        local player={}
+        for i=1,300 do telemetry:battleEvent(player,"match_accepted",{matchId=i}) end
+        assert(#telemetry:battleLog()==256 and #calls==0)
+        assert(telemetry:battleLog()[1].developer==true)
+        assert(not telemetry:battleEvent(player,"arbitrary_event",{}))
+    end)
 	return string.format("Telemetry: %d tests passed", passed)
 end

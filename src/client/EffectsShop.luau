@@ -94,7 +94,7 @@ function Shop.new(send)
     self.overlay.Visible=false; self.overlay.Active=true
     self.card=box(self.overlay,"EffectsShop",C.panel); round(self.card,20); stroke(self.card,C.ink,3)
     self.card.AnchorPoint=Vector2.new(0.5,0.5); self.card.Position=UDim2.fromScale(0.5,0.5)
-    self.title=display(self.card,"Title","FLIGHT EFFECTS",34)
+    self.title=display(self.card,"Title","TRAIL COLLECTION",34)
     self.balance=display(self.card,"Balance","0 COINS",25,C.gold)
     self.closeButton=button(self.card,"Close","X")
     self.body=create("ScrollingFrame",{Name="Browse",BackgroundTransparency=1,BorderSizePixel=0,
@@ -123,6 +123,11 @@ function Shop.new(send)
     self.status.TextWrapped=true
     self.action=button(self.card,"PurchaseOrEquip","EQUIPPED",C.teal); self.action.TextColor3=C.ink
     self.action.TextWrapped=true
+    self.goalAction=button(self.card,"SetGoal","SET GOAL",C.tile)
+    self.goalAction.TextWrapped=true
+    table.insert(self.connections,self.goalAction.Activated:Connect(function()
+        if self.goalAction.Active then self.send("selectGoal",{itemId=self.selected}) end
+    end))
     self.saveLabel=text(self.card,"SaveStatus","",11,C.muted)
     table.insert(self.connections,self.openButton.Activated:Connect(function() self:openAt(self.nextItemId) end))
     table.insert(self.connections,self.closeButton.Activated:Connect(function() self:close() end))
@@ -138,7 +143,8 @@ function Shop.new(send)
         if not self.action.Active or os.clock()<self.pendingUntil or not self.economy then return end
         local owned=self.economy.owned[self.selected]
         self.pendingUntil=os.clock()+3
-        self.send(owned and "equipCosmetic" or "buyCosmetic",{itemId=self.selected})
+        local item=Catalog.get(self.selected)
+        self.send(owned and "equipCosmetic" or (item.earnedOnly and "claimStarter" or "buyCosmetic"),{itemId=self.selected})
         self:_refresh()
     end))
     table.insert(self.connections,UserInputService.InputBegan:Connect(function(input,processed)
@@ -171,7 +177,7 @@ function Shop:_layout()
     place(self.coin,10,7,coinSize,coinSize)
     self.coinMark.TextSize=22
     place(self.wallet,coinSize+18,2,rw-coinSize-108,rh-16)
-    place(self.walletCaption,coinSize+19,rh-16,60,12)
+    place(self.walletCaption,coinSize+19,rh-16,rw-coinSize-108,12)
     self.walletCaption.TextSize=9
     place(self.browseLabel,rw-96,0,84,rh)
     self.rewardBaseScale=1
@@ -250,6 +256,13 @@ function Shop:_layout()
         place(self.action,20,h-66,w-40,46); self.action.TextSize=19
         place(self.saveLabel,20,h-18,w-40,16); self.saveLabel.TextSize=10
     end
+    local goalWidth=math.min(150,math.floor((w-48)*0.32))
+    local actionY=compact and h-66 or h-78
+    local actionHeight=compact and 46 or 52
+    place(self.action,20,actionY,w-48-goalWidth,actionHeight)
+    self.action.TextSize=narrow and 14 or (compact and 15 or 19)
+    place(self.goalAction,w-20-goalWidth,actionY,goalWidth,actionHeight)
+    self.goalAction.TextSize=narrow and 13 or 15
 end
 
 function Shop:open()
@@ -283,18 +296,24 @@ function Shop:_refresh()
     local nextItem
     for _,entry in ipairs(Catalog.all()) do
         local owned=economy.owned[entry.id]==true
-        if owned then count+=1 elseif not nextItem then nextItem=entry end
+        if owned then count+=1 elseif not nextItem and not entry.earnedOnly then nextItem=entry end
         local card=self.cards[entry.id]
         local selected=self.selected==entry.id
         card.border.Color=selected and C.ink or C.muted
         card.border.Thickness=selected and 3 or 1
         card.button.BackgroundColor3=selected and C.teal or C.tile
-        card.price.Text=economy.equippedTrail==entry.id and "EQUIPPED" or (owned and "OWNED" or tostring(entry.price).." COINS")
+        card.price.Text=economy.equippedTrail==entry.id and "EQUIPPED" or (owned and "OWNED" or (entry.earnedOnly and "FIRST MATCH GIFT" or tostring(entry.price).." COINS"))
         card.price.TextColor3=C.ink
     end
+    if economy.goal and not economy.goal.owned then nextItem=Catalog.get(economy.goal.id) end
     local credits=economy.credits or 0
     self.balance.Text=self.economy and (tostring(credits).." COINS") or "LOADING COINS…"
     self.wallet.Text=self.economy and tostring(credits) or "…"
+    if economy.goal and not economy.goal.owned then
+        self.wallet.Text=tostring(credits).." / "..tostring(economy.goal.price)
+        self.walletCaption.Text=string.upper(economy.goal.name).." GOAL"
+        self.walletCaption.TextScaled=true
+    else self.walletCaption.Text="COINS";self.walletCaption.TextScaled=false end
     self.collection.Text=tostring(count).." / "..#Catalog.ORDER.." OWNED"
     self.filter.Text=self.onlyOwned and "MY COLLECTION" or "ALL EFFECTS"
     self.nextItemId=nextItem and nextItem.id or nil
@@ -319,7 +338,14 @@ function Shop:_refresh()
     local equipped=economy.equippedTrail==item.id
     local owned=economy.owned[item.id]==true
     local affordable=credits>=item.price
-    local enabled=self.phase=="Lobby" and economy.canShop and not equipped and (owned or affordable) and not pending
+    local gift=item.earnedOnly==true
+    local giftReady=gift and economy.progression and economy.progression.starterAvailable==true
+    local enabled=self.phase=="Lobby" and economy.canShop and not equipped and (owned or (gift and giftReady) or (not gift and affordable)) and not pending
+    local isGoal=economy.goal and economy.goal.id==item.id
+    local canGoal=not gift and item.price>0 and not owned and economy.canShop and not isGoal
+    self.goalAction.Active=canGoal;self.goalAction.Selectable=canGoal;self.goalAction.AutoButtonColor=canGoal
+    self.goalAction.Text=isGoal and "YOUR GOAL" or (gift and "FIRST MATCH GIFT" or "SET GOAL")
+    self.goalAction.TextColor3=canGoal and C.ink or C.muted
     self.action.Active=enabled==true; self.action.Selectable=enabled==true; self.action.AutoButtonColor=enabled==true
     self.action.BackgroundColor3=enabled and (owned and C.teal or C.gold) or C.tile
     self.action.TextColor3=enabled and C.ink or C.muted
@@ -327,13 +353,16 @@ function Shop:_refresh()
         or (owned and ("EQUIP "..string.upper(item.name))
         or (affordable and ("BUY "..string.upper(item.name).." · "..item.price.." COINS")
         or ("EARN "..(item.price-credits).." MORE COINS"))))
+    if gift and not owned then self.action.Text=giftReady and "CLAIM + EQUIP" or "COMPLETE YOUR FIRST MATCH" end
     local feedback=self.feedback
     if self.phase=="Queued" then self.status.Text="Leave the queue to buy or change your trail."
     elseif feedback and os.clock()<(self.feedbackUntil or 0) then
         self.status.Text=feedback.message:gsub("CREDITS","COINS"):gsub("credits","coins")
     elseif not economy.canShop then self.status.Text="Your collection is loading or saving is unavailable. Try again when ready."
     elseif owned then self.status.Text=equipped and "Your equipped trail follows your plane into every flight." or "Owned. Equip this trail for your next flight."
-    else self.status.Text="Finish a practice flight: +25 coins. Finish a duel: +40, plus result bonuses." end
+    elseif gift then self.status.Text="Your first completed battle grants one starter trail of your choice."
+    elseif shared:GetAttribute("DistanceModeEnabled")==true then self.status.Text="Finish a practice flight: +25 coins. Finish a duel: +40, plus result bonuses."
+    else self.status.Text="Complete a match: 50 coins. Win: 75. Cosmetic trails never change combat." end
     self.status.TextColor3=feedback and not feedback.ok and os.clock()<(self.feedbackUntil or 0) and C.amber or C.muted
     local saves={session_only="STUDIO SESSION · Purchases reset when Play stops.",loading="Loading your collection…",
         saved="Collection saved.",pending="Saving your collection…",unavailable="Cloud save unavailable. Purchases are disabled."}

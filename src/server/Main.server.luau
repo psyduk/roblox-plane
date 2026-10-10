@@ -466,6 +466,35 @@ local function updateBoard()
     World.updateLobbyBoard(flying,clubBest)
 end
 local battleLab=BattleLab.new({simulation=BattleSimulation,skills=SkillCatalog,now=now,
+    sessionId=serverSession,
+    allowFixedSeed=RunService:IsStudio(),
+    allowExperimental=RunService:IsStudio(),
+    resolveRoster=function()
+        if script:GetAttribute("BattleExperimental")~=true then return nil end
+        local function ids(value)
+            local result={}
+            for id in string.gmatch(type(value)=="string" and value or "", "[^, ]+") do table.insert(result,id) end
+            return result
+        end
+        return {version=script:GetAttribute("BattleExperimentalVersion") or "studio-experiment-v1",
+            offences=ids(script:GetAttribute("BattleExperimentalOffences")),wilds=ids(script:GetAttribute("BattleExperimentalWilds"))}
+    end,
+    fixedSeed=RunService:IsStudio() and script:GetAttribute("BattleFixedSeed") or nil,
+    getPlayers=function() return Players:GetPlayers() end,
+    identity=function(player)
+        local p=profiles[player.UserId]
+        return {userId=player.UserId,name=player.DisplayName,planeId=p and p.settings.planeId or PlaneCatalog.DEFAULT_ID,
+            color=p and p.settings.color or 1,trailId=p and p.settings.trailId or CosmeticCatalog.DEFAULT_ID}
+    end,
+    onEvent=function(player,event,data) telemetry:battleEvent(player,event,data) end,
+    onTerminal=function(player,result)
+        local p=profiles[player.UserId]
+        if not p then return nil end
+        p.hasCompletedBattle=true
+        local applied,reward=statsService:recordBattle(p.statsHandle,serverSession..":battle:"..tostring(result.matchId)..":"..tostring(player.UserId),result)
+        if applied then task.spawn(function() statsService:save(p.statsHandle,false) end) end
+        return reward
+    end,
     canEnter=function(player)
         local p=profiles[player.UserId]
         return not shuttingDown and p~=nil and not p.matchId and not p.queue and not p.quick and not p.inBattleLab
@@ -478,9 +507,34 @@ local battleLab=BattleLab.new({simulation=BattleSimulation,skills=SkillCatalog,n
         local p=profiles[player.UserId]
         if p then p.inBattleLab=false; release(p); broadcast() end
     end,
-    emit=function(player,data) shared.BattleSnapshot:FireClient(player,data) end})
+    emit=function(player,data)
+        local p=profiles[player.UserId]
+        if p then
+            local _,status=statsService:get(p.statsHandle)
+            data.saveStatus=status;data.economy=statsService:getEconomy(p.statsHandle);data.cosmeticFeedback=p.cosmeticFeedback
+            if data.reward then
+                data.reward.status=status
+                data.reward.progression=statsService:getBattle(p.statsHandle)
+                data.reward.confirmed=status=="saved" and p.statsHandle.savedVersion >= (data.reward.version or math.huge)
+            end
+        end
+        shared.BattleSnapshot:FireClient(player,data)
+    end})
 shared.BattleCommand.OnServerEvent:Connect(function(player,payload)
-    if not shuttingDown and profiles[player.UserId] then battleLab:command(player,payload) end
+    local p=profiles[player.UserId]
+    if shuttingDown or not p or type(payload)~="table" then return end
+    if payload.kind=="uiReady" then
+        local stats=statsService:get(p.statsHandle)
+        telemetry:battleEvent(player,"usable_lobby",{device=payload.device,cohort=p.analyticsCohort or "unknown"})
+        return
+    elseif payload.kind=="rewardShown" then
+        local current=battleLab:snapshot(player)
+        if current.phase=="MatchOver" and current.matchId==payload.matchId then
+            telemetry:battleEvent(player,"reward_shown",{matchId=current.matchId})
+        end
+        return
+    end
+    battleLab:command(player,payload)
 end)
 
 local function joined(player)
@@ -496,7 +550,14 @@ local function joined(player)
     player:SetAttribute("StatsSaveStatus",p.statsHandle.status)
     player:SetAttribute("PrototypeSaveStatus",sessionOnly and "Session only · local Studio" or "Persistent player statistics")
     telemetry:sessionStart(player)
-    task.spawn(function() statsService:load(p.statsHandle) end)
+    telemetry:battleEvent(player,"join",{})
+    task.spawn(function()
+        statsService:load(p.statsHandle)
+        if (p.statsHandle.safe or sessionOnly) and not p.hasCompletedBattle then
+            p.analyticsCohort=statsService:getBattle(p.statsHandle).matches>0 and "returning" or "new"
+            telemetry:battleContext(player,{cohort=p.analyticsCohort})
+        end
+    end)
     local function placeCharacter(character)
         if character:WaitForChild("HumanoidRootPart",10) then moveCharacter(p,p.matchId~=nil or p.inBattleLab==true) end
     end
@@ -511,6 +572,7 @@ Players.PlayerRemoving:Connect(function(player)
     if p then
         if not shuttingDown then leaveMatch(p) end
         telemetry:sessionEnd(player)
+        telemetry:battleLeave(player)
         if p.bay then baySlots[p.bay]=nil end
         profiles[player.UserId]=nil
         task.spawn(function() statsService:close(p.statsHandle) end)
@@ -520,7 +582,7 @@ end)
 for _,player in ipairs(Players:GetPlayers()) do joined(player) end
 
 local ALLOWED={request=true,vote=true,configure=true,ready=true,practice=true,play=true,leaveQueue=true,returnLobby=true,rematch=true,
-    buyCosmetic=true,equipCosmetic=true}
+    buyCosmetic=true,equipCosmetic=true,claimStarter=true,selectGoal=true}
 local function cosmeticFeedback(p,result)
     p.cosmeticFeedbackSequence=(p.cosmeticFeedbackSequence or 0)+1
     result.id=p.cosmeticFeedbackSequence
@@ -533,8 +595,9 @@ local function handleCommand(p,payload)
     p.lastCommand[payload.kind]=now()
     local m=p.matchId and matches[p.matchId]
     if payload.kind=="request" then snapshots:FireClient(p.player,snapshot(p)); return end
-    if p.inBattleLab then return end
-    if payload.kind=="buyCosmetic" or payload.kind=="equipCosmetic" then
+    local cosmeticAction=payload.kind=="buyCosmetic" or payload.kind=="equipCosmetic" or payload.kind=="claimStarter" or payload.kind=="selectGoal"
+    if p.inBattleLab and not (cosmeticAction and battleLab:snapshot(p.player).phase=="MatchOver") then return end
+    if cosmeticAction then
         -- One shared limit prevents alternating buy/equip from bypassing it.
         if now()-(p.lastCosmeticCommand or -math.huge)<0.25 then return end
         p.lastCosmeticCommand=now()
@@ -543,9 +606,16 @@ local function handleCommand(p,payload)
         else
             local result
             if payload.kind=="buyCosmetic" then result=statsService:buyCosmetic(p.statsHandle,payload.itemId)
+            elseif payload.kind=="claimStarter" then result=statsService:claimStarter(p.statsHandle,payload.itemId)
+            elseif payload.kind=="selectGoal" then result=statsService:selectGoal(p.statsHandle,payload.itemId)
             else result=statsService:equipCosmetic(p.statsHandle,payload.itemId) end
             cosmeticFeedback(p,result)
             if result.ok then
+                local goalId=statsService:getBattle(p.statsHandle).goalId
+                if payload.itemId==goalId and result.code~="already_equipped" then
+                    local event=payload.kind=="selectGoal" and "goal_selected" or (payload.kind=="buyCosmetic" and "goal_earned" or "goal_equipped")
+                    telemetry:battleEvent(p.player,event,{itemId=payload.itemId})
+                end
                 p.settings.trailId=statsService:getEconomy(p.statsHandle).equippedTrail
                 task.spawn(function() statsService:save(p.statsHandle,false) end)
             end
@@ -640,6 +710,7 @@ end)
 
 game:BindToClose(function()
     shuttingDown=true
+    battleLab:shutdown()
     for _,p in pairs(profiles) do
         local m=p.matchId and matches[p.matchId]
         local phase=m and m.phase or (p.queue and "Queued" or "Lobby")
@@ -656,6 +727,7 @@ if RunService:IsStudio() then
     debugFunction.OnInvoke=function(action,data)
         data=data or {}
         local p=profiles[data.userId or (Players:GetPlayers()[1] and Players:GetPlayers()[1].UserId)]
+        if action=="battleTelemetry" then return telemetry:battleLog() end
         if action=="battleSnapshot" then return p and battleLab:snapshot(p.player) end
         if action=="battleCommand" and p then battleLab:command(p.player,data.payload); return battleLab:snapshot(p.player) end
         if action=="snapshot" then return p and snapshot(p) end

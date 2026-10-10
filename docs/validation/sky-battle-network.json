@@ -1,0 +1,154 @@
+{
+  "participants": [
+    -2,
+    -1
+  ],
+  "normalMatch": {
+    "rounds": 2,
+    "saveStatus": "session_only",
+    "coins": [
+      50,
+      75
+    ],
+    "scoreA": [
+      0,
+      2
+    ],
+    "winnerA": 2,
+    "matchId": 1,
+    "reason": "first_to_two"
+  },
+  "startup": [
+    {
+      "elapsed": 4.02,
+      "kind": "joined",
+      "userId": -1
+    },
+    {
+      "elapsed": 4.37,
+      "kind": "boot",
+      "userId": -1,
+      "reason": "server QA marker observed"
+    },
+    {
+      "elapsed": 4.37,
+      "kind": "ready",
+      "userId": -1,
+      "reason": "production remotes connected and initial snapshots requested"
+    },
+    {
+      "elapsed": 5.56,
+      "kind": "joined",
+      "userId": -2
+    },
+    {
+      "elapsed": 5.83,
+      "kind": "boot",
+      "userId": -2,
+      "reason": "server QA marker observed"
+    },
+    {
+      "elapsed": 5.83,
+      "kind": "ready",
+      "userId": -2,
+      "reason": "production remotes connected and initial snapshots requested"
+    }
+  ],
+  "errors": [],
+  "elapsed": 60.16,
+  "readyCount": 2,
+  "test": "SkyBattleNetworkV1",
+  "players": [
+    {
+      "name": "Player1",
+      "userId": -1,
+      "ready": true
+    },
+    {
+      "name": "Player2",
+      "userId": -2,
+      "ready": true
+    }
+  ],
+  "checks": [
+    {
+      "details": {
+        "matchId": 1
+      },
+      "name": "two real clients paired",
+      "passed": true
+    },
+    {
+      "details": {
+        "firstLocker": -2
+      },
+      "name": "private selection hidden until mutual reveal",
+      "passed": true
+    },
+    {
+      "details": {
+        "seed": 640598669
+      },
+      "name": "simultaneous reveal and shared simulation seed",
+      "passed": true
+    },
+    {
+      "details": {
+        "rounds": 2,
+        "saveStatus": "session_only",
+        "coins": [
+          50,
+          75
+        ],
+        "scoreA": [
+          0,
+          2
+        ],
+        "winnerA": 2,
+        "matchId": 1,
+        "reason": "first_to_two"
+      },
+      "name": "normal terminal outcome and both rewards agree",
+      "passed": true
+    },
+    {
+      "details": {
+        "input": "programmatic",
+        "itemId": "rookieblue"
+      },
+      "name": "first gift claimed through client production remote",
+      "passed": true
+    },
+    {
+      "details": {
+        "matchId": 2
+      },
+      "name": "mutual rematch resets shared draft without duplicating rewards",
+      "passed": true
+    },
+    {
+      "name": "draft departure cleanup and preserved confirmed grants",
+      "passed": true
+    },
+    {
+      "name": "challenge declined without reserving controls",
+      "passed": true
+    },
+    {
+      "details": {
+        "matchId": 3
+      },
+      "name": "same-server challenge explicitly accepted",
+      "passed": true
+    },
+    {
+      "name": "final lobby usable and awards unchanged",
+      "passed": true
+    }
+  ],
+  "limits": "No UI-click, unfamiliar-human, physical-phone, published network or cloud-persistence claim.",
+  "ok": true,
+  "input": "programmatic production remotes from two real Studio clients",
+  "version": 1,
+  "joinedCount": 2
+}

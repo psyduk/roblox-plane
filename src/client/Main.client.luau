@@ -17,11 +17,13 @@ local PilotAvatar = require(script.Parent:WaitForChild("PilotAvatar"))
 local HangarBay = require(script.Parent:WaitForChild("HangarBay"))
 local BattleLab = require(script.Parent:WaitForChild("BattleLab"))
 local battleLab = BattleLab.new(World,shared)
+local challenges = require(script.Parent:WaitForChild("ChallengePanel")).new(shared)
 local audio = FlightAudio.new()
 local command = shared:WaitForChild("Command")
 local snapshots = shared:WaitForChild("Snapshot")
 local localSettings = {planeId=PlaneCatalog.DEFAULT_ID,powerId=PowerCatalog.DEFAULT_ID,angle=35,gadget="Shield",color=1}
 local latest = nil
+local usableReported = false
 local receivedAt = 0
 local watchedUserId = localPlayer.UserId
 local lobbyView = true
@@ -58,13 +60,15 @@ end)
 local function send(kind, values)
     local payload=values or {}
     payload.kind=kind
+    local cues={play="confirm",selectGoal="select",buyCosmetic="confirm",equipCosmetic="select",claimStarter="confirm",returnLobby="back",leaveQueue="back"}
+    if cues[kind] then battleLab.audio:ui(cues[kind]) end
     command:FireServer(payload)
 end
 local effectsShop=EffectsShop.new(send)
 local hangarBay=HangarBay.new({send=send,openShop=function(itemId) effectsShop:openAt(itemId) end})
 -- The plane in the pilot's bay is changed in place, from the HUD or the bay console.
 local function changeLook(change)
-    if not latest or latest.phase~="Lobby" or battleLab:isActive() or effectsShop:isOpen() then return end
+    if not latest or latest.phase~="Lobby" or battleLab:isActive() or effectsShop:isOpen() or challenges:isOpen() then return end
     for _,entry in ipairs(latest.players) do
         if entry.userId==localPlayer.UserId then
             local settings=table.clone(entry.settings)
@@ -86,7 +90,7 @@ local function cyclePaint()
 end
 game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt,player)
     if player and player~=localPlayer then return end
-    if not latest or latest.phase~="Lobby" or battleLab:isActive() or effectsShop:isOpen() then return end
+    if not latest or latest.phase~="Lobby" or battleLab:isActive() or effectsShop:isOpen() or challenges:isOpen() then return end
     if prompt.Name=="EffectsShopPrompt" then effectsShop:openAt(nil)
     elseif prompt.Name=="UnlockStandPrompt" then hangarBay:activateStand()
     elseif prompt.Name=="HeroBayPrompt" then cyclePlane(1) end
@@ -108,7 +112,7 @@ hud=Hud.new({
     ready=function(ready) send("ready",{ready=ready,settings=hud:getLocalSettings()}) end,
     spectate=cycleSpectate,
     play=function()
-        if battleLab:isActive() or effectsShop:isOpen() or hud.statsOverlay.Visible then return end
+        if battleLab:isActive() or effectsShop:isOpen() or challenges:isOpen() or hud.statsOverlay.Visible then return end
         send("play")
     end,
     cyclePlane=cyclePlane,
@@ -156,6 +160,10 @@ snapshots.OnClientEvent:Connect(function(data)
             p.flight.used={}
             for _,id in ipairs(p.flight.usedIds or {}) do p.flight.used[id]=true end
         end
+    end
+    if data.cosmeticFeedback and data.cosmeticFeedback.id~=localPlayer:GetAttribute("LastCosmeticFeedback") then
+        localPlayer:SetAttribute("LastCosmeticFeedback",data.cosmeticFeedback.id)
+        battleLab.audio:ui(data.cosmeticFeedback.ok and "purchase" or "error")
     end
     latest=data
     lobbyView=data.phase=="Lobby" or data.phase=="Queued"
@@ -276,8 +284,15 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
     local camera=workspace.CurrentCamera
     if not latest or not camera then return end
     local phase=latest.phase
+    if not usableReported and phase=="Lobby" and localPlayer.Character then
+        usableReported=true
+        local size=camera.ViewportSize
+        local device=UserInputService.TouchEnabled and (math.min(size.X,size.Y)>600 and "tablet" or "phone") or "desktop"
+        shared.BattleCommand:FireServer({kind="uiReady",device=device})
+    end
     -- Roblox may re-enable avatar controls when a character finishes spawning.
-    local allowMovement=lobbyView and not effectsShop:isOpen() and not battleLab:isActive()
+    challenges:update(phase=="Lobby" and not battleLab:isActive() and not effectsShop:isOpen() and not hud.statsOverlay.Visible)
+    local allowMovement=lobbyView and not effectsShop:isOpen() and not battleLab:isActive() and not challenges:isOpen() and not hud.statsOverlay.Visible
     if characterControls and (controlsEnabled~=allowMovement or characterControls.controlsEnabled~=allowMovement) then
         controlsEnabled=allowMovement
         if allowMovement then characterControls:Enable() else characterControls:Disable() end

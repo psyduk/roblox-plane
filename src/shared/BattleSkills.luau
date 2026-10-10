@@ -74,8 +74,8 @@ BattleSkills.offence.Meteor = {
 }
 
 BattleSkills.offence.Firework = {
-	windup = 1.05, attackTime = 0.5, attackSpeed = 27,
-	earliest = 1.05, leadSpeed = 40, leadFactor = 0.35,
+	windup = 1, attackTime = 0.5, attackSpeed = 27,
+	earliest = 1.05, leadSpeed = 60, leadFactor = 0.55,
 	inPosition = function(_, _, _, _, dx, dy)
 		return dx * dx + dy * dy < 76 * 76
 	end,
@@ -83,9 +83,58 @@ BattleSkills.offence.Firework = {
 		local dx, dy = math.cos(fighter.heading), math.sin(fighter.heading)
 		api.launch(state, fighter, {
 			x = fighter.x + dx * 7, y = fighter.y + dy * 7,
-			vx = dx * 40, vy = dy * 40, life = 3.5, radius = 3.5,
+			vx = dx * 60, vy = dy * 60, life = 2.4, radius = 3.5,
 		})
 		api.event(state, "rocket", fighter.x + dx * 7, fighter.y + dy * 7, fighter.id, opponent.id)
+	end,
+}
+
+BattleSkills.offence.MachineGun = {
+	windup = 0.65, attackTime = 0.65, attackSpeed = 25,
+	earliest = 1.0, leadSpeed = 90, leadFactor = 0.35,
+	approachTime = 4, recoveryTime = 2.6,
+	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 68 * 68 end,
+	attack = function(api, state, fighter, opponent)
+		fighter._burstNext, fighter._burstShots = 0, 0
+		fighter.burstConnections, fighter.burstCancelled, fighter._burstDamaged = 0, false, false
+		api.event(state, "burst", fighter.x, fighter.y, fighter.id, opponent.id, "machinegun", "MachineGun")
+	end,
+	attackTick = function(api, state, fighter, dt)
+		fighter._burstNext = fighter._burstNext - dt
+		if fighter._burstShots >= 6 or fighter._burstNext > 0 then return end
+		fighter._burstShots = fighter._burstShots + 1
+		fighter._burstNext = fighter._burstNext + 0.1
+		local dx, dy = math.cos(fighter._attackHeading), math.sin(fighter._attackHeading)
+		api.launch(state, fighter, { x = fighter.x + dx * 7, y = fighter.y + dy * 7,
+			vx = dx * 90, vy = dy * 90, life = 0.8, radius = 1.2,
+			source = "machinegun", burstId = fighter.attacks })
+	end,
+}
+
+BattleSkills.offence.Pinball = {
+	windup = 2.4, attackTime = 1.3, attackSpeed = 65,
+	earliest = 1.6, leadSpeed = 72, leadFactor = 0.45, ram = "pinball", wallRam = true,
+	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 85 * 85 end,
+	windupStart = function(_, state, fighter, opponent)
+		local b = state.bounds
+		local nearest, edge = math.huge, "left"
+		for _, candidate in ipairs({ { "left", fighter.x - b.left }, { "right", b.right - fighter.x },
+			{ "bottom", fighter.y - b.bottom }, { "top", b.top - fighter.y } }) do
+			if candidate[2] < nearest then nearest, edge = candidate[2], candidate[1] end
+		end
+		-- The virtual rival is reflected across the selected rail. Following
+		-- this visible straight run-up produces a real specular rebound.
+		local predictedX = math.max(b.left + 8, math.min(b.right - 8, opponent.x + opponent.vx * 0.65))
+		local predictedY = math.max(b.bottom + 8, math.min(b.top - 8, opponent.y + opponent.vy * 0.65))
+		fighter._bankX, fighter._bankY = predictedX, predictedY
+		if edge == "left" or edge == "right" then
+			fighter._bankX = 2 * b[edge] - predictedX
+		else fighter._bankY = 2 * b[edge] - predictedY end
+	end,
+	windupMove = function(_, _, fighter) return fighter._bankX, fighter._bankY, 45, 8 end,
+	attack = function(api, state, fighter, opponent)
+		local entry = api.event(state, "ricochet", fighter.x, fighter.y, fighter.id, opponent.id, "pinball", "Pinball")
+		entry.heading = fighter._attackHeading
 	end,
 }
 
@@ -112,6 +161,9 @@ BattleSkills.wild.SpringBumper = {
 	hit = function(api, state, target, actor, x, y, dirX, dirY, source)
 		if not target.bumperReady then return false end
 		target.bumperReady = false
+		-- The spring absorbs a whole hit, but its visible recoil banks the
+		-- defender longer before the next attack. It never weakens the block.
+		target._bumperRecovery = 0.7
 		target.invulnerable = api.IMPACT_PROTECTION
 		target._knockX, target._knockY = dirX * 32, dirY * 32
 		actor._knockX, actor._knockY = -dirX * 24, -dirY * 24
@@ -137,8 +189,27 @@ BattleSkills.wild.FizzyFuel = {
 		fighter._wakeNext = fighter._wakeNext - dt
 		if fighter._wakeNext > 0 then return end
 		fighter._wakeNext = fighter._wakeNext + 0.16
-		api.puff(state, fighter, fighter.x - math.cos(fighter.heading) * 8,
-			fighter.y - math.sin(fighter.heading) * 8, "FizzyFuel")
+		api.puff(state, fighter, fighter.x - math.cos(fighter.heading) * 12,
+			fighter.y - math.sin(fighter.heading) * 12, "FizzyFuel")
+	end,
+}
+
+BattleSkills.wild.Magnet = {
+	start = function(_, _, fighter) fighter.magnetLeft, fighter._magnetPending = 0, false end,
+	attack = function(_, _, fighter) fighter._magnetPending = true end,
+	recover = function(api, state, fighter)
+		if not fighter._magnetPending then return end
+		fighter._magnetPending, fighter.magnetLeft = false, 1
+		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "magnet", "Magnet")
+	end,
+}
+
+BattleSkills.wild.SecondWind = {
+	start = function(_, _, fighter) fighter.secondWind = false end,
+	damaged = function(api, state, fighter)
+		if fighter.armor ~= 1 or fighter.secondWind then return end
+		fighter.secondWind = true
+		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "secondwind", "SecondWind")
 	end,
 }
 

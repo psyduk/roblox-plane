@@ -2,13 +2,23 @@
 -- Earned visual effects only. Nothing here modifies a flight's simulation.
 local CosmeticCatalog = {}
 CosmeticCatalog.DEFAULT_ID = "classic"
-CosmeticCatalog.ORDER = { "classic", "skyblue", "ember", "mint", "violet", "sunset" }
+CosmeticCatalog.ORDER = { "classic", "skyblue", "ember", "mint", "violet", "sunset", "rookieblue", "rookiecoral", "aurora" }
+CosmeticCatalog.STARTER_CHOICES = { "rookieblue", "rookiecoral" }
+CosmeticCatalog.BATTLE_GOAL_ID = "aurora"
+CosmeticCatalog.BATTLE_COMPLETION_REWARD = 50
+CosmeticCatalog.BATTLE_WIN_BONUS = 25
 CosmeticCatalog.PRACTICE_REWARD = 25
 CosmeticCatalog.DUEL_REWARD = 40
 CosmeticCatalog.WIN_BONUS = 20
 CosmeticCatalog.DRAW_BONUS = 10
 
 local profiles = {
+    rookieblue = { id = "rookieblue", name = "Blue Comet", description = "Your first battle souvenir: a bright blue comet trail.", price = 0, earnedOnly = true,
+        rarity = "First Battle", color = { r = 66, g = 222, b = 255 }, secondaryColor = { r = 168, g = 125, b = 255 }, lifetime = 1, width = 1.3, emission = 0.85 },
+    rookiecoral = { id = "rookiecoral", name = "Coral Spark", description = "Your first battle souvenir: a coral and gold spark trail.", price = 0, earnedOnly = true,
+        rarity = "First Battle", color = { r = 255, g = 105, b = 145 }, secondaryColor = { r = 255, g = 220, b = 102 }, lifetime = 1, width = 1.3, emission = 0.85 },
+    aurora = { id = "aurora", name = "Aurora Ribbon", description = "A luminous mint-to-violet ribbon. Five completed losses earn its 250 coins.", price = 250,
+        rarity = "Sky Battle Goal", color = { r = 76, g = 255, b = 204 }, secondaryColor = { r = 187, g = 111, b = 255 }, lifetime = 1.65, width = 1.6, emission = 1 },
 	classic = { id = "classic", name = "Classic Contrail", description = "A clean white signature across the sky.", price = 0,
 		rarity = "Starter", color = { r = 232, g = 243, b = 255 }, secondaryColor = { r = 160, g = 200, b = 235 }, lifetime = 0.6, width = 1, emission = 0.25 },
 	skyblue = { id = "skyblue", name = "Sky Blue", description = "A bright blue ribbon for your first upgrade.", price = 40,

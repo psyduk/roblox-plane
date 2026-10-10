@@ -1,14 +1,14 @@
 # Skybound Clash — design and decision record
 
-Decision date: October 9, 2026. Status: agreed product direction; the first authorized milestone is a playable Battle Lab. This document defines intent and decision gates, not implementation or retention results.
+Decision date: October 9, 2026; revised October 10, 2026 after the approved ticket review. Status: the next delivery milestone is an understandable human rivalry with a small shared combat roster. This document defines intent and decision gates, not implementation or retention results.
 
 The [README](../README.md) describes implemented behavior. [VALIDATION.md](../VALIDATION.md) records completed checks and remaining gaps. Earlier distance-flight research remains in [Retention strategy](RETENTION-STRATEGY.md); this document supersedes its proposed implementation sequence.
 
 ## Direction update: Sky Battle (October 10, 2026)
 
-Owner decision, made after looking at Ball VS Ball, RIVALS, Blade Ball and Roblox's monetization guidance. Where this section conflicts with a later one, this section wins. The later sections stay as the record of how the combat toy was built.
+Owner-approved revision after the [Sky Battle ticket review](SKY-BATTLE-TICKET-REVIEW.md). Where this section conflicts with a later one, this section wins. The later sections stay as the historical record of how the combat toy was built. The current implementation remains the single-round practice mode described by the latest validation records; approving this plan does not establish that human drafting, progression, or these additional skills have shipped.
 
-**Promise: draft a build one pick at a time, watch it fight, want one more match.**
+**Promise: build a ridiculous flying fighter, see your choices matter, then outsmart the same rival next round.**
 
 ### Skins and skills are separate
 
@@ -16,67 +16,70 @@ Owner decision, made after looking at Ball VS Ball, RIVALS, Blade Ball and Roblo
 - Every skin shares one hitbox and one set of mount points (nose, belly, wings, tail, centre). Skills attach to mount points, never to a particular model, so every skill works on every skin. Later skins need not be planes (a gryphon, a broom, an airship) as long as they honour the same contract.
 - **Skills come in two kinds.** An **offence** is the weapon: how you remove armor. A **wild card** is the trick: it changes movement, the arena or how a hit lands. There is no separate defence slot; defensive tricks such as Spring Bumper and Dodge Roll are wild cards.
 
-The starting roster is ten of each. "Built" means it exists in the game today.
+The first public test uses one shared active roster: **four offences and five wild cards**, available equally to every player. Combat access is never bought. "Built" below means the mechanic exists in the current practice game, not that the production draft or skin contract is complete.
 
-| Offence | What it does |
-| --- | --- |
-| Meteor (built) | Charges, then dives into a ram |
-| Firework (built) | One big slow rocket |
-| Machine Gun | A short burst along its heading |
-| Pinball | Banks off a wall, then rams |
-| Chomper | Eats one projectile at a time and bites up close |
-| Boomerang | A blade that arcs out and can hit on the way back |
-| Sky Mines | Drops floating mines behind it |
-| Harpoon | Hooks the rival and slings it into a wall |
-| Bomber | Climbs above and drops a bomb straight down |
-| Tesla | A short-range zap that only reaches up close |
+| Active offence | What it does | State |
+| --- | --- | --- |
+| Meteor | Charges, then dives into a ram | Built |
+| Firework | One big slow rocket | Built |
+| Machine Gun | A short burst along its heading | Planned |
+| Pinball | Banks off a wall, then rams | Planned |
 
-| Wild card | What it does |
-| --- | --- |
-| Afterburner (built) | Speed burst after attacking |
-| Fizzy Fuel (built) | Leaves a damaging wake |
-| Spring Bumper (built) | Blocks the first hit and springs apart |
-| Dodge Roll | Rolls out of one hit, then a long cooldown |
-| Decoy | A balloon copy that draws the next aimed attack |
-| Magnet | Pulls the planes together after each attack |
-| Storm Caller | The wind closes sooner and faster |
-| Cloud Cover | Slips through a cloud that breaks the rival's aim |
-| Second Wind | A speed boost once you are on your last armor |
-| Copycat | Copies the rival's wild card at reduced strength |
+| Active wild card | What it does | State |
+| --- | --- | --- |
+| Afterburner | Speed burst after attacking | Built |
+| Spring Bumper | Blocks the first hit and springs apart | Built |
+| Fizzy Fuel | Leaves a damaging wake | Built |
+| Magnet | Pulls the planes together after each attack | Planned |
+| Second Wind | A speed boost once you are on your last armor | Planned |
 
-No skill is strictly stronger than the starter skills. Rarity means stranger, not stronger. Advantages, not hard counters, still applies. Balance targets: each offence wins 45–55% against the field, no single pairing is worse than about 65/35, no wild card lifts a build by more than about ten points on average, and draws and timeouts stay no higher than today's worst matchup.
+Expansion candidates are Chomper, Boomerang, Sky Mines, Harpoon, Bomber and Tesla for offence, and Dodge Roll, Decoy, Storm Caller and Cloud Cover for wild cards. They do not block the first complete rivalry test. Add a skill when it creates a distinct, readable decision; a larger catalog is not itself a progression goal.
 
-New skills are built fight logic first, with placeholder visuals and sounds, so the whole matchup table can be measured and beta testers can play every skill before any is polished. Beta builds unlock every skill.
+Advantages, not hard counters, still applies. Initial tuning targets remain 45–55% offence win rate against the field, no single pairing worse than about 65/35, and no wild card lifting a build by more than about ten points on average. Report draws separately and define win rate consistently. The Firework-mirror target is below 10% draws; every active matchup needs an explicit draw/timeout gate, not comparison with the previous worst matchup. Test complete builds, both seats, independent seeds, duration and uncertainty as well as aggregate win rates. These are tuning hypotheses, not validated balance.
+
+Build fight logic with placeholder assets where useful, but give every skill in the first human test a distinct windup, activation, hit or miss, and recovery. Define target selection, damage categories, defense precedence, protection windows and movement stacking before adding interacting skills. The small roster must be understandable on phones before expansion. Beta unlocks may support experiments with later skills; an all-unlocked beta is not evidence about a future collection economy.
 
 ### Match
 
-- First to two round wins.
-- One pick per round: an offence before round one, a wild card before round two, and a second wild card before a deciding round three. The build resets every match.
-- Each pick is an offer of three random skills from the ones the player owns of that kind. Each player gets one free reroll and one free "pick any skill I own" per match.
+- First to two round wins, with at most five physical rounds. Initial limits are **35 seconds per round** and **240 seconds for the whole match**, including picks and transitions. At the round cap, more armor wins and equal armor draws. Draws award no point and consume no pick; repeat the same builds. At either match cap, compare completed round wins; equal scores mean a match draw. If the 240-second cutoff occurs mid-fight, that unfinished round awards no point. Any overtime experiment must stay inside the existing 35-second round cap; no repeated transition may exceed the match cap.
+- Both players choose an offence before the first fight, add a wild card after the first decisive round, and add a second distinct wild card only before the deciding fight at 1–1. Draft progression follows decisive rounds completed across both players, never either player's individual score or the count of drawn fights. The build resets every match and rematch.
+- Each pick offers three random eligible skills from the same active roster available to both players. Each player gets **one free reroll and one free Pick Any per match**, shared across all pick stages. Pick Any accesses the same eligible active roster, never purchases or ownership. Exclude an equipped wild card from the second wild-card pick; a build has at most two distinct wild cards. Disable a reroll that cannot change the offer, and define a fair deadline/default while Pick Any is open.
 - Both players draft under the same rules. The rival's existing build is visible; the new pick is hidden until both lock.
+- The server owns offers, choices, seeds and outcomes. Preserve reproducible seeds, check both starting seats, and resolve score caps and equal outcomes honestly. Do not invent a hidden winner or advance drafting after a draw.
+- Show one factual, event-backed turning point between rounds so the next choice has context. It must identify what actually happened, not claim an untested alternative would have won.
 - First to three, with swap picks in later rounds, is a later experiment.
 
-### Skills are earned, looks are bought
+### Progression and purchases
 
-- Everyone starts with a few skills of each kind (start with three offences and three wild cards). The rest come from coin crates and level-ups. Coins come from playing: more for a win, some for a loss.
-- Skills are not sold for Robux, and coins are not sold for Robux. This keeps skill crates outside Roblox's paid random items rules and keeps a loss from feeling bought.
-- Robux products, in order:
-  1. Plane skins at fixed prices, a one-time starter pack shown from first spawn, and a Double Coins pass.
-  2. A season pass with a free track and a paid track of skins.
-  3. Gems, extra rerolls and cosmetic cases. These are paid random items: they need exact odds shown before purchase and a `PolicyService` check per player.
+- The first public test progresses through **mastery and cosmetics**, with equal access to its active combat roster. The first reward is a chosen cosmetic or visible mastery goal, not a locked skill.
+- Initial reward experiment: **50 coins per legitimate completed match plus 25 for a win**, awarded once per match. A 250-coin cosmetic goal is therefore reachable within five completed matches even if every match is lost. These values are hypotheses to test; define disconnect, forfeit and reward-deduplication behavior before enabling payouts.
+- AND-220 establishes the economy and fairness specification in milestone 1. Actual reward payouts, persistence and cosmetic/mastery progression are milestone-2 work in AND-174 and AND-196; the specification does not claim that runtime behavior is implemented.
+- Earned skill collection is deferred. Any future collection experiment needs an explicit new decision covering draft fairness, owned-pool dilution, trials, predictable unlocks and collection completion. Do not implement combat skill crates, owned-only offers or locked starters as part of this test.
+- Start monetization later with a small fixed-price cosmetic shop and a **cosmetic-only starter pack**. Keep first-spawn shop access nonblocking and do not interrupt the first fight with a sales modal. The pack grants no combat-access currency or draft advantage.
+- **No paid combat rerolls. Defer Double Coins.** Skills, extra combat choices and combat access are never purchased. A season pass and further progression systems wait for evidence of voluntary replay and return behavior.
+- Gems and premium cosmetic randomness remain future options requiring a separate decision, applicable odds disclosures and per-player policy checks. They are not a release milestone or a reason to add another currency now.
 - No trading for now.
 
 ### Opponents
 
 Human 1v1, with a bot when nobody is queued. Bots are named but always marked as bots.
 
-### Build order
+Keep one default queue at low population. Human rivalry, simultaneous picks and mutual same-opponent rematches belong in the first complete test. Add a small in-server friend challenge and then supported join/invite behavior. "Rematch" keeps the rival; a random new rival is "Next opponent."
 
-1. The draft loop, and skills that work on any skin.
-2. Human 1v1 with bot fallback; the hangar shows other pilots' planes.
-3. Coins, skill crates, levels, daily quests and playtime rewards.
-4. Plane skin shop, starter pack and Double Coins.
-5. Season pass, then gems and cases.
+### Delivery milestones and evidence
+
+| Milestone | Exit condition |
+| --- | --- |
+| 1. Understandable rivalry | Small readable roster, complete draft match, bounded outcomes, bot fallback, two humans, mutual rematch, one factual round highlight, basic phone and sound validation |
+| 2. A session people continue | First-session flow, friend challenge, completion rewards, one visible mastery/cosmetic goal, reliable saving, published two-device checks, measured next-match starts |
+| 3. Return and identity | Tune progression from observed sessions, a small fixed-price cosmetic offer, mastery goals, and skills that create demonstrably different decisions |
+| 4. Proven expansion | More roster and cosmetics; restrained daily objectives and seasonal content only after voluntary replay and returns |
+
+Preserve a separate **Future options — decision required** bucket for premium randomness. It is not a fifth delivery milestone and does not authorize implementation.
+
+AND-222 gates the initial free published test in milestone 2, including two players and a real phone. A shop is not a prerequisite, and receipt checks are not applicable while purchases are disabled. Repeat the relevant published-device, persistence and receipt checks before enabling the milestone-3 cosmetic shop.
+
+Give the first session one obvious PLAY action, a brief animated skill preview, unmistakable player identity, an understandable fight and an immediate next action. An initial target is first combat within 20 seconds of a usable initial screen; tune it from observation. Test 12–20 unfamiliar players, including phone players and friend pairs, without treating this qualitative sample as a retention study. Record first-fight completion, ability to explain a consequential event, voluntary next-match starts after wins and losses, waiting time, confusion and departures. Measure D1/D7 only with mature cohorts. Skills and cosmetic identity must remain readable on actual phones; source tests and desktop emulation establish different things.
 
 ### What this replaces below
 
@@ -84,10 +87,12 @@ Human 1v1, with a bot when nobody is queued. Bots are named but always marked as
 | --- | --- |
 | "Each plane has one signature" | Signatures are offence skills and work on any skin |
 | One signature plus one modifier | One offence plus up to two wild cards |
-| "Permanent combat-stat growth is outside this direction" | Still no stat growth. The skill collection is permanent and widens what a player can be offered |
-| "Defer trading, crates, a battle pass, daily chores" | Coin crates, daily quests and playtime rewards arrive in step 3; the season pass in step 5; trading stays deferred |
+| Owned-skill offers and locked starter collection | Shared equal-access active combat roster; collection is a deferred experiment requiring a new decision |
+| "Permanent combat-stat growth is outside this direction" | Still no stat growth; first-test progression is mastery and cosmetics |
+| Coin crates, early daily/playtime rewards, Double Coins and paid rerolls | No combat skill economy in the first test; defer Double Coins and chores, exclude paid combat rerolls |
 | First rivalry MVP draft table | The match rules above |
 | "Stable camera" | A dynamic camera, approved in [the battle audit](BATTLE-AUDIT.md) |
+| Earlier five-stage roadmap | Four delivery milestones plus a separate future-options decision bucket |
 
 ## Product promise
 
@@ -297,9 +302,13 @@ These sources establish mechanics and examples. They do not prove those mechanic
 | October 9, 2026 | Give Meteor and Firework stronger visual and sound identities before expanding the roster | User likes consequential choices and explicitly requests more visual impact; presentation quality needs playtesting |
 | October 9, 2026 | Give Meteor real charge-to-impact spacing and add ground crashes after knockout; retain three-hit armor | Explicit user authorization; ordinary flight/recovery remain the reference feel |
 | October 10, 2026 | Aircraft are skins and the main cosmetic; every skill works on every skin | Owner decision |
-| October 10, 2026 | Skills drafted one per round from random offers of owned skills, with one free reroll and one free pick-any per match | Owner decision; modelled on Ball VS Ball, untested with players |
-| October 10, 2026 | Two kinds of skill, offence and wild card, with no defence slot; a starting roster of ten each, built logic first and all unlocked for beta | Owner decision; the roster is untested concepts apart from the five built skills |
-| October 10, 2026 | Skills are earned with coins; Robux buys skins, a starter pack and Double Coins first, a season pass later | Owner decision; informed by RIVALS, Blade Ball and Roblox's guidance, from public sources only |
+| October 10, 2026, earlier decision | Skills drafted one per round from random offers of owned skills, with one free reroll and one free pick-any per match | Superseded by the approved shared-access ticket-review revision below |
+| October 10, 2026, earlier decision | Two kinds of skill, offence and wild card, with no defence slot; a starting roster of ten each, built logic first and all unlocked for beta | Skill categories remain; the initial roster and build sequence are superseded by the revision below |
+| October 10, 2026, earlier decision | Skills are earned with coins; Robux buys skins, a starter pack and Double Coins first, a season pass later | Superseded by the approved mastery/cosmetic progression and monetization revision below |
+| October 10, 2026, ticket-review revision | Shared equal-access active roster of four offences and five wild cards; no purchased combat access or paid combat rerolls | Owner-approved revision; supersedes the earlier owned-skill draft and monetization plan |
+| October 10, 2026, ticket-review revision | First-test progression is mastery/cosmetics, with a cosmetic-only starter pack later; earned skill collection and Double Coins deferred | Owner-approved plan; 50 completion coins plus 25 win coins and a 250-coin cosmetic goal are tuning hypotheses |
+| October 10, 2026, ticket-review revision | Four delivery milestones prioritize a complete understandable rivalry, then repeat sessions, identity and expansion; premium randomness stays in a separate future-options bucket | Owner-approved sequence; no player or retention outcome claimed |
+| October 10, 2026, ticket-review revision | First to two wins, at most five physical rounds, 35 seconds per round and 240 seconds per match including transitions; draws add no pick | Owner-approved initial bounds; match-cap result uses completed round wins, with a draw on equal scores |
 | October 10, 2026 | Human 1v1 with bot fallback comes before the shop | Owner decision |
 
 After each experiment, append the build, participant/cohort count, device and acquisition context, observations, measured outcomes, relevant uncertainty and a keep/change/drop decision. Update this document when the direction changes, the README when behavior exists, and validation records when it has actually been checked.

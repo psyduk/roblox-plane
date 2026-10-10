@@ -10,7 +10,7 @@ Telemetry.__index = Telemetry
 local WINDOW_SECONDS = 60
 local PLAYER_LIMIT = 16
 local MAX_SESSIONS = 256
-local OUTCOMES = {win = true, loss = true, tie = true, forfeit = true, completed = true}
+local OUTCOMES = {win = true, loss = true, tie = true, draw = true, abandoned = true, forfeit = true, completed = true}
 local PHASES = {Lobby = true, Queued = true, Voting = true, Configure = true, Aim = true,
 	Countdown = true, Flight = true, Results = true}
 
@@ -51,6 +51,8 @@ function Telemetry.new(options)
 		_sessions = {},
 		_sessionCount = 0,
 		_events = {},
+		_battle = {},
+		_battleLog = {},
 	}, Telemetry)
 end
 
@@ -155,4 +157,75 @@ function Telemetry:phaseAbandoned(player, phase)
 	return self:_emit(player, state, "PhaseAbandoned", 1, {CustomField03 = safePhase})
 end
 
+-- Version 1 rivalry funnel. Identifiers stay in a bounded server diagnostic ring;
+-- native analytics receives only fixed, low-cardinality segments and durations.
+local BATTLE_EVENTS = {join=true,usable_lobby=true,queue=true,match_accepted=true,
+    first_launch=true,terminal_result=true,reward_shown=true,replay_requested=true,
+    next_actual_launch=true,abandoned=true,goal_selected=true,goal_earned=true,goal_equipped=true}
+local DEVICES = {phone=true,tablet=true,desktop=true,console=true,unknown=true}
+local MODES = {public=true,challenge=true,practice=true,experimental=true}
+function Telemetry:battleEvent(player, name, data)
+    if not player or not BATTLE_EVENTS[name] then return false end
+    data = type(data)=="table" and data or {}
+    local now = self:_now()
+    if not now then return false end
+    local state = self._battle[player]
+    if not state then
+        state={startedAt=now,seen={},order={},device="unknown",cohort="unknown"}
+        self._battle[player]=state
+    end
+    if DEVICES[data.device] then state.device=data.device end
+    if data.cohort=="new" or data.cohort=="returning" then state.cohort=data.cohort end
+    local matchId=tostring(data.matchId or "session")
+    local key=name..":"..matchId..":"..tostring(data.itemId or "")
+    if name=="queue" then key=key..":"..tostring(data.queueId or data.sequence or 0) end
+    if state.seen[key] then return false end
+    state.seen[key]=true; table.insert(state.order,key)
+    if #state.order>128 then state.seen[table.remove(state.order,1)]=nil end
+    if name=="usable_lobby" then state.usableAt=state.usableAt or now end
+    if name=="terminal_result" then state.resultAt=now; state.resultMatch=matchId; state.lastOutcome=data.outcome;state.voluntary=false end
+    if name=="replay_requested" then state.voluntary=true end
+    local entry={version=1,event=name,rosterVersion=string.sub(tostring(data.rosterVersion or "sky-battle-public-v1"),1,64),matchId=matchId,time=now,device=state.device,cohort=state.cohort,
+        developer=not self._enabled,mode=MODES[data.mode] and data.mode or "public",
+        opponentType=data.opponentType=="human" and "human" or "bot",outcome=data.outcome,
+        voluntary=data.voluntary==true,phase=data.phase,elapsed=data.elapsed,queueSeconds=data.queueSeconds,draftSeconds=data.draftSeconds,
+        fightSeconds=data.fightSeconds,transitionSeconds=data.transitionSeconds}
+    if name=="first_launch" then
+        if not state.launched then entry.firstLaunchSeconds=now-(state.usableAt or state.startedAt)
+        else entry.event="match_launch" end
+        state.launched=true
+        if state.resultAt and state.resultMatch~=matchId then
+            entry.resultToLaunchSeconds=now-state.resultAt
+            self:battleEvent(player,"next_actual_launch",{matchId=matchId,mode=entry.mode,rosterVersion=entry.rosterVersion,
+                opponentType=entry.opponentType,outcome=state.lastOutcome,elapsed=entry.resultToLaunchSeconds,voluntary=state.voluntary})
+            state.resultAt=nil
+        end
+    end
+    table.insert(self._battleLog,entry)
+    if #self._battleLog>256 then table.remove(self._battleLog,1) end
+    local native=self._sessions[player]
+    if native then
+        entry.submitted=self:_emit(player,native,"SkyBattle_v1_"..entry.event,
+            math.max(0,math.min(86400,entry.firstLaunchSeconds or data.elapsed or 1)),
+            {CustomField01=state.cohort..":"..state.device,
+             CustomField02=entry.mode..":"..entry.opponentType..":"..entry.rosterVersion,
+             CustomField03=(OUTCOMES[data.outcome] and data.outcome or "none")..(name=="next_actual_launch" and (entry.voluntary and ":voluntary" or ":continuation") or "")})
+    end
+    return true
+end
+function Telemetry:battleLog()
+    local result={}
+    for _,entry in ipairs(self._battleLog) do
+        local copy={}; for key,value in pairs(entry) do copy[key]=value end
+        table.insert(result,copy)
+    end
+    return result
+end
+function Telemetry:battleContext(player,data)
+    local state=self._battle[player]
+    if state and (data.cohort=="new" or data.cohort=="returning") then state.cohort=data.cohort end
+end
+function Telemetry:battleLeave(player)
+    self._battle[player]=nil
+end
 return Telemetry

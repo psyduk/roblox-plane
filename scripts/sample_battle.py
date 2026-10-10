@@ -156,126 +156,209 @@ def dive_summary(records):
             "endings": dict(Counter(dive["ending"] for dive in dives))}
 
 
+def load_reference(runtime, path):
+    """A baseline directory freezes its handlers as well as its round engine."""
+    skills_path = path.parent / "BattleSkills.luau"
+    if not skills_path.exists():
+        return load_battle(runtime, path)[0]
+    skills = runtime.execute(skills_path.read_text())
+    saved_script, saved_require = runtime.globals().script, runtime.globals().require
+    runtime.globals().script = runtime.table_from({"Parent": runtime.table_from({"BattleSkills": runtime.table_from({"module": skills})})})
+    runtime.globals().require = runtime.eval("function(module) return module.module end")
+    try:
+        return runtime.execute(path.read_text())
+    finally:
+        runtime.globals().script, runtime.globals().require = saved_script, saved_require
+
+
+FAST_MEASURE = """function(sim, seed, powerA, angleA, powerB, angleB, wildA, wildB)
+ local s=sim.newRound(seed,{offenceId=powerA,angle=angleA,wildIds=wildA},{offenceId=powerB,angle=angleB,wildIds=wildB})
+ for i=1,2200 do sim.step(s,sim.FIXED_DT);if s.finished then break end end
+ assert(s.finished,'Round exceeded cap')
+ return {winner=s.winner,reason=s.reason,seconds=s.elapsed,
+ secondWindA=s.fighters[1].secondWind==true,secondWindB=s.fighters[2].secondWind==true}
+end"""
+
+
+def summary(records):
+    from statistics import stdev
+    grouped = {}
+    for r in records:
+        grouped.setdefault(r["seed_index"], []).append(1 if r["winner"] == 1 else .5 if r["winner"] == 0 else 0)
+    seed_scores = [mean(v) for v in grouped.values()]
+    score = mean(seed_scores)
+    # Cluster at the independent seed level, never pretend angle/seat variants
+    # are independent observations. This is a descriptive normal interval.
+    error = 1.96 * stdev(seed_scores) / len(seed_scores) ** .5 if len(seed_scores) > 1 else None
+    wins, losses, draws = (sum(r["winner"] == n for r in records) for n in (1, 2, 0))
+    count = len(records)
+    caps = sum(r["reason"] == "timeout" for r in records)
+    times = distribution([r["seconds"] for r in records])
+    flags = []
+    if not .35 <= score <= .65: flags.append("pair-score")
+    if draws / count >= .1: flags.append("draws")
+    if caps / count > .2: flags.append("round-cap")
+    if not 20 <= times["median"] <= 30: flags.append("duration")
+    return {"rounds": count, "independent_seeds": len(seed_scores), "wins": wins, "losses": losses,
+            "draws": draws, "score": round(score, 4), "seed_95_interval":
+            [round(max(0, score-error),4),round(min(1,score+error),4)] if error is not None else None,
+            "draw_rate": round(draws/count,4), "round_caps": caps, "cap_rate": round(caps/count,4),
+            "knockouts": count-caps, "duration_seconds": times,
+            "second_wind_trigger_rate": round(sum(r.get("secondWindA", False) for r in records)/count,4), "flags": flags}
+
+
+def paired_lift_interval(rows, baseline):
+    from statistics import stdev
+    def by_seed(values):
+        scores={}
+        for r in values:
+            scores.setdefault(r["seed_index"],[]).append(1 if r["winner"]==1 else .5 if r["winner"]==0 else 0)
+        return {seed:mean(v) for seed,v in scores.items()}
+    a,b=by_seed(rows),by_seed(baseline)
+    lifts=[(a[seed]-b[seed])*100 for seed in a]
+    if len(lifts)<2:return None
+    error=1.96*stdev(lifts)/len(lifts)**.5
+    return [round(mean(lifts)-error,2),round(mean(lifts)+error,2)]
+
+
 def main():
+    import time
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--samples", type=int, default=10, help="Seeds per ordered power matchup; nine angle pairs per seed")
-    parser.add_argument("--mirrors", action="store_true", help="Also inspect equal-signature matchups")
+    parser.add_argument("--samples", type=int, default=10, help="Independent seeds; angles and seats are paired observations")
+    parser.add_argument("--mirrors", action="store_true", help="Compatibility flag: mirrors are always included")
     parser.add_argument("--tests-only", action="store_true")
-    parser.add_argument("--baseline", type=Path, help="Compare every original physics/gameplay field each tick; exclude only presentation events/eventSerial and added metadata")
-    parser.add_argument("--baseline-scope", choices=("all", "meteor-charge"), default="all",
-                        help="meteor-charge compares full Firework mirrors and cross-power states only before the first Meteor windup")
-    parser.add_argument("--wild-sample", "--modifier-sample", dest="wild_sample", action="store_true",
-                        help="Sample every pair of wild card loadouts (none, one or two cards) in both cross-offence orders at angle 32")
+    parser.add_argument("--baseline", type=Path)
+    parser.add_argument("--baseline-scope", choices=("all", "meteor-charge", "outcomes"), default="all")
+    parser.add_argument("--wild-sample", "--modifier-sample", dest="wild_sample", action="store_true", help="Include single-card lift and all full-build pairs")
+    parser.add_argument("--quick", action="store_true", help="One opening angle; full builds face every bare and matching paired-card offence, not exhaustive other pairs")
+    parser.add_argument("--skill", help="Restrict rows/columns to this active skill id")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--markdown", action="store_true")
     args = parser.parse_args()
-    if args.samples < 1:
-        parser.error("--samples must be positive")
+    if args.samples < 1: parser.error("--samples must be positive")
+    started = time.monotonic()
     runtime = LuaRuntime(unpack_returned_tuples=True)
     simulation, skills, catalog = load_battle(runtime)
+    offences = [x["id"] for x in catalog.all("offence").values()]
+    wild_ids = [x["id"] for x in catalog.all("wild").values()]
+    if args.skill and args.skill not in offences + wild_ids: parser.error("Skill is outside the implemented active roster")
     test = runtime.execute((ROOT / "tests/BattleSimulation.spec.luau").read_text())
     catalog_test = runtime.execute((ROOT / "tests/SkillCatalog.spec.luau").read_text())
     result = {"validation": [test(simulation, catalog, skills), catalog_test(catalog)],
-              "evidence": "Pure simulation only; no human playtest or balance claim."}
-    wild_ids = [entry["id"] for entry in catalog.all("wild").values()]
+              "evidence": "Pure deterministic simulation; human comprehension, phone readability, network behavior and fun remain playtest gates.",
+              "roster_version": catalog.ROSTER_VERSION, "contract_version": simulation.CONTRACT_VERSION,
+              "independent_seeds": args.samples, "seed_formula": "104729 + sample_index * 7919",
+              "uncertainty": "95% normal interval over seed-cluster mean scores; angles and seats are not independent; one seed has no interval.",
+              "scope": "Active 4/5 roster only. Expansion is not implemented and is outside Milestones 1/2."}
     table = lambda values: runtime.table_from(list(values))
+    angles = (32,) if args.quick else (10,32,55)
+    measure = runtime.eval(FAST_MEASURE)
+    cache = {}
+    total = 0
+    def records(a, b, wa=(), wb=(), angle_pairs=None, sim=None):
+        nonlocal total
+        sim = sim or simulation
+        pairs = tuple(angle_pairs or product(angles, angles))
+        key = (a,b,wa,wb,pairs,sim==simulation)
+        if key in cache: return cache[key]
+        rows=[]
+        for index in range(args.samples):
+            for aa,ab in pairs:
+                r=dict(measure(sim,104729+index*7919,a,aa,b,ab,table(wa),table(wb)))
+                r["seed_index"]=index
+                rows.append(r);total+=1
+        cache[key]=rows
+        return rows
+    def both_seats(a,b,wa=(),wb=(),angle_pairs=None):
+        rows = list(records(a,b,wa,wb,angle_pairs))
+        for r in records(b,a,wb,wa,angle_pairs):
+            r=dict(r);r["winner"]=3-r["winner"] if r["winner"] else 0
+            r["secondWindA"]=r.get("secondWindB",False)
+            rows.append(r)
+        return rows
     if args.baseline:
-        baseline = load_battle(runtime, args.baseline)[0]
-        legacy = baseline.validPower is not None
-        compare = runtime.eval(COMPARE_BASELINE)
-        rounds, ticks, full_rounds, prefixes = 0, 0, 0, 0
-        baseline_matchups = (("Meteor", "Firework"), ("Firework", "Meteor"))
-        if args.baseline_scope == "meteor-charge":
-            baseline_matchups += (("Firework", "Firework"),)
-        for index, angle_a, angle_b, powers in product(range(args.samples), (10, 32, 55), (10, 32, 55),
-                                                     baseline_matchups):
-            prefix = args.baseline_scope == "meteor-charge" and "Meteor" in powers
-            ticks += compare(baseline, simulation, 104729 + index * 7919, powers[0], angle_a, powers[1], angle_b,
-                             table(()), table(()), prefix)
-            prefixes += int(prefix)
-            full_rounds += int(not prefix)
-            rounds += 1
-        none_rounds = rounds
-        if args.wild_sample:
-            # An older baseline can only carry one card, so pairs have nothing to match.
-            ids = [build for build in loadouts(wild_ids) if len(build) <= (1 if legacy else 2)]
-            for index, modifier_a, modifier_b, powers in product(range(args.samples), ids, ids,
-                                                                baseline_matchups):
-                prefix = args.baseline_scope == "meteor-charge" and "Meteor" in powers
-                ticks += compare(baseline, simulation, 104729 + index * 7919, powers[0], 32, powers[1], 32,
-                                 table(modifier_a), table(modifier_b), prefix)
-                prefixes += int(prefix)
-                full_rounds += int(not prefix)
-                rounds += 1
-        result["baseline_comparison"] = {"rounds": rounds, "none_angle_rounds": none_rounds,
-                                         "wild_rounds": rounds - none_rounds, "ticks": ticks,
-                                         "baseline_format": "one power, one modifier" if legacy else "builds",
-                                         "full_rounds": full_rounds, "pre_meteor_windup_prefixes": prefixes,
-                                         "scope": args.baseline_scope,
-                                         "match": "Every original physics/gameplay field matches exactly for the specified scope. Presentation events/eventSerial and added metadata excluded."
-                                                  + (" Renamed power/modifier fields are checked by meaning; a skill's private state may be absent on planes without that skill." if legacy else "")}
+        baseline = load_reference(runtime,args.baseline)
+        if args.baseline_scope == "outcomes":
+            result["baseline_comparison"]={}
+            for a,b in product(("Meteor","Firework"), repeat=2):
+                result["baseline_comparison"][f"{a} vs {b}"]={"before":summary(records(a,b,sim=baseline)),"after":summary(records(a,b))}
+        else:
+            compare=runtime.eval(COMPARE_BASELINE)
+            compared=ticks=0
+            pairs=[("Meteor","Firework"),("Firework","Meteor")]
+            if args.baseline_scope == "meteor-charge": pairs.append(("Firework","Firework"))
+            for index,aa,ab,(a,b) in product(range(args.samples),(10,32,55),(10,32,55),pairs):
+                ticks+=compare(baseline,simulation,104729+index*7919,a,aa,b,ab,table(()),table(()),args.baseline_scope=="meteor-charge" and "Meteor" in (a,b))
+                compared+=1
+            result["baseline_comparison"]={"exact_rounds":compared,"ticks":ticks,"scope":args.baseline_scope}
     if not args.tests_only:
-        measure = runtime.eval(MEASURE)
-        matches = [("Meteor", "Firework"), ("Firework", "Meteor")]
-        if args.mirrors:
-            matches.extend([("Meteor", "Meteor"), ("Firework", "Firework")])
-        result["samples_per_matchup"] = args.samples * 9
-        result["angles"] = [10, 32, 55]
-        result["seed_formula"] = "104729 + sample_index * 7919, sample_index starts at zero"
-        result["matchups"] = {}
-        for power_a, power_b in matches:
-            records = []
-            for index, a, b in product(range(args.samples), result["angles"], result["angles"]):
-                records.append(dict(measure(simulation, 104729 + index * 7919, power_a, a, power_b, b, table(()), table(()))))
-            result["matchups"][f"{power_a} vs {power_b}"] = {
-                "rounds": len(records),
-                "winners_by_slot": dict(Counter(str(record["winner"]) for record in records)),
-                "winners_by_power": dict(Counter(record["winnerPower"] for record in records)),
-                "reasons": dict(Counter(record["reason"] for record in records)),
-                "duration_seconds": distribution([record["seconds"] for record in records]),
-                "first_hit_seconds": distribution([record["firstHit"] for record in records]),
-                "longest_event_gap_seconds": distribution([record["longestQuiet"] for record in records]),
-                "mean_attacks": round(mean(record["attacks"] for record in records), 3),
-                "mean_hits": round(mean(record["hits"] for record in records), 3),
-                "peak_projectiles": max(record["peakProjectiles"] for record in records),
-                "meteor_dives": dive_summary(records),
-            }
+        result["angles"]=list(angles)
+        result["matchups"]={}
+        for a,b in product(offences,repeat=2):
+            if args.skill in offences and args.skill not in (a,b): continue
+            result["matchups"][f"{a} vs {b}"]=summary(records(a,b))
+        result["offence_field"]={}
+        for a in offences:
+            if args.skill in offences and a!=args.skill: continue
+            rows=[r for b in offences for r in both_seats(a,b)]
+            value=summary(rows)
+            value["equal_opponent_weighting"]=True
+            if not .45<=value["score"]<=.55: value["flags"].append("field-score")
+            result["offence_field"][a]=value
         if args.wild_sample:
-            records = []
-            ids = loadouts(wild_ids)
-            for index, modifier_a, modifier_b, powers in product(range(args.samples), ids, ids,
-                                                                (("Meteor", "Firework"), ("Firework", "Meteor"))):
-                records.append(dict(measure(simulation, 104729 + index * 7919,
-                                            powers[0], 32, powers[1], 32, table(modifier_a), table(modifier_b))))
-            result["wild_sample"] = {
-                "rounds": len(records), "angle": 32,
-                "loadout_pairs": f"All {len(ids) ** 2} ordered pairs of {len(ids)} loadouts, both cross-offence orders",
-                "duration_seconds": distribution([record["seconds"] for record in records]),
-                "winners_by_power": dict(Counter(record["winnerPower"] for record in records)),
-                "reasons": dict(Counter(record["reason"] for record in records)),
-                "bumper_blocks": sum(record["blocks"] for record in records),
-                "wake_hits": sum(record["wakeHits"] for record in records),
-                "boost_activations": sum(record["boosts"] for record in records),
-                "peak_wakes": max(record["peakWakes"] for record in records),
-                "meteor_dives": dive_summary(records),
-            }
-        for label, angle_a, angle_b in (("default_seed_731", 35, 30), ("seed_731_angle32_fixture", 32, 32)):
-            fixture = dict(measure(simulation, 731, "Meteor", angle_a, "Firework", angle_b, table(()), table(())))
-            fixture["dives"] = [dict(dive) for dive in fixture["dives"].values()]
-            fixture["settings"] = {"seed": 731, "offenceA": "Meteor", "angleA": angle_a, "wildA": [],
-                                   "offenceB": "Firework", "angleB": angle_b, "wildB": []}
-            result[label] = fixture
-    if args.json:
-        print(json.dumps(result, indent=2, sort_keys=True))
+            result["wild_lift"]={}
+            wild_angles=((32,32),)
+            for wild in wild_ids:
+                if args.skill in wild_ids and args.skill!=wild: continue
+                values={}
+                for a in offences:
+                    if args.skill in offences and args.skill!=a: continue
+                    rows=[r for b in offences for r in both_seats(a,b,(wild,),(),wild_angles)]
+                    bare=[r for b in offences for r in both_seats(a,b,(),(),wild_angles)]
+                    v=summary(rows);v["lift_points"]=round((v["score"]-summary(bare)["score"])*100,2)
+                    v["paired_lift_seed_95_interval_points"]=paired_lift_interval(rows,bare)
+                    values[a]=v
+                result["wild_lift"][wild]={"by_offence":values,"average_lift_points":round(mean(v["lift_points"] for v in values.values()),2),
+                                           "worst_lift_points":max(v["lift_points"] for v in values.values())}
+            result["full_builds"]={}
+            all_wild=loadouts(wild_ids)
+            for a,wa in product(offences,combinations(wild_ids,2)):
+                if args.skill and args.skill!=a and args.skill not in wa: continue
+                opponents=[(b,wb) for b in offences for wb in (((),wa) if args.quick else all_wild)]
+                pair_rows=[(b,wb,both_seats(a,b,wa,wb,wild_angles)) for b,wb in opponents]
+                rows=[r for _,_,rr in pair_rows for r in rr]
+                adverse=[]
+                for b,wb,rr in pair_rows:
+                    metrics=summary(rr)
+                    if metrics["flags"]:
+                        adverse.append({"opponent":b+("+"+"+".join(wb) if wb else ""),**metrics})
+                adverse.sort(key=lambda m:abs(m["score"]-.5)+m["draw_rate"]+m["cap_rate"],reverse=True)
+                v=summary(rows);v["opposing_builds"]=len(opponents)
+                v["adverse_pairing_count"]=len(adverse)
+                v["worst_pairings"]=adverse[:5]
+                if v["score"]>.65:v["flags"].append("full-build-score")
+                result["full_builds"][a+"+"+"+".join(wa)]=v
+            result["wild_sampling"]="Paired seeds, both seats, angle 32. "+("QUICK: full builds face bare and same-card opponents only." if args.quick else "All 40 two-card builds versus all 64 active zero/one/two-card builds.")
+        result["flags"]=[section+": "+label+": "+", ".join(v["flags"]) for section in ("matchups","offence_field","full_builds") for label,v in result.get(section,{}).items() if v["flags"]]
+        result["flags"] += ["wild average lift: "+w for w,v in result.get("wild_lift",{}).items() if v["average_lift_points"]>10]
+    result["total_simulated_rounds"]=total
+    result["runtime_seconds"]=round(time.monotonic()-started,2)
+    if args.json: print(json.dumps(result,indent=2,sort_keys=True))
     else:
-        print("\n".join(result["validation"]))
-        print(result["evidence"])
-        if "baseline_comparison" in result:
-            print("Baseline:", result["baseline_comparison"])
-        if "wild_sample" in result:
-            print("Wild cards:", result["wild_sample"])
-        for matchup, values in result.get("matchups", {}).items():
-            print(f"{matchup}: {values['rounds']} rounds; wins {values['winners_by_power']}; "
-                  f"time {values['duration_seconds']}; reasons {values['reasons']}")
+        print("\n".join(result["validation"]));print(result["evidence"])
+        print(f"{args.samples} independent seeds; angles {list(angles)}; half-point draw score; {total} rounds; {result['runtime_seconds']}s")
+        print(result["uncertainty"])
+        for section in ("matchups","offence_field","full_builds"):
+            if section not in result:continue
+            print("\n"+section)
+            print("| Build | W/L/D | Score | Seed 95% | Cap | Median / p90 | Flags |")
+            print("|---|---:|---:|---|---:|---:|---|")
+            for k,v in result[section].items():
+                print(f"| {k} | {v['wins']}/{v['losses']}/{v['draws']} | {v['score']:.1%} | {v['seed_95_interval']} | {v['cap_rate']:.1%} | {v['duration_seconds']['median']} / {v['duration_seconds']['p90']} | {', '.join(v['flags'])} |")
+        for w,v in result.get("wild_lift",{}).items():
+            print(f"{w}: average lift {v['average_lift_points']:+.2f} pp; worst {v['worst_lift_points']:+.2f} pp; "+", ".join(f"{a} {x['lift_points']:+.2f}" for a,x in v['by_offence'].items()))
+        if result.get("flags"):print("\nFlags: "+"; ".join(result["flags"]))
+        if args.baseline:print("Baseline:",json.dumps(result["baseline_comparison"]))
 
 
 if __name__ == "__main__":

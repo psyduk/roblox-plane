@@ -1,3 +1,69 @@
+# Fresh visual, input and network QA — October 10, 2026
+
+**This entry supersedes the earlier candidate evidence below. Local QA passed after fixes; release approval remains open.** [Full QA report with screenshots and issue links](docs/QA-2026-10-10.md).
+
+The apparent return to distance mode came from a running older worktree place (`.claude/worktrees/hanger-redesign-proposals-7173ca/Skybound.rbxlx`), not a reversion of canonical PvP source. That session was stopped. The build now emits an unambiguous **`build/Sky-Battle-Playtest.rbxlx`** alongside the identical canonical file. SHA-256: `b0280d3c5a037e5364d260e488770a0bd84d5c73b1be7fa699c7c32c4f2d80db`. All 35 packaged scripts match disk and were synchronized/compared in the final native Studio Edit session. No temporary network fixtures or diagnostic overrides remain.
+
+- **Actual visual/input QA:** five completed bot matches (three wins, two losses; four before fixes and one after), earned rewards, gift/equip, a 250-coin Aurora purchase from 275 genuinely earned coins, rematches and exit/cancel. Desktop, iPhone portrait/landscape and Galaxy A06 landscape emulation inspected. Final build's Firework select/Lock, loss/+50, Blue Comet gift, fresh rematch/reroll/Pick Any/Pinball lock and return to hangar verified with actual UI input and authoritative state confirmation.
+- **Seven reproduced bugs fixed:** hidden short-landscape Lock button/card clipping; reroll/lock selecting a different card; unrecoverable initial profile load; quit preserving streak; misleading armor-timeout result fact; wall-clock timer drift; movement behind Stats. AND-223 through AND-229 are In Review. The same 700ms W input behind Stats moved 10.67 studs before and 0 after the fix.
+- **200 native Studio checks passed**, plus **44 full-server scenarios** (11 current battle mode, 33 explicitly opted-in archived distance regressions). [Native](docs/validation/qa-2026-10-10/native.json), [server](docs/validation/qa-2026-10-10/server.txt), [simulation](docs/validation/qa-2026-10-10/simulation.txt).
+- **Fresh two-client network run: 10 checks passed in 74.66 seconds.** Two real Studio clients used programmatic production remotes, completed three rounds with mirrored 1–2/2–1 scores and 50/75 coins, then passed private picks/reveal, gift, mutual rematch, departure and challenge decline/accept. No captured game errors. [Raw report](docs/validation/qa-2026-10-10/network.json). Explicit `session_only`; no cloud confirmation claim.
+
+Final candidate is left running at the desktop PvP hangar with controls enabled and no game-script console errors. No commit, push or publication is claimed. AND-189/221/222 remain open for physical-phone touch/performance, heard audio, published two-account networking, confirmed live save/rejoin, unfamiliar-player replay and remaining balance/readability concerns. A normal draw and corrected timeout result still need final-build visual observation. See [the playtest checklist](docs/SKY-BATTLE-PLAYTEST.md).
+
+---
+
+# Earlier Sky Battle Milestones 1–2 candidate — October 10, 2026
+
+Implemented the approved rivalry first, passed the native mechanical gate below, then added cosmetic progression. The deliverable is **Skybound.rbxlx**, with exact source hashes in [the build manifest](docs/validation/sky-battle-build.json). Milestones 3 and 4, paid products, expansion skills and daily/season systems are outside scope. The existing design/ticket-review edits were preserved.
+
+## Final implementation and checks
+
+- Shared public roster: Meteor, Firework, Machine Gun, Pinball; Afterburner, Spring Bumper, Fizzy Fuel, Magnet, Second Wind. Human and bot access is identical; skin geometry, paint, trails, coins and mastery never alter combat stats or draft access.
+- Server-owned human queue with named bot fallback, hidden simultaneous draft, one free reroll/Pick Any per match, first to two wins, drawn-round replay, 35-second/5-round/240-second caps, factual results, mutual rematch and same-server challenge lifecycle. Disconnect/shutdown restores controls and cannot generate instant-forfeit rewards.
+- Eligible completed loss/draw gives 50 coins; win gives 75. First-match trail choice, separate 250-coin Aurora goal, result/shop/hangar feedback and battle mastery records. Additive schema migration, saved/pending/unavailable/session-only distinctions, idempotent grants and retry-safe saving. No combat purchases.
+- **185 native Studio checks passed:** 40 simulation, 5 skill catalog, 28 match orchestration, 44 player stats, 11 cosmetic catalog, 14 telemetry, 12 presentation, 24 audio and 7 client command/feedback. [Native output](docs/validation/sky-battle-native.txt).
+- **43 full-server harness scenarios passed:** 10 default battle integrations, 33 explicitly opted-in archived distance regressions. Store-double cases include normal human/bot awards once, first gift plus immediate rematch, terminal purchase/equip, fight mutation denial, challenge/departure, saved rejoin and failed-save autosave retry. These are simulated services, not live cloud persistence. [Output](docs/validation/sky-battle-server.txt).
+- Generated place validates all **35 packaged source/spec scripts** against disk, and all 35 sources in the working Studio Edit instance were compared byte-for-byte with disk (no differences). The final Edit instance contains exactly 35 scripts, no temporary QA scripts, and no fixed-seed/experimental flags. `git diff --check` passes. Diagnostic QA scripts are excluded from the package.
+
+## Observed Studio UI and normal play
+
+Inspected desktop 2075×856 and iPhone 17 Pro emulation at 401×778 portrait and 750×381 landscape. Real PLAY input entered search and private draft; unassisted deadline picks reached normal automatic combat. Two complete bot losses ended 0–2 and awarded 50 coins with the first gift available. On the latest combat/client flow, a native gift-button activation granted and equipped **Blue Comet**, preserving the 50 coins. Rematch started a new match against the same Comet identity, with score 0–0, fresh resources and Blue Comet equipped.
+
+Draft cards, score/armor, storm, result/fact/replay, scrollable optional rewards, cosmetic preview/goal and challenge empty state were rendered. Challenge open/close and collection open worked through native UI input; movement is disabled while the modal is open. MY STATS now shows battle matches/wins/losses/draws/streak/mastery rather than distance data. Corrected short-landscape header/controls and challenge-footer overlap, increased gift targets to 44px, and replaced remaining simulated-opponent sign copy. [Portrait draft](docs/validation/sky-battle-phone-draft.jpg), [portrait rewards](docs/validation/sky-battle-phone-rewards.jpg).
+
+The live replay diagnostic distinguished `replay_requested` from a subsequent `next_actual_launch` after the loss. Final review found that reward-shown delivery was missing; the client now sends it once per visible terminal result, with native regression coverage. Manual timing here includes deliberate tool/inspection delays and is **not** a first-session or replay-speed benchmark.
+
+Linear is current: 25 implemented issues are In Review; AND-189, AND-216, AND-221 and AND-222 remain In Progress for observation/release gates; the pre-existing AND-190 completion and Milestones 3/4 were left unchanged.
+
+## Actual local two-client network pass
+
+**10 checks passed in 60.16 seconds** through `StudioTestService:ExecuteMultiplayerTestAsync(2,"SkyBattleNetworkV1")`. Two independent Studio clients sent the production remotes and reported received snapshots. They paired as humans, preserved private selections until both locked, revealed the same seed/builds, completed a normal two-round match with mirrored 0–2 / 2–0 scores and 50/75 coins, claimed a starter through the client remote, required both rematch votes, reset builds/resources without duplicate awards, restored both controls after departure, declined then accepted same-server challenges, and returned to usable lobbies. No captured client/server game errors. [Raw network report](docs/validation/sky-battle-network.json).
+
+Inputs in this test were programmatic. The report's “preserved confirmed grants” check name refers to earned in-session grants; `saveStatus=session_only` is explicit and proves no cloud confirmation. Temporary QA scripts were removed from the editable Studio place and are never packaged. The initial 25-second startup attempt failed; the corrected server-marked client bootstrap completed both clients in 5.83 seconds on the successful run.
+
+## Balance and remaining release gates
+
+[Balance report](docs/BALANCE-REPORT.md): 3,600 base/baseline rounds across 20 independent seeds and 11,520 exhaustive active-build screen rounds across 3 independent seeds. Firework mirrors changed from 180/180 draws to 99/81/0 without a hidden tiebreak. Fizzy/Bumper tuning brought average single-card lifts below 10 percentage points. Remaining flags include Meteor mirror draws, defensive stalls (worst full-build cap rate 58.85%), and two full builds above 65% field score. This is a free iteration candidate, not balance-complete approval.
+
+Still required before release: published two-player agreement and lifecycle checks; real-phone touch/readability/frame stability; heard audio judgement and published sound permissions; confirmed live save/rejoin for grants/equipment/mastery; unfamiliar-player first-session and actual replay observations. Local emulation and native automated audio/presentation assertions do not satisfy those gates. Follow [the exact publishing/playtest checklist](docs/SKY-BATTLE-PLAYTEST.md), which includes account access, place/version recording, cases, success thresholds and an empty results sheet. No published place version is claimed.
+
+Tool/test limitations: one initial view-spec invocation omitted dependencies and was rerun correctly; a real Firework starvation regression was fixed before progression. Phone input automation required explicit coordinates and delayed authoritative confirmation; tool success alone was not treated as a click/grant. The first local multiplayer harness attempt timed out during client startup at 25 seconds and was corrected to wait for a server-marked QA channel with a longer cold-start allowance. Desktop UI automation bound to an older Studio window, so the supported StudioTestService API was used instead.
+
+---
+
+# Milestone 1 prerequisite gate — October 10, 2026
+
+The Milestone 1 mechanical gate passed **before any progression implementation**: native Studio 39 combat, 5 catalog, 27 authoritative match orchestration, 9 presentation, 23 audio, 5 client command/feedback, and 14 telemetry checks. The orchestration suite uses doubles inside native Luau; it is not two independently connected human clients. The full Main.server harness passed 38 service-double scenarios, including 33 retained distance-mode regressions. Existing player-stat 30 and cosmetic 9 checks also passed at this gate.
+
+Observed in actual Studio Play: main PLAY click enters search, named-bot fallback enters a private draft, deadline starts countdown and automatic combat. Inspected desktop 2075×856 and iPhone 17 Pro emulation portrait 401×778. Portrait draft showed all three readable cards, reroll, Pick Any and lock controls. Fixed pale status text over clouds and small role labels; skin geometry is preserved. Later final candidate checks will supersede this intermediate observation.
+
+A native regression test caught a real attack-starvation bug in the first mirror-timing change. It was fixed before the gate passed. One presentation test invocation omitted required dependencies and failed as an AssistantCommand; rerunning with the documented parameters passed. Neither error is suppressed or treated as a game pass.
+
+The 20-seed base sample reports Firework mirrors 99/81/0 wins/losses/draws over 180 angle variants, versus 180/180 baseline draws. Median 22.917s, p90 24.6s, no round caps. There are **20 independent seeds, not 180 independent samples**. Other pairing draw/timeout and balance flags remain open; full sample records are being saved. No human comprehension, fun, real-phone, heard-audio or published persistence claim follows from this gate.
+
+---
+
 # Skill catalog and two wild cards — October 10, 2026
 
 AND-190. Battle skills now live in a shared catalog (`SkillCatalog.luau`) with their behaviour in one table of hooks per skill (`BattleSkills.luau`). `BattleSimulation.luau` no longer names any skill. A plane's build is one offence plus zero, one or two different wild cards (`{ offenceId, wildIds, angle }`), replacing one power and one modifier. The server refuses a whole build if a skill is unknown, of the wrong kind, repeated, or if there are more than two wild cards. The setup screen reads its cards and chips from the catalog; wild card chips toggle, and the bot brings as many wild cards as the pilot. No new skills, no draft, no balance change.
