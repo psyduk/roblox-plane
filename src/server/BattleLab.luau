@@ -72,11 +72,11 @@ function BattleLab:command(player,payload)
             if not a or not b then return end
             s.settings={a,b}; self:prepare(s)
         end
-        s.phase="Countdown"; s.endsAt=time+2
+        s.phase="Countdown"; s.endsAt=time+2.4
     elseif kind=="restart" and s and s.phase=="Results" then
         self:prepare(s)
         -- One tap repeats the experiment. Edit is an explicit separate action.
-        if payload.edit~=true then s.phase="Countdown"; s.endsAt=time+1 end
+        if payload.edit~=true then s.phase="Countdown"; s.endsAt=time+1.8 end
     end
     self:emit(player)
 end

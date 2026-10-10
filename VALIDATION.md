@@ -1,3 +1,28 @@
+# Battle look, sound and feel pass — October 10, 2026
+
+First pass on [the battle audit](docs/BATTLE-AUDIT.md), items 1–4, 6, 7, 15, 21 and 23, on branch `battle-juice-pass` (based on `codex/plane-battles-entry`). Presentation only: `BattleSimulation.luau` is untouched. The one server change is countdown length (launch 2.0s → 2.4s, quick retry 1.0s → 1.8s) so three evenly spaced beats fit.
+
+What changed:
+
+- **Camera:** frames both planes and any rocket in flight instead of the whole field, widening fast and tightening slowly, with a punch-in and shake on hits. A knockout plays at 0.35× for half a second and the camera goes to the falling plane first. Reduced-motion mode keeps the old fixed full-field frame with no shake, freeze or slow motion.
+- **Impacts:** pooled spark, smoke and fire particles (Roblox built-in textures), a 0.07–0.16s freeze-frame, a white screen flash and a colour-grade kick. Planes smoke after one hit and burn after two. Rockets have a long sparkling trail and burst in the shooter's colour.
+- **Arena:** painted late-afternoon sky, sun, 32 drifting clouds at four depths, a floating deck and two bleachers whose crowd rows hop harder as the fight heats up. Bloom and a colour grade are added on entry and removed on exit.
+- **Your plane:** fighter one uses the pilot's hangar paint and equipped trail, with their avatar in the cockpit; the rival gets a contrasting paint and a practice pilot. The HUD accents follow the paints. The chosen plane *type* still does not show, because the power replaces the wings and fuselage.
+- **Callouts and countdown:** cartoon-lettered pop-in words over the planes, and a full-screen 3-2-1-FIGHT!
+- **Sound:** the existing pitched stock voices are kept and layered with 16 licensed one-shots (Pro Sound Effects' official Creator Store channel) plus three beds: APM Music's "Rival - 30 second" (the track already vetted on `claude/game-visuals-sound-80a0f8`), a stadium crowd and a storm bed for the closing wind. Countdown beeps, a start whistle, last-five-seconds ticks and crowd reactions are new.
+
+Checked:
+
+- `sample_battle.py --tests-only`: 27 pass. `test_server.py`: 47 scenarios pass after four countdown waits were lengthened to match.
+- Native Studio Luau, run through Studio's automation server: **6 battle-view crash tests and 21 battle-audio tests pass**. One real fix came from this: a wreck could end a frame within 0.002 studs of the floor without counting as landed; touching now lands.
+- Three complete simulated fights (plain, Spring Bumper vs Fizzy Fuel, Afterburner vs Fizzy Fuel) were stepped through the view at 60 Hz with no errors. Visible height ranged **73–162** studs, so the lens moves about 2.2×. Bloom, grade and the arena were removed on destroy.
+- A second HUD instance was driven through a real server fight on the client: calls appeared as 3, 2, 1 at 0.8s spacing and FIGHT! at 2.5s; the screen flash peaked at 0.63 opacity; the result was reached at 27.2s. `BattlePlane1` reported `PilotAvatarSource=CharacterClone`, the rival `PracticeDummy`.
+- All **51 battle sounds** (16 stock, 32 licensed one-shot voices, 3 beds) reported `IsLoaded` with a non-zero length.
+
+**Not checked — nobody has seen or heard this build.** The Mac's screen was locked during the pass, Studio rendered zero frames, and screenshots were unavailable. Every visual and audio judgement (sky colours, particle sizes, shake strength, bloom level, mix balance, whether each licensed sample suits its moment) is untested. Phone and portrait layouts, performance on a low-end device and published-server audio permissions are also unchecked.
+
+---
+
 # Main PLAY enters plane battles — October 9, 2026
 
 The hangar now has one game entrance: **PLAY → battle setup → Launch battle**. The Solo button, separate Battle Lab shortcut and distance-duel gates are removed from the default build. Distance matchmaking and direct practice requests are disabled server-side unless `FlightServer.DistanceModeEnabled` is explicitly set to boolean `true` before startup. The old implementation and its regression coverage remain available for later; see [the archived distance reference](docs/DISTANCE-FLIGHT-REFERENCE.md).

@@ -70,15 +70,20 @@ This file is the reference list. Status is updated as items ship; evidence for s
 
 ## Status
 
+Branch `battle-juice-pass`. "Built" means written and exercised by tests and scripted fights; see VALIDATION.md for exactly what was and was not checked. **Nothing below has been looked at or listened to yet.**
+
 | # | Item | Status |
 | --- | --- | --- |
-| 1 | Dynamic camera | First pass — see below |
-| 2 | Hit weight | First pass — see below |
-| 3, 23 | Sound and impact design | First pass — see below |
-| 4 | Your own plane in battle | First pass — see below |
-| 6, 7 | Sky arena and bloom | First pass — see below |
-| 15 | 3-2-1-FIGHT countdown | First pass — see below |
-| 21 | Battle music | First pass — see below |
-| everything else | | Open |
-
-The "first pass" rows are filled in by the juice pass on branch `battle-juice-pass`; what was actually checked is recorded in VALIDATION.md.
+| 1 | Dynamic camera | Built, unseen |
+| 2 | Hit weight (freeze, shake, flash, particles, knockout slow motion) | Built, unseen |
+| 3, 23 | Layered impact sounds, crowd, countdown beeps | Built, unheard |
+| 4 | Your paint, trail and pilot in battle | Built, unseen. Plane type still not shown |
+| 6, 7 | Sky stadium, bloom and grade | Built, unseen |
+| 8 | Damage smoke and fire | Built, unseen |
+| 10 | Rocket trail and firework burst | Partly built, unseen |
+| 13 | Comic callout words | Built, unseen |
+| 15 | 3-2-1-FIGHT countdown | Built, unseen |
+| 21 | Battle music | Built, unheard. No win/lose stings or hangar loop yet |
+| 24 | Last-five-seconds tick, thunder at pressure start | Partly built |
+| 9, 11, 12 | Meteor fireball, storm wall, bigger crash | Small improvements only |
+| 14, 16–20, 22, 25–32 | Everything else | Open |

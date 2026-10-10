@@ -155,7 +155,7 @@ DEFAULT_SCENARIOS = {
         assert(Harness.latest(a).phase=='BattleLab' and Harness.latest(a).matchId==0 and Harness.latest(a).queue==nil)
         Harness.advance(.1);Harness.send(a,'play')
         assert(Harness.battleLatest(a).roundId==first.roundId)
-        Harness.battleSend(a,'launch');Harness.advance(2.3)
+        Harness.battleSend(a,'launch');Harness.advance(2.7)
         Harness.send(a,'play')
         assert(Harness.battleLatest(a).phase=='Fight' and Harness.battleLatest(a).roundId==first.roundId)
         Harness.advance(38);Harness.send(a,'play')
@@ -192,7 +192,7 @@ DEFAULT_SCENARIOS = {
         assert(firstA.simulatedOpponent==true and firstB.simulatedOpponent==true)
         assert(firstA.roundId~=firstB.roundId)
         Harness.battleSend(a,'configure',{settings={{powerId='Firework',angle=10},{powerId='Meteor',angle=55}}})
-        Harness.battleSend(a,'launch');Harness.advance(2.3)
+        Harness.battleSend(a,'launch');Harness.advance(2.7)
         assert(Harness.battleLatest(a).phase=='Fight')
         assert(Harness.battleLatest(b).phase=='Configure' and Harness.battleLatest(b).settings[1].powerId=='Meteor')
         Harness.advance(38)
@@ -256,7 +256,7 @@ SCENARIOS = {
             assert(Harness.battleLatest(a).roundId==round,'invalid modifier accepted')
         end
         Harness.battleSend(a,'launch');Harness.advance(.1)
-        Harness.battleSend(a,'configure',setup('Afterburner'));Harness.advance(2.2)
+        Harness.battleSend(a,'configure',setup('Afterburner'));Harness.advance(2.6)
         assert(Harness.battleLatest(a).settings[1].modifierId=='FizzyFuel')
         Harness.battleSend(a,'configure',setup('None'));Harness.advance(38)
         assert(Harness.battleLatest(a).phase=='Results')
@@ -276,7 +276,7 @@ SCENARIOS = {
         local s=Harness.battleLatest(a)
         assert(s.phase=='Countdown' and s.settings[1].angle==50 and s.settings[1].powerId=='Firework')
         for i=1,100 do Harness.battleSend(a,'request') end
-        Harness.advance(2.2)
+        Harness.advance(2.6)
         assert(Harness.battleLatest(a).phase=='Fight')
     ''',
     "Battle Lab entry cannot overlap queue membership or any flight match phase": r'''
@@ -415,7 +415,7 @@ SCENARIOS = {
         assert(configured.settings[1].armor==nil and configured.simulation.fighters[1].armor==3)
         Harness.battleSend(a,'launch');Harness.advance(0.1)
         for _,phase in ipairs({'Countdown','Fight'})do
-            if phase=='Fight'then Harness.advance(2.1)end
+            if phase=='Fight'then Harness.advance(2.5)end
             assert(Harness.battleLatest(a).phase==phase)
             Harness.battleSend(a,'configure',{settings={{powerId='Meteor',angle=35},{powerId='Firework',angle=30}}})
             Harness.advance(0.1)
@@ -445,7 +445,7 @@ SCENARIOS = {
         Harness.advance(37)
         Harness.battleSend(a,'restart',{edit=true});Harness.advance(0.1)
         assert(Harness.battleLatest(a).phase=='Configure')
-        Harness.battleSend(a,'launch');Harness.battleSend(b,'launch');Harness.advance(2.3)
+        Harness.battleSend(a,'launch');Harness.battleSend(b,'launch');Harness.advance(2.7)
         assert(Harness.battleLatest(a).phase=='Fight' and Harness.battleLatest(b).phase=='Fight')
         Harness.battleSend(a,'exit');Harness.advance(0.1)
         assert(not Harness.battleLatest(a).active and not a.Character.HumanoidRootPart.Anchored)

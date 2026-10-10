@@ -3,6 +3,7 @@ local Players=game:GetService("Players")
 local GuiService=game:GetService("GuiService")
 local BattleView=require(script.Parent:WaitForChild("BattleView"))
 local BattleAudio=require(script.Parent:WaitForChild("BattleAudio"))
+local PilotAvatar=require(script.Parent:WaitForChild("PilotAvatar"))
 local BattleLab={}
 BattleLab.__index=BattleLab
 local NAVY=Color3.fromRGB(18,31,51)
@@ -108,6 +109,15 @@ function BattleLab.new(World,shared)
     self.replay.BackgroundColor3=Color3.fromRGB(224,81,64)
     self.edit=button(self.footer,"Edit","Change setup",function() self:send("restart",{edit=true}) end)
     self.footerHint=label(self.footer,"Hint",13,MUTED)
+    -- Full-screen beats: a white impact flash and the 3-2-1-FIGHT call.
+    self.flash=make("Frame",self.panel,"ImpactFlash")
+    self.flash.Size=UDim2.fromScale(1,1); self.flash.BorderSizePixel=0; self.flash.Active=false
+    self.flash.BackgroundColor3=Color3.new(1,1,1); self.flash.BackgroundTransparency=1; self.flash.ZIndex=40
+    self.count=label(self.panel,"Countdown",150,Color3.fromRGB(255,221,87))
+    self.count.Font=Enum.Font.FredokaOne; self.count.TextWrapped=false; self.count.ZIndex=41
+    self.count.AnchorPoint=Vector2.new(0.5,0.5); self.count.Size=UDim2.fromOffset(900,220); self.count.Visible=false
+    local countEdge=make("UIStroke",self.count,"Edge"); countEdge.Thickness=8; countEdge.Color=NAVY
+    self.countScale=make("UIScale",self.count,"Pop")
     shared:WaitForChild("BattleSnapshot").OnClientEvent:Connect(function(data)
         if type(data)~="table" then return end
         local wasActive=self.active
@@ -123,7 +133,7 @@ function BattleLab.new(World,shared)
             if not self.view then
                 self.view=BattleView.new(World,function(cue)
                     if cue.kind=="crash" then self.audio:playCrash(cue.roundId,cue.actor) end
-                end)
+                end,{pilots=PilotAvatar})
             end
         elseif self.view then self.view:destroy(); self.view=nil end
         self.panel.Visible=self.active
@@ -201,6 +211,8 @@ function BattleLab:update(dt)
     self.audio:update(self.data or {active=false})
     if not self.active or not self.data or not self.view then return end
     local data=self.data
+    -- The HUD wears the same paint as the two planes.
+    local accents={self.view:accent(1),self.view:accent(2)}
     local config=data.phase=="Configure"
     local results=data.phase=="Results"
     local compact=width<600
@@ -244,12 +256,15 @@ function BattleLab:update(dt)
         card.frame.Visible=config
         place(card.frame,left+(i-1)*(half+8),8,half,footerHeight-62)
         place(card.role,0,0,half,17); card.role.Visible=not short
+        card.role.TextColor3=accents[i]
+        self.scorePlates[i].BackgroundColor3=NAVY:Lerp(accents[i],0.14)
+        self.scorePlates[i].Edge.Color=accents[i]
         place(card.power,0,short and 0 or 21,half,short and 34 or 40)
         card.power.Text=(short and (i==1 and "YOU · " or "SIM · ") or "")..self.settings[i].powerId.."  ↔"
         card.power.TextSize=short and 14 or 16
-        card.power.TextColor3=ACCENTS[i]
-        card.power.BackgroundColor3=Color3.fromRGB(37,54,76):Lerp(ACCENTS[i],0.22)
-        card.power.Edge.Color=ACCENTS[i]; card.power.Edge.Transparency=0.18
+        card.power.TextColor3=accents[i]
+        card.power.BackgroundColor3=Color3.fromRGB(37,54,76):Lerp(accents[i],0.22)
+        card.power.Edge.Color=accents[i]; card.power.Edge.Transparency=0.18
         place(card.description,4,63,half-8,28); card.description.Visible=not short
         card.description.Text=DESCRIPTIONS[self.settings[i].powerId]
         local modifier=self.modifiers.get(self.settings[i].modifierId) or self.modifiers.get("None")
@@ -258,7 +273,7 @@ function BattleLab:update(dt)
         card.modifier.Text=short and (modifier.name.."  ↔\n"..modifier.description) or (modifier.name.."  ↔")
         card.modifier.TextWrapped=true
         card.modifier.TextSize=short and 11 or 15
-        card.modifier.TextColor3=modifier.id=="None" and MUTED or ACCENTS[i]
+        card.modifier.TextColor3=modifier.id=="None" and MUTED or accents[i]
         card.modifier.BackgroundColor3=modifier.id=="None" and Color3.fromRGB(36,48,67) or Color3.fromRGB(48,68,91)
         place(card.modifierDescription,4,139,half-8,34)
         card.modifierDescription.Text=modifier.description
@@ -289,10 +304,10 @@ function BattleLab:update(dt)
     self:feedback(data)
     for i,f in ipairs(sim.fighters) do
         self["score"..i].Text=(i==1 and "YOU" or "SIM").." · "..string.upper(f.powerId)
-        self["score"..i].TextColor3=ACCENTS[i]
+        self["score"..i].TextColor3=accents[i]
         local flash=math.max(0,1-(os.clock()-((self.hitTimes or {})[i] or -100))/0.35)
         for pip,bar in ipairs(self.armorBars[i]) do
-            bar.BackgroundColor3=(pip<=f.armor and ACCENTS[i] or Color3.fromRGB(43,51,66)):Lerp(WHITE,flash*0.65)
+            bar.BackgroundColor3=(pip<=f.armor and accents[i] or Color3.fromRGB(43,51,66)):Lerp(WHITE,flash*0.65)
             bar.BackgroundTransparency=pip<=f.armor and 0 or 0.25
         end
         self.scorePlates[i].Edge.Transparency=0.55-flash*0.45
@@ -304,12 +319,12 @@ function BattleLab:update(dt)
         self.status.Text="Choose a power. Add one twist."
         self.help.Text="One optional effect per plane. Both fly and fight automatically."
     elseif data.phase=="Countdown" then
-        self.status.Text="LAUNCH IN "..math.max(1,math.ceil(data.endsAt-workspace:GetServerTimeNow()))
+        self.status.Text="GET READY"
         self.help.Text="Watch the windup. The attack is committed."
         self.footerHint.Text="Meteor dives into a ram · Firework sends a rocket"
     elseif results then
         self.status.Text=sim.winner==0 and "DRAW · EVENLY MATCHED" or (sim.winner==1 and "YOUR PLANE WINS!" or "SIMULATED OPPONENT WINS")
-        self.status.TextColor3=sim.winner==0 and WHITE or ACCENTS[sim.winner]
+        self.status.TextColor3=sim.winner==0 and WHITE or accents[sim.winner]
         self.statusEdge.Color=self.status.TextColor3; self.statusEdge.Transparency=0.1
         self.help.Text=string.format("%.1f seconds · %s",sim.elapsed,sim.reason=="timeout" and "armor at the time limit" or "armor depleted")
         self.footerHint.Text=string.format("You landed %d hits · SIM landed %d. Change one effect and see what happens.",sim.fighters[1].hits,sim.fighters[2].hits)
@@ -331,9 +346,29 @@ function BattleLab:update(dt)
         end
         self.footerHint.Text=table.concat(effects,"   ·   ")
     end
+    -- Three evenly spaced beats across the server countdown, then FIGHT!
+    local call=nil
+    if data.phase=="Countdown" then
+        local remaining=data.endsAt-workspace:GetServerTimeNow()
+        if self.countRound~=data.roundId then self.countRound=data.roundId; self.countSpan=math.max(0.3,remaining) end
+        call=tostring(4-math.clamp(math.floor((1-remaining/self.countSpan)*3)+1,1,3))
+    elseif data.phase=="Fight" and sim.elapsed<0.8 then call="FIGHT!" end
+    if call~=self.countText then self.countText=call; self.countAt=os.clock() end
+    self.count.Visible=call~=nil
+    if call then
+        local age=os.clock()-(self.countAt or 0)
+        self.count.Text=call
+        self.count.Position=UDim2.fromOffset(width/2,headerHeight+(height-headerHeight-footerHeight)/2)
+        self.count.TextSize=math.min(call=="FIGHT!" and 130 or 170,width*0.24)
+        self.count.TextColor3=call=="FIGHT!" and Color3.fromRGB(255,112,92) or Color3.fromRGB(255,221,87)
+        self.countScale.Scale=1+1.1*math.max(0,1-age/0.18)^2
+        self.count.TextTransparency=math.clamp((age-0.45)/0.3,0,1)
+        self.count.Edge.Transparency=self.count.TextTransparency
+    end
     local inset=GuiService:GetGuiInset()
     local origin=self.root.AbsolutePosition+inset
     self.view:update(data,dt,{left=origin.X+10,right=origin.X+width-10,
         top=origin.Y+headerHeight+(short and config and 32 or 56),bottom=origin.Y+height-footerHeight-8})
+    self.flash.BackgroundTransparency=1-math.min(0.7,self.view.screenFlash*0.7)
 end
 return BattleLab
