@@ -1,0 +1,13 @@
+{
+  "sourceCommit": "6b4648f774361a3254929bedb5b990f5ecfa2811",
+  "environment": "Roblox Studio Edit; fresh cloned ModuleScript containers",
+  "studioId": "aa24dc5d-41ab-48ab-8039-b607d48f38d2",
+  "reports": [
+    "BattleView: 12 native presentation tests passed",
+    "BattleClient: 11 command and feedback tests passed",
+    "BattleLab: 32 orchestration cases passed"
+  ],
+  "setupNote": "Initial setup tried to clone StarterPlayerScripts, which is not cloneable. Corrected setup cloned its ModuleScript children into an unparented Folder; all three suites passed and clone containers were destroyed.",
+  "publishedGameplayProof": false,
+  "physicalPhoneProof": false
+}

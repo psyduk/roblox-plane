@@ -1,0 +1,5 @@
+BattleSimulation: 40 tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes)
+SkillCatalog: 5 tests passed (copy, kinds, starters, detached records, build rules)
+Pure deterministic simulation; human comprehension, phone readability, network behavior and fun remain playtest gates.
+10 independent seeds; angles [10, 32, 55]; half-point draw score; 0 rounds; 1.01s
+95% normal interval over seed-cluster mean scores; angles and seats are not independent; one seed has no interval.

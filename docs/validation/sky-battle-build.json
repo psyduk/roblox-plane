@@ -1,11 +1,11 @@
 {
   "place": "Skybound.rbxlx",
-  "placeSha256": "b0280d3c5a037e5364d260e488770a0bd84d5c73b1be7fa699c7c32c4f2d80db",
+  "placeSha256": "5c94d4dbaeea3e6aee079e0c30ef51cd6b185642bf482aa64278a3074fb1ca14",
   "sourceCount": 35,
   "sources": {
     "src/client/BattleAudio.luau": "56204f5522da1ba72066cfda9cdb3dde9ea1603c772393f5e8f7e62f3849a668",
-    "src/client/BattleLab.luau": "b0a1b2b366e8db0c11380f84f6b3ea3e9b861d256374b2615bcfa21e77e7cdc2",
-    "src/client/BattleView.luau": "0691dbc8c89ce71bf2278ecc9e640aa655fdc05d3313f2f0675d6a59af60eafd",
+    "src/client/BattleLab.luau": "863a7a64e2f58b85fce5b47ef740607dcdb5297a0e52f809cf70b5bc4ee4a800",
+    "src/client/BattleView.luau": "33f64dc761c7a05c5e0d109b81d28271703bd8ad1bc035a2dead430e18756e87",
     "src/client/ChallengePanel.luau": "1faedc580536a3a64b3cbe7a616bc2e8992635efc1fc507354dddfa0801e500d",
     "src/client/EffectsShop.luau": "2890c1890315ff7043b93bc54c71a5d542f5daba0ad00222ae81245f3907c0a6",
     "src/client/FlightAudio.luau": "f1a65191ce2122bb1ac32e088d0d7f1c144f030dc6aa06b1672021b8fb571a0e",
@@ -13,7 +13,7 @@
     "src/client/Hud.luau": "c1ea7a0a55b24a7d3803ce93f0f9df7b04565ab844ec2130177b4752a54f34ed",
     "src/client/Main.client.luau": "c563b546cc6b9e73b940feda5e860ae6ce02ddc22e0764901a1fb6abaa17f343",
     "src/client/PilotAvatar.luau": "e9f2c8b692fa8d49427652d5cee249e96676071f32c99401fffdccb3dc0b05e1",
-    "src/server/BattleLab.luau": "98cccbf3091bdd22a1d610ddea3596f47b0cd37d353cff3d07145778df8e8d17",
+    "src/server/BattleLab.luau": "6d7bdc1235a72ca39615a9d9cef48e0b886b2d802aa4f965ae25234da013a8a1",
     "src/server/Main.server.luau": "cca4185ecacc4dc521e4595eec269745ae8d1c87c4537da0e1d61aebf5fb10bd",
     "src/server/PlayerStats.luau": "d090befee0a80030b341dc7e4c355035960ead77add7b0d064c86dcd65fba6d6",
     "src/server/Telemetry.luau": "dd6dd079d86441fa1d67202d8c6333935f8c7ecd33fc24d100efdcaa375646c1",
@@ -29,7 +29,7 @@
     "tests/BattleClient.spec.luau": "8ae3fd6217d32550e5c5e28c59d85c351e6e6a6c67719b5f31be920941a8cfd3",
     "tests/BattleMatch.spec.luau": "7ab03c12e5d3cdff94d8b68cef88eb06fc5cb422f1b500d2eef3dafbb15e8128",
     "tests/BattleSimulation.spec.luau": "7e0bbb8e37802669f35c1541ab9ae92a1048fb8376cd96a5a58b53dda41015e9",
-    "tests/BattleView.spec.luau": "c5d517c437cd6d031efd75afd018c67608f69c302c43f761decef3d66979e922",
+    "tests/BattleView.spec.luau": "3054aaa960ab4a616e52aaefc90b818ac3fc0af8887131bd904a2a4ffc27b2a7",
     "tests/CosmeticCatalog.spec.luau": "b61e7a1f079c261a686ae44e149f4905ebe77a5e5811dd4788e2e154769e38a8",
     "tests/FlightAudio.spec.luau": "5be5da7f6ed4a06a414b2957c34f76a75af82f442de22c56f1f3d2806ec5bb34",
     "tests/PlaneCatalog.spec.luau": "44c072abedb21d2dd915404250f8ffa588eba1f5704fa197645342494b93c165",
@@ -42,15 +42,25 @@
   "scope": "Sky Battle Milestones 1 and 2; free playtest",
   "defaultMode": "plane_battle",
   "diagnosticOverridesAbsent": true,
-  "publishedVersion": 6,
+  "publishedVersion": 7,
+  "publishedAndRealPhoneVerified": false,
   "publishedPlaceId": 86507299893768,
   "publishedUniverseId": 10770074500,
-  "sourceCommit": "a0c9d9eafa08a9bc5624641837ee59c824b3021d",
-  "publishedAtUTC": "2026-10-10T18:14:58Z",
-  "publicationEvidence": "qa-2026-10-10/published-version-6.jpg",
-  "publishedAccess": {"audience": "Limited", "playtesters": true, "friends": false},
+  "sourceCommit": "6b4648f774361a3254929bedb5b990f5ecfa2811",
+  "publishedAtUTC": "2026-10-10T18:58:42Z",
+  "publicationEvidence": "qa-2026-10-10/published-version-7.jpg",
+  "publishedAccess": {
+    "audience": "Limited",
+    "playtesters": true,
+    "friends": false
+  },
   "publishedSourceParityVerified": true,
+  "cloudSourceVerification": {
+    "scriptCount": 35,
+    "matchingScripts": 35,
+    "extraScripts": 0,
+    "method": "UTF-8 FNV checksum and byte length"
+  },
   "publishedArtifactByteIdentical": false,
-  "publicationNote": "Published directly from the existing Skybound Test cloud place after verifying all 35 sources, remotes, clean gameplay flags, empty authored world, Sensor orientation and native visual lighting properties. Protected lighting migration metadata retains cloud originalTechnology=1 versus reference=2; the local place SHA-256 is not a hash of the published native artifact.",
-  "publishedAndRealPhoneVerified": false
+  "publicationNote": "Version 7 updated four packaged scripts in the existing test place and verified all 35 sources, no extra scripts, four required remotes, absent gameplay diagnostic flags and Sensor orientation. The local XML SHA-256 does not identify the published native artifact; the version 6 native lighting and protected migration metadata distinction is retained."
 }

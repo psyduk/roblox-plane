@@ -2,7 +2,7 @@
 
 This is a free playtest candidate. Milestones 3 and 4, monetization, extra skills, daily rewards and season passes are outside scope. Passing local tests does not close the published/phone or unfamiliar-player gates.
 
-**Current test build:** Skybound Test, place **86507299893768**, universe **10770074500**, published **version 6** at **2026-10-10 18:14:58 UTC** (11:14:58 PDT), from source commit **`a0c9d9e`**. Studio confirmed publication and Playtester availability; Creator Dashboard lists version 6. Access is **Limited**, with **Playtesters enabled** and **Friends disabled**. Publication is complete. The independent-account, physical-phone and live-save checks below are still unverified. [Publication record](QA-2026-10-10.md#limited-test-publication--october-10-2026), [dashboard proof](validation/qa-2026-10-10/published-version-6.jpg).
+**Current test build:** Skybound Test, place **86507299893768**, universe **10770074500**, published **version 7** at **2026-10-10 18:58:42 UTC** (11:58:42 PDT), from source commit **`6b4648f`**. Studio confirmed publication; Creator Dashboard shows version 7 with its Published checkmark (last saved 11:57). Access remains **Limited**, with **Playtesters enabled** and **Friends disabled**. The independent-account, physical-phone and live-save checks below are still unverified. [Publication record](QA-2026-10-10.md#version-7-republication--october-10-2026), [dashboard proof](validation/qa-2026-10-10/published-version-7.jpg).
 
 ## Build and launch
 
@@ -12,9 +12,13 @@ This is a free playtest candidate. Milestones 3 and 4, monetization, extra skill
 4. Both sides gain one new wild-card pick after each decisive round, up to two. Three armor pips belong to each physical round; two round wins take the match. Draws repeat the same builds with a fresh seed. One free reroll and one free Pick Any last the whole match.
 5. Use REMATCH to request the same rival; both humans must agree. Next opponent returns to the public queue. Hangar is always an exit. Sound and Motion controls are available in battle.
 
-## Local QA evidence — October 10, 2026
+## Version 7 checks — October 10, 2026
 
-The final candidate SHA-256 is **`b0280d3c5a037e5364d260e488770a0bd84d5c73b1be7fa699c7c32c4f2d80db`**. See [the full QA round](QA-2026-10-10.md) for findings, fixes and evidence. Rebuilds invalidate this hash until the new artifact is checked and the record updated.
+Current candidate SHA-256: **`5c94d4dbaeea3e6aee079e0c30ef51cd6b185642bf482aa64278a3074fb1ca14`**. All 35 cloud scripts matched UTF-8 checksums and byte lengths after four script updates; no extra scripts or diagnostic flags remained. The four remotes and Sensor orientation were preserved. Fresh native checks passed **12 BattleView, 11 BattleClient and 32 BattleMatch cases**; Python checks passed **40 simulation, 5 catalog and 44 full-server scenarios** (11 current PvP, 33 archived distance). These are mechanical checks; this republication did not repeat the full visual or two-client playtest. [Detailed evidence and remaining presentation checks](QA-2026-10-10.md#version-7-republication--october-10-2026).
+
+## Earlier full local QA — October 10, 2026
+
+The following five-match and two-client evidence belongs to the earlier `a0c9d9e` candidate, SHA-256 **`b0280d3c5a037e5364d260e488770a0bd84d5c73b1be7fa699c7c32c4f2d80db`**, published as version 6. It is retained as historical evidence, not a fresh visual pass of version 7. See [the full QA round](QA-2026-10-10.md).
 
 - **Visual and normal-input play:** five complete bot matches, four before the QA fixes and one on the final candidate. Desktop, iPhone landscape/portrait emulation and Samsung A06 emulation were inspected. Actual gameplay earned 275 coins, then buying Aurora for 250 left 25; gift, equip, rematch and exit paths were exercised. On the final candidate, a completed loss awarded 50, Blue Comet was claimed/equipped, and a rematch confirmed Reroll, Pick Any and locking Pinball. No normal visual draw was observed in this pass.
 - **Mechanical checks:** 200 native Studio checks and 44 full-server scenarios passed. The latter comprise 11 current PvP scenarios and 33 explicitly opted-in archived distance regressions; those archived checks do not make distance mode the default.
@@ -30,7 +34,7 @@ The opt-in scripts in `scripts/qa/SkyBattleNetwork.server.luau` and `.client.lua
 
 ## Published destination and future updates
 
-The existing limited test destination is **Skybound Test**, start place `86507299893768`, universe `10770074500`; version **6** contains the verified 35-script source from commit `a0c9d9e`. For future updates, verify the owner/destination, synchronize and compare the intended candidate, publish to this existing place, then record the new version and UTC time. Do not substitute an old open tab or create a public release. [Roblox publishing/access instructions](https://create.roblox.com/docs/production/publishing/publish-games-and-places). Keep the experience Limited/Playtesters and verify both test accounts have Playtest access; prior access records alone are not proof of today's permissions. No purchases or paid products are required.
+The existing limited test destination is **Skybound Test**, start place `86507299893768`, universe `10770074500`; version **7** contains the verified 35-script source from commit `6b4648f`. For future updates, verify the owner/destination, synchronize and compare the intended candidate, publish to this existing place, then record the new version and UTC time. Do not substitute an old open tab or create a public release. [Roblox publishing/access instructions](https://create.roblox.com/docs/production/publishing/publish-games-and-places). Keep the experience Limited/Playtesters and verify both test accounts have Playtest access; prior access records alone are not proof of today's permissions. No purchases or paid products are required.
 
 Restart existing game servers so both devices load that version. Record each account role, device model, OS, client version and network. Use one real phone and one independently connected desktop or second phone. A Studio client and the device emulator do not meet this gate.
 
@@ -65,12 +69,12 @@ Predeclared discovery targets: at least 80% reach a first fight within 20 second
 
 ## Result record (fill during the published test)
 
-- Candidate source/build hash: `b0280d3c5a037e5364d260e488770a0bd84d5c73b1be7fa699c7c32c4f2d80db` (verify against manifest after any rebuild)
+- Candidate source/build hash: `5c94d4dbaeea3e6aee079e0c30ef51cd6b185642bf482aa64278a3074fb1ca14` (verify against manifest after any rebuild)
 - Local candidate path: `/Users/andrew/Documents/ChatGPT/color-switch/build/Sky-Battle-Playtest.rbxlx`
 - Published place / universe: `86507299893768` / `10770074500` (Skybound Test)
-- Published place version / UTC: **6** / **2026-10-10T18:14:58Z**; Studio success confirmation and Creator Dashboard version history observed
-- Published source commit: `a0c9d9eafa08a9bc5624641837ee59c824b3021d` (35 script sources matched; the local XML hash is not a published native-file hash)
-- Confirmed access: Limited; Playtesters enabled; Friends disabled ([publication proof](validation/qa-2026-10-10/published-version-6.jpg)); individual test-account access still to verify
+- Published place version / UTC: **7** / **2026-10-10T18:58:42Z**; Studio success confirmation and Creator Dashboard Published checkmark observed (last saved 11:57 PDT)
+- Published source commit: `6b4648f774361a3254929bedb5b990f5ecfa2811` (35 scripts matched UTF-8 checksums and lengths; the local XML hash is not a published native-file hash)
+- Access retained: Limited; Playtesters enabled; Friends disabled ([publication proof](validation/qa-2026-10-10/published-version-7.jpg)); individual test-account access still to verify
 - Accounts / roles / fresh or progressed:
 - Phone and other device / OS / orientation / network:
 - Unfamiliar tester count / recruitment:
