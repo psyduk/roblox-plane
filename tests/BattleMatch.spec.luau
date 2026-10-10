@@ -26,6 +26,8 @@ return function(BattleLab, Skills)
             onEvent=function(p,name,data)t.events[#t.events+1]={id=p.UserId,name=name,data=data}end}
         for key,value in pairs(options)do deps[key]=value end
         t.lab=BattleLab.new(deps)
+        -- These cases step through transitions with a two-second round pause.
+        t.lab.ROUND_OVER_SECONDS=2
         function t.player(id)
             local p={UserId=id,Name="Pilot"..id,DisplayName="Pilot"..id}
             function p:GetAttribute(key)if key=="SkyboundColor"then return id end return nil end

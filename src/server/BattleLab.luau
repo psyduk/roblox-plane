@@ -5,6 +5,8 @@ BattleLab.__index = BattleLab
 BattleLab.ROSTER_VERSION = "sky-battle-public-v1"
 BattleLab.QUEUE_SECONDS = 8
 BattleLab.PICK_SECONDS = 10
+-- Long enough to read who hit whom before the next pick takes the screen.
+BattleLab.ROUND_OVER_SECONDS = 3.5
 BattleLab.MATCH_SECONDS = 240
 BattleLab.MAX_ROUNDS = 5
 local PUBLIC = {offences={"Meteor","Firework","MachineGun","Pinball"},
@@ -286,7 +288,7 @@ function BattleLab:roundEnded(m)
     m.rounds[#m.rounds+1]={seed=sim.seed,settings=copy(m.settings),winner=winner,reason=result.reason,duration=sim.elapsed,roundNumber=m.roundNumber}
     if m.score[1]>=2 or m.score[2]>=2 then self:terminal(m,m.score[1]>=2 and 1 or 2,"first_to_two")
     elseif m.roundNumber>=self.MAX_ROUNDS then self:terminal(m,m.score[1]==m.score[2] and 0 or m.score[1]>m.score[2] and 1 or 2,"round_cap")
-    else self:changePhase(m,"RoundOver",self.deps.now()+2) end
+    else self:changePhase(m,"RoundOver",self.deps.now()+self.ROUND_OVER_SECONDS) end
 end
 function BattleLab:leave(player,reason)
     local session=self.sessions[player.UserId]; if not session then return end
