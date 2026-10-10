@@ -1,3 +1,11 @@
+# Fighter bar — October 10, 2026
+
+The dark header strip is replaced, after the owner called it out, by a floating fighting-game bar: each pilot's portrait (the player's Roblox headshot; a robot for the bot), name, power pill and three outlined armor pips at the screen edges, with a large central clock that reads VS before the fight, counts down during it, turns red and pulses in the last ten seconds, and reads K.O. or TIME! at the end. Hangar and sound are two small icon buttons under the left portrait. The leftover hint strip during the countdown is gone.
+
+Checked: 47 server scenarios; no script errors in Studio. Seen on desktop through a real click on FIGHT!: setup, countdown and a mid-fight frame with the clock at 29 and one rival pip lost. Not checked: the last-ten-seconds pulse, the results state of the bar, phone and portrait layouts.
+
+---
+
 # Setup cards, calmer camera, lighter music — October 10, 2026
 
 Follow-up to the pass below, after the owner played it: liked the direction, found the music too dramatic, wanted zooms tied to attacks or reduced, and disliked the cycling setup footer.

@@ -48,7 +48,7 @@ local function place(item,x,y,w,h)
     item.Position=UDim2.fromOffset(x,y); item.Size=UDim2.fromOffset(w,h)
 end
 function BattleLab.new(World,shared)
-    local self=setmetatable({World=World,active=false,data=nil,settings={},cards={},armorBars={},scorePlates={},outbox={},sending=false,lastSend=-math.huge},BattleLab)
+    local self=setmetatable({World=World,active=false,data=nil,settings={},outbox={},sending=false,lastSend=-math.huge},BattleLab)
     self.modifiers=require(shared:WaitForChild("BattleModifiers"))
     self.audio=BattleAudio.new()
     self.command=shared:WaitForChild("BattleCommand")
@@ -56,16 +56,18 @@ function BattleLab.new(World,shared)
     self.gui.ResetOnSpawn=false; self.gui.DisplayOrder=30; self.gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
     self.root=make("Frame",self.gui,"Root"); self.root.Size=UDim2.fromScale(1,1); self.root.BackgroundTransparency=1
     self.panel=make("Frame",self.root,"Lab"); self.panel.Size=UDim2.fromScale(1,1); self.panel.BackgroundTransparency=1; self.panel.Visible=false
-    self.header=make("Frame",self.panel,"Header"); self.header.BackgroundColor3=NAVY; self.header.BorderSizePixel=0
-    surface(self.header,Color3.fromRGB(67,111,147),1)
-    self.title=label(self.header,"Title",20); self.title.Text="SKYBOUND CLASH"
-    self.subtitle=label(self.header,"Subtitle",12,MUTED); self.subtitle.Text="VS PRACTICE BOT"
-    self.exit=button(self.header,"Exit","Hangar",function() self:send("exit") end)
-    self.mute=button(self.header,"Mute","Sound ON",function()
+    -- The top of the screen is a fighting-game bar: each pilot's face, name,
+    -- power and three chunky armor pips at the edges, the clock between them.
+    self.header=make("Frame",self.panel,"Header"); self.header.BackgroundTransparency=1; self.header.BorderSizePixel=0
+    self.exit=button(self.panel,"Exit","🏠",function() self:send("exit") end)
+    self.mute=button(self.panel,"Mute","🔊",function()
         local p=Players.LocalPlayer
         p:SetAttribute("SkyboundSoundMuted",p:GetAttribute("SkyboundSoundMuted")~=true)
     end)
-    self.mute.TextSize=12
+    self.exit.ZIndex=10; self.mute.ZIndex=10; self.exit.TextSize=20; self.mute.TextSize=18
+    self.clock=label(self.header,"Clock",40,WHITE); self.clock.Font=Enum.Font.FredokaOne; self.clock.TextWrapped=false
+    local clockEdge=make("UIStroke",self.clock,"Edge"); clockEdge.Thickness=5; clockEdge.Color=NAVY
+    self.clockScale=make("UIScale",self.clock,"Pulse")
     self.status=label(self.panel,"Status",22)
     self.status.BackgroundColor3=Color3.fromRGB(31,49,69); self.status.BackgroundTransparency=0.08
     make("UICorner",self.status,"Corner").CornerRadius=UDim.new(0,10)
@@ -74,20 +76,37 @@ function BattleLab.new(World,shared)
     self.footer=make("Frame",self.panel,"Controls"); self.footer.BackgroundColor3=NAVY; self.footer.BorderSizePixel=0
     surface(self.footer,Color3.fromRGB(67,111,147),1)
     self.footer.AnchorPoint=Vector2.new(0,1)
+    self.fighters={}
     for i=1,2 do
-        local plate=make("Frame",self.header,"ScorePlate"..i)
-        plate.BackgroundColor3=NAVY:Lerp(ACCENTS[i],0.14); plate.BorderSizePixel=0
-        make("UICorner",plate,"Corner").CornerRadius=UDim.new(0,8)
-        surface(plate,ACCENTS[i],1)
-        self.scorePlates[i]=plate
-        local score=label(plate,"Score"..i,16,ACCENTS[i]); self["score"..i]=score
-        self.armorBars[i]={}
+        local plate=make("Frame",self.header,"Fighter"..i); plate.BackgroundTransparency=1
+        local ring=make("Frame",plate,"Portrait"); ring.BackgroundColor3=NAVY; ring.BorderSizePixel=0
+        make("UICorner",ring,"Corner").CornerRadius=UDim.new(1,0)
+        local ringEdge=make("UIStroke",ring,"Edge"); ringEdge.Thickness=4; ringEdge.Color=ACCENTS[i]
+        local face=make("ImageLabel",ring,"Face"); face.BackgroundTransparency=1; face.Size=UDim2.fromScale(1,1)
+        make("UICorner",face,"Corner").CornerRadius=UDim.new(1,0)
+        local bot=label(ring,"Bot",30); bot.Size=UDim2.fromScale(1,1); bot.Text="🤖"; bot.TextWrapped=false; bot.Visible=i==2
+        local name=label(plate,"PilotName",20,WHITE); name.Font=Enum.Font.FredokaOne; name.TextWrapped=false
+        name.TextTruncate=Enum.TextTruncate.AtEnd
+        local nameEdge=make("UIStroke",name,"Edge"); nameEdge.Thickness=3; nameEdge.Color=NAVY
+        local power=label(plate,"Power",12,NAVY); power.BackgroundTransparency=0; power.BackgroundColor3=ACCENTS[i]; power.TextWrapped=false
+        make("UICorner",power,"Corner").CornerRadius=UDim.new(0,8)
+        local pips={}
         for pip=1,3 do
             local bar=make("Frame",plate,"Armor"..pip); bar.BorderSizePixel=0; bar.BackgroundColor3=ACCENTS[i]
-            make("UICorner",bar,"Corner").CornerRadius=UDim.new(0,3)
-            self.armorBars[i][pip]=bar
+            make("UICorner",bar,"Corner").CornerRadius=UDim.new(0,6)
+            local edge=make("UIStroke",bar,"Edge"); edge.Thickness=3; edge.Color=NAVY
+            pips[pip]=bar
         end
+        self.fighters[i]={frame=plate,ring=ring,ringEdge=ringEdge,face=face,name=name,power=power,pips=pips}
     end
+    self.fighters[1].name.Text=string.upper(Players.LocalPlayer.DisplayName)
+    self.fighters[2].name.Text="RIVAL BOT"
+    task.spawn(function()
+        local ok,image=pcall(function()
+            return Players:GetUserThumbnailAsync(Players.LocalPlayer.UserId,Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size100x100)
+        end)
+        if ok and self.fighters[1].face.Parent then self.fighters[1].face.Image=image end
+    end)
     -- Setup is one screen about your own plane: pick a power card, add a
     -- twist, FIGHT! The rival's build is rolled when the fight starts.
     self.picker=make("Frame",self.panel,"Picker"); self.picker.BorderSizePixel=0
@@ -253,42 +272,61 @@ function BattleLab:update(dt)
     local results=data.phase=="Results"
     local compact=width<600
     local short=height<500
-    local headerHeight=short and 82 or 94
+    local headerHeight=(short or compact) and 62 or 98
     local plainFight=data.phase=="Fight" and (data.settings[1].modifierId or "None")=="None"
         and (data.settings[2].modifierId or "None")=="None"
-    local footerHeight=config and 0 or (results and 108 or (plainFight and 0 or 54))
-    self.footer.Visible=not plainFight and not config
+    local quiet=config or plainFight or data.phase=="Countdown"
+    local footerHeight=quiet and 0 or (results and 108 or 54)
+    self.footer.Visible=not quiet
     place(self.header,0,0,width,headerHeight)
-    place(self.title,12,4,width-184,26); self.title.TextXAlignment=Enum.TextXAlignment.Left
-    self.title.TextSize=compact and 16 or 22
-    self.title.Text=short and "VS PRACTICE BOT" or "SKYBOUND CLASH"
-    if short then self.title.TextSize=compact and 11 or 16 end
-    place(self.subtitle,12,30,width-184,18); self.subtitle.TextXAlignment=Enum.TextXAlignment.Left
-    self.subtitle.TextSize=compact and 9 or 12
-    self.subtitle.Visible=not short
-    place(self.exit,width-96,5,84,40)
-    place(self.mute,width-166,5,64,40); self.mute.Text=muted and "Sound OFF" or "Sound ON"; self.mute.TextWrapped=true
-    local scoreWidth=math.min(width/2-20,360)
-    for i,plate in ipairs(self.scorePlates) do
-        place(plate,width*(i==1 and 0.25 or 0.75)-scoreWidth/2,short and 48 or 52,scoreWidth,short and 30 or 38)
-        place(self["score"..i],4,0,scoreWidth-8,short and 21 or 25)
-        local pipWidth=(scoreWidth-28)/3
-        for pip,bar in ipairs(self.armorBars[i]) do
-            place(bar,8+(pip-1)*(pipWidth+6),short and 23 or 28,pipWidth,short and 4 or 6)
+    place(self.exit,12,headerHeight+4,40,40)
+    place(self.mute,58,headerHeight+4,40,40); self.mute.Text=muted and "🔇" or "🔊"
+    local portrait=headerHeight-18
+    local plateWidth=math.min(340,(width-124)/2)
+    local sim=data.simulation
+    for i,fighter in ipairs(self.fighters) do
+        local right=i==2
+        local f=sim.fighters[i]
+        local flash=math.max(0,1-(os.clock()-((self.hitTimes or {})[i] or -100))/0.35)
+        place(fighter.frame,right and width-12-plateWidth or 12,8,plateWidth,portrait+4)
+        place(fighter.ring,right and plateWidth-portrait or 0,2,portrait,portrait)
+        fighter.ringEdge.Color=accents[i]:Lerp(WHITE,flash); fighter.ringEdge.Thickness=4+flash*4
+        local textWidth=plateWidth-portrait-12
+        local textLeft=right and 0 or portrait+12
+        local side=right and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+        place(fighter.name,textLeft,0,textWidth,compact and 18 or 28)
+        fighter.name.TextXAlignment=side; fighter.name.TextSize=compact and 14 or 24
+        local powerWidth=math.min(textWidth,compact and 86 or 112)
+        local rowTwo=compact and 19 or 31
+        place(fighter.power,right and textLeft+textWidth-powerWidth or textLeft,rowTwo,powerWidth,compact and 14 or 19)
+        fighter.power.Text=(right and config) and "???" or string.upper(f.powerId)
+        fighter.power.TextSize=compact and 10 or 13; fighter.power.BackgroundColor3=accents[i]
+        local pipHeight=compact and 9 or 18
+        local pipWidth=math.min(compact and 30 or 62,(textWidth-12)/3)
+        for pip,bar in ipairs(fighter.pips) do
+            local offset=(pip-1)*(pipWidth+6)
+            place(bar,right and textLeft+textWidth-offset-pipWidth or textLeft+offset,portrait-pipHeight+1,pipWidth,pipHeight)
+            local full=pip<=f.armor
+            bar.BackgroundColor3=(full and accents[i] or Color3.fromRGB(36,44,62)):Lerp(WHITE,flash*0.7)
+            bar.BackgroundTransparency=full and 0 or 0.35
         end
     end
-    self.score1.TextSize=compact and 13 or 17; self.score2.TextSize=self.score1.TextSize
+    -- The clock is the centre of the bar and gets loud in the last ten seconds.
+    local left=math.max(0,math.ceil(35-sim.elapsed))
+    local urgent=data.phase=="Fight" and left<=10
+    place(self.clock,width/2-60,4,120,headerHeight-12)
+    self.clock.Text=data.phase=="Fight" and tostring(left) or (results and (sim.reason=="timeout" and "TIME!" or "K.O.") or "VS")
+    self.clock.TextSize=(compact and 26 or 52)*(#self.clock.Text>2 and 0.7 or 1)
+    self.clock.TextColor3=urgent and Color3.fromRGB(255,96,84) or (results and GOLD or WHITE)
+    self.clockScale.Scale=urgent and 1+0.14*math.abs(math.sin(os.clock()*math.pi)) or 1
     local statusWidth=math.min(width-24,620)
-    place(self.status,(width-statusWidth)/2,headerHeight+3,statusWidth,28)
+    local statusTop=headerHeight+(compact and 48 or 6)
+    place(self.status,(width-statusWidth)/2,statusTop,statusWidth,28)
     self.status.TextSize=compact and 17 or 22
-    place(self.help,12,headerHeight+30,width-24,22)
+    place(self.help,12,statusTop+28,width-24,22)
     self.help.TextSize=compact and 11 or 14
     self.help.Visible=not config; self.status.Visible=not config
     place(self.footer,0,height,width,footerHeight)
-    for i=1,2 do
-        self.scorePlates[i].BackgroundColor3=NAVY:Lerp(accents[i],0.14)
-        self.scorePlates[i].Edge.Color=accents[i]
-    end
     -- A rematch passes through setup for a moment; roll the rival and go.
     local rematching=config and self.rematchUntil~=nil and os.clock()<self.rematchUntil
     if rematching then self.rematchUntil=nil; self:fight() end
@@ -370,18 +408,7 @@ function BattleLab:update(dt)
     self.footerHint.Visible=not config
     self.footerHint.TextSize=compact and 12 or 13
     place(self.footerHint,12,results and 5 or 7,width-24,results and 40 or 40)
-    local sim=data.simulation
     self:feedback(data)
-    for i,f in ipairs(sim.fighters) do
-        self["score"..i].Text=i==1 and ("YOU · "..string.upper(f.powerId)) or (config and "RIVAL · ???" or ("RIVAL · "..string.upper(f.powerId)))
-        self["score"..i].TextColor3=accents[i]
-        local flash=math.max(0,1-(os.clock()-((self.hitTimes or {})[i] or -100))/0.35)
-        for pip,bar in ipairs(self.armorBars[i]) do
-            bar.BackgroundColor3=(pip<=f.armor and accents[i] or Color3.fromRGB(43,51,66)):Lerp(WHITE,flash*0.65)
-            bar.BackgroundTransparency=pip<=f.armor and 0 or 0.25
-        end
-        self.scorePlates[i].Edge.Transparency=0.55-flash*0.45
-    end
     self.status.TextColor3=WHITE
     self.statusEdge.Color=Color3.fromRGB(118,154,187)
     self.statusEdge.Transparency=0.6
@@ -403,8 +430,7 @@ function BattleLab:update(dt)
             self.status.Text=self.feedbackText; self.status.TextColor3=Color3.fromRGB(255,213,94)
             self.statusEdge.Color=self.status.TextColor3; self.statusEdge.Transparency=0.15
         end
-        self.help.Text=string.format("%02d seconds left · %s",math.max(0,math.ceil(35-sim.elapsed)),
-            sim.pressure>0 and "Arena closing" or "Automatic combat")
+        self.help.Text=""
         local effects={}
         for i,f in ipairs(sim.fighters) do
             local effect=self.modifiers.get(f.modifierId or "None")
@@ -437,7 +463,7 @@ function BattleLab:update(dt)
     local inset=GuiService:GetGuiInset()
     local origin=self.root.AbsolutePosition+inset
     self.view:update(data,dt,{left=origin.X+10,right=origin.X+width-10,
-        top=origin.Y+headerHeight+(config and 8 or 56),bottom=origin.Y+height-footerHeight-8})
+        top=origin.Y+(config and headerHeight+8 or statusTop+50),bottom=origin.Y+height-footerHeight-8})
     self.flash.BackgroundTransparency=1-math.min(0.7,self.view.screenFlash*0.7)
 end
 return BattleLab
