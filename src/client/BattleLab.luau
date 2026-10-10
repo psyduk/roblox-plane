@@ -56,6 +56,10 @@ function BattleLab.new(World,shared)
     self.gui.ResetOnSpawn=false; self.gui.DisplayOrder=30; self.gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
     self.root=make("Frame",self.gui,"Root"); self.root.Size=UDim2.fromScale(1,1); self.root.BackgroundTransparency=1
     self.panel=make("Frame",self.root,"Lab"); self.panel.Size=UDim2.fromScale(1,1); self.panel.BackgroundTransparency=1; self.panel.Visible=false
+    -- One dim sheet sits behind setup and results. It reaches over the fighter
+    -- bar and up into the Roblox top bar so the whole sky dims, not a slab.
+    self.scrim=make("Frame",self.panel,"Scrim"); self.scrim.BorderSizePixel=0; self.scrim.ZIndex=0
+    self.scrim.BackgroundColor3=NAVY; self.scrim.BackgroundTransparency=1
     -- The top of the screen is a fighting-game bar: each pilot's face, name,
     -- power and three chunky armor pips at the edges, the clock between them.
     self.header=make("Frame",self.panel,"Header"); self.header.BackgroundTransparency=1; self.header.BorderSizePixel=0
@@ -110,7 +114,7 @@ function BattleLab.new(World,shared)
     -- Setup is one screen about your own plane: pick a power card, add a
     -- twist, FIGHT! The rival's build is rolled when the fight starts.
     self.picker=make("Frame",self.panel,"Picker"); self.picker.BorderSizePixel=0
-    self.picker.BackgroundColor3=NAVY; self.picker.BackgroundTransparency=0.3
+    self.picker.BackgroundTransparency=1
     self.pickTitle=label(self.picker,"Title",38,WHITE); self.pickTitle.Font=Enum.Font.FredokaOne
     self.pickTitle.Text="CHOOSE YOUR POWER"
     local titleEdge=make("UIStroke",self.pickTitle,"Edge"); titleEdge.Thickness=4; titleEdge.Color=NAVY
@@ -150,7 +154,7 @@ function BattleLab.new(World,shared)
     -- The result is a moment of its own: a slammed-in banner, the winner's
     -- face under a crown, three numbers, and REMATCH as the obvious next tap.
     self.result=make("Frame",self.panel,"Result"); self.result.BorderSizePixel=0; self.result.ZIndex=20
-    self.result.BackgroundColor3=NAVY; self.result.Visible=false; self.result.ClipsDescendants=true
+    self.result.BackgroundTransparency=1; self.result.Visible=false; self.result.ClipsDescendants=true
     self.confetti={}
     for index=1,40 do
         local piece=make("Frame",self.result,"Confetti"); piece.BorderSizePixel=0; piece.ZIndex=20
@@ -283,7 +287,7 @@ function BattleLab:showResult(data,results,accents,width,height,headerHeight,com
     if not self.resultSounded then self.resultSounded=true; self.audio:result(outcome) end
     local area=height-headerHeight
     place(self.result,0,headerHeight,width,area)
-    self.result.BackgroundTransparency=1-0.55*math.clamp(age/0.25,0,1)
+    self.resultDim=1-0.55*math.clamp(age/0.25,0,1)
     local bannerHeight=compact and 60 or (short and 70 or 104)
     local face=short and 0 or math.clamp(area*0.2,56,124)
     local statHeight=short and 48 or 64
@@ -572,6 +576,8 @@ function BattleLab:update(dt)
         self.count.Edge.Transparency=self.count.TextTransparency
     end
     local inset=GuiService:GetGuiInset()
+    place(self.scrim,-inset.X,-inset.Y,width+inset.X*2,height+inset.Y)
+    self.scrim.BackgroundTransparency=self.picker.Visible and 0.3 or (self.result.Visible and self.resultDim or 1)
     local origin=self.root.AbsolutePosition+inset
     self.view:update(data,dt,{left=origin.X+10,right=origin.X+width-10,
         top=origin.Y+(config and headerHeight+8 or statusTop+50),bottom=origin.Y+height-footerHeight-8})
