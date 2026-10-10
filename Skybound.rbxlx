@@ -10248,10 +10248,12 @@ function BattleLab:showResult(data,results,accents,width,height,headerHeight,com
     self.resultDim=1-0.55*math.clamp(age/0.25,0,1)
     local bannerHeight=compact and 60 or (short and 70 or 104)
     local face=short and 0 or math.clamp(area*0.2,56,124)
+    -- The crown sits above the portrait; leave it room under the result line.
+    local crownGap=math.max(14,face*0.3)
     local statHeight=short and 48 or 64
     local stacked=compact
     local buttonsHeight=stacked and 112 or 64
-    local total=bannerHeight+26+(face&gt;0 and face+22 or 0)+statHeight+18+buttonsHeight+10
+    local total=bannerHeight+26+(face&gt;0 and face+crownGap+8 or 0)+statHeight+18+buttonsHeight+10
     local y=math.max(4,(area-total)/2)
     local tint=outcome=="win" and GOLD or (outcome=="lose" and Color3.fromRGB(150,170,205) or WHITE)
     place(self.banner,0,y,width,bannerHeight)
@@ -10269,7 +10271,7 @@ function BattleLab:showResult(data,results,accents,width,height,headerHeight,com
     local settled=age&gt;0.3
     self.winnerRing.Visible=face&gt;0 and settled; self.crown.Visible=face&gt;0 and settled and outcome~="draw"
     if face&gt;0 then
-        y=y+14
+        y=y+crownGap
         place(self.winnerRing,(width-face)/2,y,face,face)
         self.winnerEdge.Color=outcome=="draw" and WHITE or accents[sim.winner]
         self.winnerFace.Image=outcome=="win" and self.fighters[1].face.Image or ""
