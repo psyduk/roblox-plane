@@ -2,6 +2,8 @@
 
 Research date: October 9, 2026. Status: proposed product direction and experiments; retention improvements have not been established.
 
+**Direction update — October 9, 2026:** [Skybound Clash design and decision record](SKYBOUND-CLASH-DESIGN.md) is the current agreed direction and supersedes the implementation sequence below. The first authorized milestone is a two-power automatic arena Battle Lab with a labelled simulated opponent. The existing distance-flight game is preserved; this earlier research remains useful background, not the current build plan or evidence of retention gains.
+
 Skybound's strongest opportunity is a quick competitive flight game where every result suggests a useful adjustment and every session develops the player's pilot identity. The immediate priority is faster entry, faster replay, and understandable flight results. A small progression layer should follow evidence that players voluntarily want another flight.
 
 The proposed loop is **read the course → choose a plan → launch → understand the result → adjust → fly again → earn something lasting**. Automatic flight remains the starting assumption. Whether to test one manually triggered gadget remains an open product choice.
