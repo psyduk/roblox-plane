@@ -64,7 +64,7 @@ local effectsShop=EffectsShop.new(send)
 local hangarBay=HangarBay.new({send=send,openShop=function(itemId) effectsShop:openAt(itemId) end})
 -- The plane in the pilot's bay is changed in place, from the HUD or the bay console.
 local function changeLook(change)
-    if not latest or latest.phase~="Lobby" or effectsShop:isOpen() then return end
+    if not latest or latest.phase~="Lobby" or battleLab:isActive() or effectsShop:isOpen() then return end
     for _,entry in ipairs(latest.players) do
         if entry.userId==localPlayer.UserId then
             local settings=table.clone(entry.settings)
@@ -86,7 +86,7 @@ local function cyclePaint()
 end
 game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt,player)
     if player and player~=localPlayer then return end
-    if effectsShop:isOpen() then return end
+    if not latest or latest.phase~="Lobby" or battleLab:isActive() or effectsShop:isOpen() then return end
     if prompt.Name=="EffectsShopPrompt" then effectsShop:openAt(nil)
     elseif prompt.Name=="UnlockStandPrompt" then hangarBay:activateStand()
     elseif prompt.Name=="HeroBayPrompt" then cyclePlane(1) end
@@ -107,8 +107,10 @@ hud=Hud.new({
     configure=function(settings) localSettings=table.clone(settings); send("configure",{settings=settings}) end,
     ready=function(ready) send("ready",{ready=ready,settings=hud:getLocalSettings()}) end,
     spectate=cycleSpectate,
-    practice=function() send("practice") end,
-    play=function() send("play") end,
+    play=function()
+        if battleLab:isActive() or effectsShop:isOpen() or hud.statsOverlay.Visible then return end
+        send("play")
+    end,
     cyclePlane=cyclePlane,
     cyclePaint=cyclePaint,
     leaveQueue=function() send("leaveQueue") end,
@@ -288,11 +290,10 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
         if effectsShop:isOpen() then effectsShop:close() end
         audio:update({},"battle-lab",localPlayer.UserId,false)
         hangarBay:update(latest,nil,false,dt)
-        battleLab:update(dt,false)
+        battleLab:update(dt)
         return
     end
-    battleLab.entryBottom=hud:getHubStackTop()
-    battleLab:update(dt,phase=="Lobby" and not effectsShop:isOpen() and not hud.statsOverlay.Visible)
+    battleLab:update(dt)
     local active=phase=="Flight" or phase=="Results"
     local target=getEntry(watchedUserId)
     if active and (not target or not target.flight) then

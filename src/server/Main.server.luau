@@ -15,7 +15,11 @@ local Simulation = require(shared.Simulation)
 local World = require(shared.World)
 local BattleSimulation = require(shared.BattleSimulation)
 local command, snapshots = shared.Command, shared.Snapshot
-World.buildLobby()
+-- Distance racing stays available for isolated development. Normal servers
+-- enter plane battles unless this server Script explicitly opts in at startup.
+local distanceModeEnabled = script:GetAttribute("DistanceModeEnabled") == true
+shared:SetAttribute("DistanceModeEnabled",distanceModeEnabled)
+World.buildLobby(distanceModeEnabled)
 
 local DURATIONS = {Voting=8, Configure=25, Aim=20, Countdown=3, Flight=45, Results=90}
 local VARIANTS = {"Coast", "Skyline", "Storm"}
@@ -328,6 +332,7 @@ local function finish(m)
     print("SKYBOUND_DUEL_COMPLETE",m.id,m.round,message)
 end
 local function createMatch(ids, practice)
+    if not distanceModeEnabled then return nil end
     for _,id in ipairs(ids) do if not profiles[id] or profiles[id].matchId or profiles[id].inBattleLab then return nil end end
     if #ids~=(practice and 1 or 2) or (#ids==2 and ids[1]==ids[2]) then return nil end
     nextMatchId+=1
@@ -547,7 +552,9 @@ local function handleCommand(p,payload)
         snapshots:FireClient(p.player,snapshot(p)); return
     end
     if payload.kind=="practice" and not m then createMatch({p.player.UserId},true)
-    elseif payload.kind=="play" and not m then startQuick(p)
+    elseif payload.kind=="play" and not m then
+        if distanceModeEnabled then startQuick(p)
+        else battleLab:command(p.player,{kind="enter"}) end
     elseif payload.kind=="leaveQueue" and not m then
         -- Cancelling a search leaves the pilot standing where they are.
         if p.quick then clearQuick(p); telemetry:phaseAbandoned(p.player,"Queued") else leaveMatch(p) end
@@ -583,7 +590,10 @@ RunService.Heartbeat:Connect(function(dt)
     statsService:step()
     battleLab:step(dt)
     queueAccumulator+=dt
-    if queueAccumulator>=0.15 then queueAccumulator=0; scanQueues(); scanQuick(); updateBoard() end
+    if queueAccumulator>=0.15 then
+        queueAccumulator=0
+        if distanceModeEnabled then scanQueues(); scanQuick(); updateBoard() end
+    end
     for id,m in pairs(matches) do
         local attached=false
         for _,e in ipairs(m.entrants) do if profiles[e.userId] and profiles[e.userId].matchId==id then attached=true end end

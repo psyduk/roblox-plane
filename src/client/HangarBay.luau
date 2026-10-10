@@ -154,8 +154,12 @@ function Bay:_updateHero(snapshot, settings, dt)
 	local color, second, entry = World.trailLook(settings.trailId)
 	local flare = 1 + math.max(0, self.celebrateUntil - os.clock()) * 0.9
 	flowRibbons(hero.ribbons, hero.model:GetPivot(), bay.scale, color, second, entry.width * flare, 15, self.clock)
-	local best = snapshot.stats and tonumber(snapshot.stats.bestDistance) or 0
-	hero.record.Text = best > 0 and string.format("YOUR BEST  %.1f M", best) or "FLY TO SET YOUR RECORD"
+	if shared:GetAttribute("DistanceModeEnabled") == true then
+		local best = snapshot.stats and tonumber(snapshot.stats.bestDistance) or 0
+		hero.record.Text = best > 0 and string.format("YOUR BEST  %.1f M", best) or "FLY TO SET YOUR RECORD"
+	else
+		hero.record.Text = "READY FOR PLANE BATTLES"
+	end
 end
 
 function Bay:_buildStand(item, settings, key)
@@ -230,7 +234,8 @@ function Bay:_updateStand(snapshot, settings, dt)
 		stand.progress.Text = affordable and "READY  -  CLAIM IT!" or (tostring(shown) .. " / " .. tostring(item.price) .. " COINS")
 		stand.progress.TextColor3 = affordable and GREEN or GOLD
 	else
-		stand.progress.Text = "FLY YOUR SIGNATURE TRAIL"
+		stand.progress.Text = shared:GetAttribute("DistanceModeEnabled") == true
+			and "FLY YOUR SIGNATURE TRAIL" or "SHOW OFF YOUR SIGNATURE TRAIL"
 	end
 	stand.angle = ((stand.angle or 0) + dt * (affordable and 1.5 or 0.5) * (self.reducedMotion and 0 or 1)) % (math.pi * 2)
 	local pose = CFrame.new(World.UNLOCK_STAND + Vector3.new(0, 7.6 + math.sin(self.clock * 1.6) * 0.3, 0))

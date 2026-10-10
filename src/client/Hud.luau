@@ -615,22 +615,20 @@ function Hud.new(callbacks)
 	self.hubTitle = label(self.hubCard, "Title", "SKYBOUND / FLIGHT CLUB", 14, 9, 292, 22, 17, COLORS.white, true)
 	self.hubTitle.TextScaled = true
 	create("UITextSizeConstraint", { MinTextSize = 16, MaxTextSize = 27 }, self.hubTitle)
-	self.hubInstruction = label(self.hubCard, "Instruction", "Walk onto a 1v1 pad with an opponent.", 14, 34, 292, 31, 12, COLORS.white)
+	self.hubInstruction = label(self.hubCard, "Instruction", "Choose your powers. Let your plane battle.", 14, 34, 292, 31, 12, COLORS.white)
 	self.hubInstruction.TextWrapped = true
 	self.hubCard.AnchorPoint = Vector2.new(0.5, 1)
 	self.hubTitle.TextXAlignment = Enum.TextXAlignment.Center
 	self.hubInstruction.TextXAlignment = Enum.TextXAlignment.Center
-	-- One primary action: PLAY finds a rival, or flies a ghost if nobody is around.
-	self.hubAction = button(self.gui, "HubAction", "PLAY", 0, 0, 280, 76, COLORS.green)
+	-- The hangar has one launch action; the server owns its battle routing.
+	self.hubAction = button(self.gui, "HubAction", "PLAY", 0, 0, 420, 76, COLORS.green)
 	self.hubAction.AnchorPoint = Vector2.new(0, 1)
+	self.hubAction.TextYAlignment = Enum.TextYAlignment.Top
+	self.playCaption = label(self.hubAction, "Mode", "PLANE BATTLES", 0, 56, 420, 16, 12, COLORS.ink, true)
+	self.playCaption.TextXAlignment = Enum.TextXAlignment.Center
 	self:_connect(self.hubAction.Activated, function()
 		if self.phase == "Queued" then self:_call("leaveQueue")
 		elseif self.phase == "Lobby" then self:_call("play") end
-	end)
-	self.practiceButton = button(self.gui, "SoloPractice", "SOLO", 0, 0, 128, 76, COLORS.cyan)
-	self.practiceButton.AnchorPoint = Vector2.new(0, 1)
-	self:_connect(self.practiceButton.Activated, function()
-		if self.phase == "Lobby" then self:_call("practice") end
 	end)
 	-- The plane parked in the bay is swapped in place, without walking anywhere.
 	self.planeRow = frame(self.gui, "PlaneSelect", 0, 0, 420, 50, COLORS.ink)
@@ -1077,23 +1075,19 @@ function Hud:_layoutDuel(viewport, height)
 	end
 	local portrait = viewport.X < 600
 	local short = not portrait and height < 430
-	-- Hub: one centered stack at the bottom. PLAY and SOLO share a row; the
-	-- plane selector sits above it and gives way to the queue status.
+	-- Hub: one full-width PLAY action below the plane appearance selector.
 	local margin = portrait and 12 or 16
 	local blockWidth = math.min(420, viewport.X - margin * 2)
-	local soloWidth = portrait and 96 or 128
-	local playWidth = blockWidth - soloWidth - 8
-	self.hubPlayWidth, self.hubBlockWidth = playWidth, blockWidth
+	self.hubBlockWidth = blockWidth
 	local playHeight = short and 54 or (portrait and 64 or 76)
 	local blockLeft = (viewport.X - blockWidth) / 2
 	-- Portrait phones keep Roblox's jump button in the bottom-right corner.
 	local bottom = (short and -8 or -14) - ((portrait and UserInputService.TouchEnabled) and 104 or 0)
 	self.hubAction.Position = UDim2.new(0, blockLeft, 1, bottom)
-	self.hubAction.Size = UDim2.fromOffset(playWidth, playHeight)
+	self.hubAction.Size = UDim2.fromOffset(blockWidth, playHeight)
 	self.hubAction.TextSize = short and 32 or (portrait and 36 or 44)
-	self.practiceButton.Position = UDim2.new(0, blockLeft + playWidth + 8, 1, bottom)
-	self.practiceButton.Size = UDim2.fromOffset(soloWidth, playHeight)
-	self.practiceButton.TextSize = short and 20 or 22
+	place(self.playCaption, 0, playHeight - 20, blockWidth, 16)
+	self.playCaption.TextSize = short and 10 or 12
 	local rowHeight = short and 44 or 50
 	local rowBottom = bottom - playHeight - 8
 	local arrow = rowHeight - 8
@@ -1545,13 +1539,6 @@ function Hud:getFlightViewport()
 	return { left = 18, right = viewport.X - 18, top = top, bottom = math.max(top + 40, bottom) }
 end
 
--- Offset from the bottom edge to just above the hub's plane selector, for
--- other hub controls that stack on top of it.
-function Hud:getHubStackTop()
-	self:_resize()
-	return self.planeRow.Position.Y.Offset - self.planeRow.Size.Y.Offset - 8
-end
-
 function Hud:getAimViewport()
 	self:_resize()
 	local topInset = GuiService:GetGuiInset()
@@ -1733,7 +1720,8 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	self.header.Visible = not inHub and phase ~= "Flight"
 	self.hubCard.Visible = phase == "Queued"
 	self.hubAction.Visible = inHub
-	self.practiceButton.Visible = phase == "Lobby"
+	self.playCaption.Visible = phase == "Lobby"
+	self.hubAction.TextYAlignment = phase == "Lobby" and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center
 	self.planeRow.Visible = phase == "Lobby"
 	self.footer.Visible = not inHub
 	self.waitingPanel.Visible = phase == "Waiting"
@@ -1770,11 +1758,11 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	if phase == "Lobby" then
 		local plane = PlaneCatalog.get(self.settings.planeId) or PlaneCatalog.get(PlaneCatalog.DEFAULT_ID)
 		self.planeName.Text = string.upper(plane.name)
-		self.planeDetail.Text = tostring(plane.speed) .. " M/S  ·  " .. tostring(plane.defaultAngle) .. "° START"
+		self.planeDetail.Text = "HANGAR LOOK · PLANE + PAINT"
 		self.paintButton.BackgroundColor3 = PAINTS[self.settings.color] or PAINTS[1]
 		self.hubAction.Text = "PLAY"
 		self.hubAction.BackgroundColor3 = COLORS.green
-		self.hubAction.Size = UDim2.fromOffset(self.hubPlayWidth, self.hubAction.Size.Y.Offset)
+		self.hubAction.Size = UDim2.fromOffset(self.hubBlockWidth, self.hubAction.Size.Y.Offset)
 	elseif phase == "Queued" then
 		local queue = snapshot.queue or {}
 		if queue.quick then

@@ -51,10 +51,6 @@ function BattleLab.new(World,shared)
     self.gui=make("ScreenGui",Players.LocalPlayer:WaitForChild("PlayerGui"),"SkyboundBattleLab")
     self.gui.ResetOnSpawn=false; self.gui.DisplayOrder=30; self.gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
     self.root=make("Frame",self.gui,"Root"); self.root.Size=UDim2.fromScale(1,1); self.root.BackgroundTransparency=1
-    self.entry=button(self.root,"EnterBattleLab","PLAY PLANE BATTLES  /  BATTLE LAB",function() self:send("enter") end)
-    self.entry.BackgroundColor3=Color3.fromRGB(224,81,64)
-    self.entry.Edge.Color=Color3.fromRGB(255,211,119); self.entry.Edge.Transparency=0.15; self.entry.Edge.Thickness=2
-    self.entry.AnchorPoint=Vector2.new(0.5,1)
     self.panel=make("Frame",self.root,"Lab"); self.panel.Size=UDim2.fromScale(1,1); self.panel.BackgroundTransparency=1; self.panel.Visible=false
     self.header=make("Frame",self.panel,"Header"); self.header.BackgroundColor3=NAVY; self.header.BorderSizePixel=0
     surface(self.header,Color3.fromRGB(67,111,147),1)
@@ -198,12 +194,8 @@ function BattleLab:feedback(data)
         end
     end
 end
-function BattleLab:update(dt,canEnter)
+function BattleLab:update(dt)
     local width,height=self.root.AbsoluteSize.X,self.root.AbsoluteSize.Y
-    self.entry.Visible=not self.active and canEnter==true
-    -- The hub HUD reports where its bottom stack ends so the two never overlap.
-    self.entry.Position=UDim2.new(0.5,0,1,self.entryBottom or -78)
-    self.entry.Size=UDim2.fromOffset(math.min(width-24,420),height<430 and 40 or 48)
     local muted=Players.LocalPlayer:GetAttribute("SkyboundSoundMuted")==true
     if self.muted~=muted then self.audio:setMuted(muted); self.muted=muted end
     self.audio:update(self.data or {active=false})

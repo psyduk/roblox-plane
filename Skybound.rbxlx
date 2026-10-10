@@ -1644,8 +1644,10 @@ local function floorOutline(parent, name, center, size, color)
 end
 
 local boardLabels = {}
+local lobbyDistanceMode = false
 
-function World.buildLobby()
+function World.buildLobby(distanceModeEnabled)
+	lobbyDistanceMode = distanceModeEnabled == true
 	World.resetTheme()
 	local existing = Workspace:FindFirstChild("FlightLobby")
 	if existing then existing:Destroy() end
@@ -1653,6 +1655,7 @@ function World.buildLobby()
 	boardLabels = {}
 	local lobby = Instance.new("Folder")
 	lobby.Name = "FlightLobby"
+	lobby:SetAttribute("DistanceModeEnabled", lobbyDistanceMode)
 	lobby.Parent = Workspace
 	-- A compact hangar: the pilot's own bay sits in the middle, with every
 	-- other destination a few seconds' walk away. Each zone has one color:
@@ -1780,8 +1783,8 @@ function World.buildLobby()
 	part(lobby, "DoorLintel", Vector3.new(HALF * 2, 2, 4), CFrame.new(0, 34.1, FRONT), HANGAR.steel, Enum.Material.Metal)
 	part(lobby, "DoorTrack", Vector3.new(HALF * 2 - 24, 0.07, 1), CFrame.new(0, 4.08, FRONT + 2), HANGAR.steel, Enum.Material.Metal)
 
-	-- The flight board over the doors is the club's shared scoreboard: who is
-	-- in the air right now and the longest landing of this server session.
+	-- The board introduces the active game. Distance records remain available
+	-- when the shelved flight mode is explicitly enabled.
 	local boardPose = CFrame.new(0, 43, FRONT + 3) * CFrame.Angles(0, math.pi, 0)
 	part(lobby, "FlightBoardFrame", Vector3.new(112, 15, 0.9), boardPose, COLORS.cyan)
 	local board = part(lobby, "FlightBoard", Vector3.new(110, 13, 0.9), boardPose * CFrame.new(0, 0, -0.2), COLORS.navy)
@@ -1792,7 +1795,8 @@ function World.buildLobby()
 	boardGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 	boardGui.PixelsPerStud = 20
 	boardGui.Parent = board
-	textLabel(boardGui, "SKYBOUND  FLIGHT  CLUB", UDim2.fromScale(0.04, 0.06), UDim2.fromScale(0.92, 0.3), COLORS.cyan).Name = "Title"
+	textLabel(boardGui, lobbyDistanceMode and "SKYBOUND  FLIGHT  CLUB" or "SKYBOUND  PLANE  BATTLES",
+		UDim2.fromScale(0.04, 0.06), UDim2.fromScale(0.92, 0.3), COLORS.cyan).Name = "Title"
 	boardLabels.flying = textLabel(boardGui, "", UDim2.fromScale(0.04, 0.4), UDim2.fromScale(0.92, 0.27), COLORS.yellow)
 	boardLabels.flying.Name = "NowFlying"
 	boardLabels.best = textLabel(boardGui, "", UDim2.fromScale(0.04, 0.7), UDim2.fromScale(0.92, 0.22), COLORS.cream, Enum.Font.GothamBold)
@@ -1822,8 +1826,8 @@ function World.buildLobby()
 		end
 	end
 
-	-- The pilot's own bay. Each client parks its selected plane here, so the
-	-- first thing every pilot sees is the aircraft they are about to fly.
+	-- The pilot's display bay. Its selected plane and trail personalize the
+	-- hangar; battle signatures are chosen separately after pressing PLAY.
 	part(lobby, "HeroBayFloor", Vector3.new(40, 0.08, 36), CFrame.new(hero + Vector3.new(0, 0.06, 0)), COLORS.navy)
 	floorOutline(lobby, "HeroBayOutline", hero, Vector2.new(40, 36), COLORS.cyan)
 	for _, side in { -1, 1 } do
@@ -1844,34 +1848,36 @@ function World.buildLobby()
 	floorOutline(lobby, "UnlockStandOutline", stand, Vector2.new(18, 18), COLORS.purple)
 	lobbyPrompt(pedestal, "UnlockStandPrompt", "View effect", "NEXT UNLOCK", 14)
 
-	-- Two duel gates keep a small club together. PLAY reaches the same queue;
-	-- the pads remain for challenging the pilot standing next to you.
-	for index, station in World.DUEL_STATIONS do
-		local x = (station.seats[1].X + station.seats[2].X) / 2
-		local accent = HANGAR.amber
-		part(lobby, "QueueApproach", Vector3.new(34, 0.06, 28), CFrame.new(x, 4.09, -29), HANGAR.lane)
-		for _, offset in { -17, 17 } do
-			part(lobby, "QueueLaneMark", Vector3.new(0.45, 0.09, 42), CFrame.new(x + offset, 4.11, -35), HANGAR.white)
+	-- Legacy distance duels stay available for future QA, without advertising
+	-- a second game or an unavailable player queue in the default battle lobby.
+	if lobbyDistanceMode then
+		for index, station in World.DUEL_STATIONS do
+			local x = (station.seats[1].X + station.seats[2].X) / 2
+			local accent = HANGAR.amber
+			part(lobby, "QueueApproach", Vector3.new(34, 0.06, 28), CFrame.new(x, 4.09, -29), HANGAR.lane)
+			for _, offset in { -17, 17 } do
+				part(lobby, "QueueLaneMark", Vector3.new(0.45, 0.09, 42), CFrame.new(x + offset, 4.11, -35), HANGAR.white)
+			end
+			part(lobby, "QueueBase", Vector3.new(38, 0.3, 22), CFrame.new(x, 4.15, -47), COLORS.navy)
+			for seatIndex, seat in station.seats do
+				part(lobby, station.id .. "Pad" .. seatIndex, Vector3.new(12, 0.3, 12), CFrame.new(seat), accent, nil, true)
+				local inset = part(lobby, "PadInset", Vector3.new(10.4, 0.08, 10.4), CFrame.new(seat + Vector3.new(0, 0.19, 0)), COLORS.navy)
+				local gui = Instance.new("SurfaceGui")
+				gui.Face = Enum.NormalId.Top
+				gui.CanvasSize = Vector2.new(300, 300)
+				gui.LightInfluence = 0
+				gui.Parent = inset
+				textLabel(gui, tostring(seatIndex), UDim2.fromScale(0.12, 0.12), UDim2.fromScale(0.76, 0.76), COLORS.cream)
+			end
+			for _, offset in { -20, 20 } do
+				part(lobby, "DepartureGatePost", Vector3.new(1.2, 15.5, 1.2), CFrame.new(x + offset, 11.75, -62), HANGAR.steel, Enum.Material.Metal, true)
+			end
+			part(lobby, "DepartureGateAccent", Vector3.new(41, 0.5, 1.1), CFrame.new(x, 19.5, -62), accent, Enum.Material.Neon)
+			local display = part(lobby, station.id .. "Display", Vector3.new(31, 7, 0.8), CFrame.new(x, 15.5, -62) * CFrame.Angles(0, math.pi, 0), COLORS.navy)
+			local gui = surface(display, station.name, "0 / 2 READY", accent)
+			queueLabels[station.id] = gui:FindFirstChild("Subtitle")
+			floorLabel(lobby, station.id .. "GroundLabel", Vector3.new(x, 4.17, -25), Vector2.new(28, 6), "CHALLENGE A FRIEND", HANGAR.white)
 		end
-		part(lobby, "QueueBase", Vector3.new(38, 0.3, 22), CFrame.new(x, 4.15, -47), COLORS.navy)
-		for seatIndex, seat in station.seats do
-			part(lobby, station.id .. "Pad" .. seatIndex, Vector3.new(12, 0.3, 12), CFrame.new(seat), accent, nil, true)
-			local inset = part(lobby, "PadInset", Vector3.new(10.4, 0.08, 10.4), CFrame.new(seat + Vector3.new(0, 0.19, 0)), COLORS.navy)
-			local gui = Instance.new("SurfaceGui")
-			gui.Face = Enum.NormalId.Top
-			gui.CanvasSize = Vector2.new(300, 300)
-			gui.LightInfluence = 0
-			gui.Parent = inset
-			textLabel(gui, tostring(seatIndex), UDim2.fromScale(0.12, 0.12), UDim2.fromScale(0.76, 0.76), COLORS.cream)
-		end
-		for _, offset in { -20, 20 } do
-			part(lobby, "DepartureGatePost", Vector3.new(1.2, 15.5, 1.2), CFrame.new(x + offset, 11.75, -62), HANGAR.steel, Enum.Material.Metal, true)
-		end
-		part(lobby, "DepartureGateAccent", Vector3.new(41, 0.5, 1.1), CFrame.new(x, 19.5, -62), accent, Enum.Material.Neon)
-		local display = part(lobby, station.id .. "Display", Vector3.new(31, 7, 0.8), CFrame.new(x, 15.5, -62) * CFrame.Angles(0, math.pi, 0), COLORS.navy)
-		local gui = surface(display, station.name, "0 / 2 READY", accent)
-		queueLabels[station.id] = gui:FindFirstChild("Subtitle")
-		floorLabel(lobby, station.id .. "GroundLabel", Vector3.new(x, 4.17, -25), Vector2.new(28, 6), "CHALLENGE A FRIEND", HANGAR.white)
 	end
 
 	-- Other pilots' planes line the walls. Clients park each pilot's current
@@ -1906,10 +1912,15 @@ function World.buildLobby()
 	return lobby
 end
 
--- `flying` is "PILOT vs PILOT" for one duel in the air; `best` is the longest
--- completed flight on this server, or nil before anyone has landed.
+-- Distance statistics are shown only while that mode is enabled. The default
+-- board explains the current solo setup against a simulated opponent.
 function World.updateLobbyBoard(flying, best)
 	local nowFlying, clubBest = boardLabels.flying, boardLabels.best
+	if not lobbyDistanceMode then
+		if nowFlying and nowFlying.Parent then nowFlying.Text = "PRESS PLAY  -  CHOOSE YOUR SETUP" end
+		if clubBest and clubBest.Parent then clubBest.Text = "PICK A POWER  -  FIGHT A SIMULATED OPPONENT" end
+		return
+	end
 	if nowFlying and nowFlying.Parent then
 		nowFlying.Text = flying and ("NOW FLYING   " .. string.upper(flying)) or "RUNWAY CLEAR  -  PRESS PLAY"
 	end
@@ -1920,6 +1931,7 @@ function World.updateLobbyBoard(flying, best)
 end
 
 function World.updateLobbyQueues(queueCounts)
+	if not lobbyDistanceMode then return end
 	for _, station in World.DUEL_STATIONS do
 		local entry = queueCounts and queueCounts[station.id]
 		local count = type(entry) == "table" and entry.count or entry
@@ -2535,7 +2547,11 @@ local Simulation = require(shared.Simulation)
 local World = require(shared.World)
 local BattleSimulation = require(shared.BattleSimulation)
 local command, snapshots = shared.Command, shared.Snapshot
-World.buildLobby()
+-- Distance racing stays available for isolated development. Normal servers
+-- enter plane battles unless this server Script explicitly opts in at startup.
+local distanceModeEnabled = script:GetAttribute("DistanceModeEnabled") == true
+shared:SetAttribute("DistanceModeEnabled",distanceModeEnabled)
+World.buildLobby(distanceModeEnabled)
 
 local DURATIONS = {Voting=8, Configure=25, Aim=20, Countdown=3, Flight=45, Results=90}
 local VARIANTS = {"Coast", "Skyline", "Storm"}
@@ -2848,6 +2864,7 @@ local function finish(m)
     print("SKYBOUND_DUEL_COMPLETE",m.id,m.round,message)
 end
 local function createMatch(ids, practice)
+    if not distanceModeEnabled then return nil end
     for _,id in ipairs(ids) do if not profiles[id] or profiles[id].matchId or profiles[id].inBattleLab then return nil end end
     if #ids~=(practice and 1 or 2) or (#ids==2 and ids[1]==ids[2]) then return nil end
     nextMatchId+=1
@@ -3067,7 +3084,9 @@ local function handleCommand(p,payload)
         snapshots:FireClient(p.player,snapshot(p)); return
     end
     if payload.kind=="practice" and not m then createMatch({p.player.UserId},true)
-    elseif payload.kind=="play" and not m then startQuick(p)
+    elseif payload.kind=="play" and not m then
+        if distanceModeEnabled then startQuick(p)
+        else battleLab:command(p.player,{kind="enter"}) end
     elseif payload.kind=="leaveQueue" and not m then
         -- Cancelling a search leaves the pilot standing where they are.
         if p.quick then clearQuick(p); telemetry:phaseAbandoned(p.player,"Queued") else leaveMatch(p) end
@@ -3103,7 +3122,10 @@ RunService.Heartbeat:Connect(function(dt)
     statsService:step()
     battleLab:step(dt)
     queueAccumulator+=dt
-    if queueAccumulator&gt;=0.15 then queueAccumulator=0; scanQueues(); scanQuick(); updateBoard() end
+    if queueAccumulator&gt;=0.15 then
+        queueAccumulator=0
+        if distanceModeEnabled then scanQueues(); scanQuick(); updateBoard() end
+    end
     for id,m in pairs(matches) do
         local attached=false
         for _,e in ipairs(m.entrants) do if profiles[e.userId] and profiles[e.userId].matchId==id then attached=true end end
@@ -6186,7 +6208,7 @@ local effectsShop=EffectsShop.new(send)
 local hangarBay=HangarBay.new({send=send,openShop=function(itemId) effectsShop:openAt(itemId) end})
 -- The plane in the pilot's bay is changed in place, from the HUD or the bay console.
 local function changeLook(change)
-    if not latest or latest.phase~="Lobby" or effectsShop:isOpen() then return end
+    if not latest or latest.phase~="Lobby" or battleLab:isActive() or effectsShop:isOpen() then return end
     for _,entry in ipairs(latest.players) do
         if entry.userId==localPlayer.UserId then
             local settings=table.clone(entry.settings)
@@ -6208,7 +6230,7 @@ local function cyclePaint()
 end
 game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt,player)
     if player and player~=localPlayer then return end
-    if effectsShop:isOpen() then return end
+    if not latest or latest.phase~="Lobby" or battleLab:isActive() or effectsShop:isOpen() then return end
     if prompt.Name=="EffectsShopPrompt" then effectsShop:openAt(nil)
     elseif prompt.Name=="UnlockStandPrompt" then hangarBay:activateStand()
     elseif prompt.Name=="HeroBayPrompt" then cyclePlane(1) end
@@ -6229,8 +6251,10 @@ hud=Hud.new({
     configure=function(settings) localSettings=table.clone(settings); send("configure",{settings=settings}) end,
     ready=function(ready) send("ready",{ready=ready,settings=hud:getLocalSettings()}) end,
     spectate=cycleSpectate,
-    practice=function() send("practice") end,
-    play=function() send("play") end,
+    play=function()
+        if battleLab:isActive() or effectsShop:isOpen() or hud.statsOverlay.Visible then return end
+        send("play")
+    end,
     cyclePlane=cyclePlane,
     cyclePaint=cyclePaint,
     leaveQueue=function() send("leaveQueue") end,
@@ -6410,11 +6434,10 @@ RunService:BindToRenderStep("SkyboundFlightView",Enum.RenderPriority.Camera.Valu
         if effectsShop:isOpen() then effectsShop:close() end
         audio:update({},"battle-lab",localPlayer.UserId,false)
         hangarBay:update(latest,nil,false,dt)
-        battleLab:update(dt,false)
+        battleLab:update(dt)
         return
     end
-    battleLab.entryBottom=hud:getHubStackTop()
-    battleLab:update(dt,phase=="Lobby" and not effectsShop:isOpen() and not hud.statsOverlay.Visible)
+    battleLab:update(dt)
     local active=phase=="Flight" or phase=="Results"
     local target=getEntry(watchedUserId)
     if active and (not target or not target.flight) then
@@ -7271,22 +7294,20 @@ function Hud.new(callbacks)
 	self.hubTitle = label(self.hubCard, "Title", "SKYBOUND / FLIGHT CLUB", 14, 9, 292, 22, 17, COLORS.white, true)
 	self.hubTitle.TextScaled = true
 	create("UITextSizeConstraint", { MinTextSize = 16, MaxTextSize = 27 }, self.hubTitle)
-	self.hubInstruction = label(self.hubCard, "Instruction", "Walk onto a 1v1 pad with an opponent.", 14, 34, 292, 31, 12, COLORS.white)
+	self.hubInstruction = label(self.hubCard, "Instruction", "Choose your powers. Let your plane battle.", 14, 34, 292, 31, 12, COLORS.white)
 	self.hubInstruction.TextWrapped = true
 	self.hubCard.AnchorPoint = Vector2.new(0.5, 1)
 	self.hubTitle.TextXAlignment = Enum.TextXAlignment.Center
 	self.hubInstruction.TextXAlignment = Enum.TextXAlignment.Center
-	-- One primary action: PLAY finds a rival, or flies a ghost if nobody is around.
-	self.hubAction = button(self.gui, "HubAction", "PLAY", 0, 0, 280, 76, COLORS.green)
+	-- The hangar has one launch action; the server owns its battle routing.
+	self.hubAction = button(self.gui, "HubAction", "PLAY", 0, 0, 420, 76, COLORS.green)
 	self.hubAction.AnchorPoint = Vector2.new(0, 1)
+	self.hubAction.TextYAlignment = Enum.TextYAlignment.Top
+	self.playCaption = label(self.hubAction, "Mode", "PLANE BATTLES", 0, 56, 420, 16, 12, COLORS.ink, true)
+	self.playCaption.TextXAlignment = Enum.TextXAlignment.Center
 	self:_connect(self.hubAction.Activated, function()
 		if self.phase == "Queued" then self:_call("leaveQueue")
 		elseif self.phase == "Lobby" then self:_call("play") end
-	end)
-	self.practiceButton = button(self.gui, "SoloPractice", "SOLO", 0, 0, 128, 76, COLORS.cyan)
-	self.practiceButton.AnchorPoint = Vector2.new(0, 1)
-	self:_connect(self.practiceButton.Activated, function()
-		if self.phase == "Lobby" then self:_call("practice") end
 	end)
 	-- The plane parked in the bay is swapped in place, without walking anywhere.
 	self.planeRow = frame(self.gui, "PlaneSelect", 0, 0, 420, 50, COLORS.ink)
@@ -7733,23 +7754,19 @@ function Hud:_layoutDuel(viewport, height)
 	end
 	local portrait = viewport.X &lt; 600
 	local short = not portrait and height &lt; 430
-	-- Hub: one centered stack at the bottom. PLAY and SOLO share a row; the
-	-- plane selector sits above it and gives way to the queue status.
+	-- Hub: one full-width PLAY action below the plane appearance selector.
 	local margin = portrait and 12 or 16
 	local blockWidth = math.min(420, viewport.X - margin * 2)
-	local soloWidth = portrait and 96 or 128
-	local playWidth = blockWidth - soloWidth - 8
-	self.hubPlayWidth, self.hubBlockWidth = playWidth, blockWidth
+	self.hubBlockWidth = blockWidth
 	local playHeight = short and 54 or (portrait and 64 or 76)
 	local blockLeft = (viewport.X - blockWidth) / 2
 	-- Portrait phones keep Roblox's jump button in the bottom-right corner.
 	local bottom = (short and -8 or -14) - ((portrait and UserInputService.TouchEnabled) and 104 or 0)
 	self.hubAction.Position = UDim2.new(0, blockLeft, 1, bottom)
-	self.hubAction.Size = UDim2.fromOffset(playWidth, playHeight)
+	self.hubAction.Size = UDim2.fromOffset(blockWidth, playHeight)
 	self.hubAction.TextSize = short and 32 or (portrait and 36 or 44)
-	self.practiceButton.Position = UDim2.new(0, blockLeft + playWidth + 8, 1, bottom)
-	self.practiceButton.Size = UDim2.fromOffset(soloWidth, playHeight)
-	self.practiceButton.TextSize = short and 20 or 22
+	place(self.playCaption, 0, playHeight - 20, blockWidth, 16)
+	self.playCaption.TextSize = short and 10 or 12
 	local rowHeight = short and 44 or 50
 	local rowBottom = bottom - playHeight - 8
 	local arrow = rowHeight - 8
@@ -8201,13 +8218,6 @@ function Hud:getFlightViewport()
 	return { left = 18, right = viewport.X - 18, top = top, bottom = math.max(top + 40, bottom) }
 end
 
--- Offset from the bottom edge to just above the hub's plane selector, for
--- other hub controls that stack on top of it.
-function Hud:getHubStackTop()
-	self:_resize()
-	return self.planeRow.Position.Y.Offset - self.planeRow.Size.Y.Offset - 8
-end
-
 function Hud:getAimViewport()
 	self:_resize()
 	local topInset = GuiService:GetGuiInset()
@@ -8389,7 +8399,8 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	self.header.Visible = not inHub and phase ~= "Flight"
 	self.hubCard.Visible = phase == "Queued"
 	self.hubAction.Visible = inHub
-	self.practiceButton.Visible = phase == "Lobby"
+	self.playCaption.Visible = phase == "Lobby"
+	self.hubAction.TextYAlignment = phase == "Lobby" and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center
 	self.planeRow.Visible = phase == "Lobby"
 	self.footer.Visible = not inHub
 	self.waitingPanel.Visible = phase == "Waiting"
@@ -8426,11 +8437,11 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	if phase == "Lobby" then
 		local plane = PlaneCatalog.get(self.settings.planeId) or PlaneCatalog.get(PlaneCatalog.DEFAULT_ID)
 		self.planeName.Text = string.upper(plane.name)
-		self.planeDetail.Text = tostring(plane.speed) .. " M/S  ·  " .. tostring(plane.defaultAngle) .. "° START"
+		self.planeDetail.Text = "HANGAR LOOK · PLANE + PAINT"
 		self.paintButton.BackgroundColor3 = PAINTS[self.settings.color] or PAINTS[1]
 		self.hubAction.Text = "PLAY"
 		self.hubAction.BackgroundColor3 = COLORS.green
-		self.hubAction.Size = UDim2.fromOffset(self.hubPlayWidth, self.hubAction.Size.Y.Offset)
+		self.hubAction.Size = UDim2.fromOffset(self.hubBlockWidth, self.hubAction.Size.Y.Offset)
 	elseif phase == "Queued" then
 		local queue = snapshot.queue or {}
 		if queue.quick then
@@ -9184,8 +9195,12 @@ function Bay:_updateHero(snapshot, settings, dt)
 	local color, second, entry = World.trailLook(settings.trailId)
 	local flare = 1 + math.max(0, self.celebrateUntil - os.clock()) * 0.9
 	flowRibbons(hero.ribbons, hero.model:GetPivot(), bay.scale, color, second, entry.width * flare, 15, self.clock)
-	local best = snapshot.stats and tonumber(snapshot.stats.bestDistance) or 0
-	hero.record.Text = best &gt; 0 and string.format("YOUR BEST  %.1f M", best) or "FLY TO SET YOUR RECORD"
+	if shared:GetAttribute("DistanceModeEnabled") == true then
+		local best = snapshot.stats and tonumber(snapshot.stats.bestDistance) or 0
+		hero.record.Text = best &gt; 0 and string.format("YOUR BEST  %.1f M", best) or "FLY TO SET YOUR RECORD"
+	else
+		hero.record.Text = "READY FOR PLANE BATTLES"
+	end
 end
 
 function Bay:_buildStand(item, settings, key)
@@ -9260,7 +9275,8 @@ function Bay:_updateStand(snapshot, settings, dt)
 		stand.progress.Text = affordable and "READY  -  CLAIM IT!" or (tostring(shown) .. " / " .. tostring(item.price) .. " COINS")
 		stand.progress.TextColor3 = affordable and GREEN or GOLD
 	else
-		stand.progress.Text = "FLY YOUR SIGNATURE TRAIL"
+		stand.progress.Text = shared:GetAttribute("DistanceModeEnabled") == true
+			and "FLY YOUR SIGNATURE TRAIL" or "SHOW OFF YOUR SIGNATURE TRAIL"
 	end
 	stand.angle = ((stand.angle or 0) + dt * (affordable and 1.5 or 0.5) * (self.reducedMotion and 0 or 1)) % (math.pi * 2)
 	local pose = CFrame.new(World.UNLOCK_STAND + Vector3.new(0, 7.6 + math.sin(self.clock * 1.6) * 0.3, 0))
@@ -9993,10 +10009,6 @@ function BattleLab.new(World,shared)
     self.gui=make("ScreenGui",Players.LocalPlayer:WaitForChild("PlayerGui"),"SkyboundBattleLab")
     self.gui.ResetOnSpawn=false; self.gui.DisplayOrder=30; self.gui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
     self.root=make("Frame",self.gui,"Root"); self.root.Size=UDim2.fromScale(1,1); self.root.BackgroundTransparency=1
-    self.entry=button(self.root,"EnterBattleLab","PLAY PLANE BATTLES  /  BATTLE LAB",function() self:send("enter") end)
-    self.entry.BackgroundColor3=Color3.fromRGB(224,81,64)
-    self.entry.Edge.Color=Color3.fromRGB(255,211,119); self.entry.Edge.Transparency=0.15; self.entry.Edge.Thickness=2
-    self.entry.AnchorPoint=Vector2.new(0.5,1)
     self.panel=make("Frame",self.root,"Lab"); self.panel.Size=UDim2.fromScale(1,1); self.panel.BackgroundTransparency=1; self.panel.Visible=false
     self.header=make("Frame",self.panel,"Header"); self.header.BackgroundColor3=NAVY; self.header.BorderSizePixel=0
     surface(self.header,Color3.fromRGB(67,111,147),1)
@@ -10140,12 +10152,8 @@ function BattleLab:feedback(data)
         end
     end
 end
-function BattleLab:update(dt,canEnter)
+function BattleLab:update(dt)
     local width,height=self.root.AbsoluteSize.X,self.root.AbsoluteSize.Y
-    self.entry.Visible=not self.active and canEnter==true
-    -- The hub HUD reports where its bottom stack ends so the two never overlap.
-    self.entry.Position=UDim2.new(0.5,0,1,self.entryBottom or -78)
-    self.entry.Size=UDim2.fromOffset(math.min(width-24,420),height&lt;430 and 40 or 48)
     local muted=Players.LocalPlayer:GetAttribute("SkyboundSoundMuted")==true
     if self.muted~=muted then self.audio:setMuted(muted); self.muted=muted end
     self.audio:update(self.data or {active=false})
