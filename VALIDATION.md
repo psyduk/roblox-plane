@@ -1,4 +1,12 @@
-# Circle, then strike — October 10, 2026 (commit `a4f2546`, not published)
+# Version 12 publication — circle, then strike, October 10, 2026
+
+**Skybound Test version 12 is published**, place `86507299893768`, universe `10770074500`, at **2026-10-11T02:47:04Z** (October 10, 19:47:04 PDT). Source commit: **`70cc5d22f3a2d1c0d9e4d3037a0a853cfe0df5a8`**, containing implementation `a4f2546`. Studio confirmed publication and Playtester availability. Access settings were unchanged. [Publication proof](docs/validation/qa-2026-10-10/published-version-12.jpg), [current manifest](docs/validation/sky-battle-build.json).
+
+Fresh publication checks passed **44 simulation, 5 catalog and 48 full-server scenarios** (15 battle mode, 33 archived distance), plus **57 native Studio checks** (44 simulation and 13 view). All **35 cloud sources** matched UTF-8 FNV checksums and byte lengths after five script updates, with zero extra scripts, no diagnostic overrides, four required remotes and Sensor orientation. Local XML SHA-256: `c319c7b95d6f8ca331a4c3fd3d3fd72847aadfc2aa699c906c13c090103da2eb`; published native-file byte identity is not claimed. [Native/source evidence](docs/validation/qa-2026-10-10/version-12-native.json), [server](docs/validation/qa-2026-10-10/version-12-server.txt), [simulation/catalog](docs/validation/qa-2026-10-10/version-12-simulation.txt).
+
+Actual desktop clicks completed a three-round guided match: Afterburner and Magnet picks/locks, loss 1–2, +50 session-only coins, then REMATCH to the normal four-attack draft with a 15-second clock, full armor and 0–0 score. Both planes' loaded/unloaded gauge states were observed. Motion off was confirmed in client state and combat remained usable. No game-script errors appeared. [Combat](docs/validation/qa-2026-10-10/version-12-combat-smoke.jpg), [result](docs/validation/qa-2026-10-10/version-12-result-smoke.jpg). Physical phone, published multiplayer, live saving and full balance were not retested.
+
+**Known movement follow-up:** Meteor's custom approach can override its waiting orbit target. Review reproduced harmless bumps in a fixture with an artificially prolonged waiting phase; the existing circling regression excludes Meteor. This build improves general movement but does not establish that every waiting Meteor circles. The implementation measurements below predate this publication smoke test.
 
 The owner reported that planes kept flying at each other and colliding with nothing happening. Measured over 400 bare rounds: about 7.2 harmless bumps and 3.9 hits per round, and 2.8 of 5.4 close passes ended with no damage. The cause was the wait between attacks: a plane with nothing to fire flew straight at its rival.
 

@@ -1,11 +1,11 @@
 {
   "place": "Skybound.rbxlx",
-  "placeSha256": "e05457cb397d642b7b103ae58912092f5cad4fa140af2e7861720d134a5b91ad",
+  "placeSha256": "c319c7b95d6f8ca331a4c3fd3d3fd72847aadfc2aa699c906c13c090103da2eb",
   "sourceCount": 35,
   "sources": {
     "src/client/BattleAudio.luau": "56204f5522da1ba72066cfda9cdb3dde9ea1603c772393f5e8f7e62f3849a668",
     "src/client/BattleLab.luau": "7ff6ad5ccb903303cba0467c88bd1bc7aed6bedb598e0354630cbe411106a195",
-    "src/client/BattleView.luau": "33f64dc761c7a05c5e0d109b81d28271703bd8ad1bc035a2dead430e18756e87",
+    "src/client/BattleView.luau": "067179903522feb8acfc35a6aa90b8bcc526ea3bbbc4ff80235451519e6e2292",
     "src/client/ChallengePanel.luau": "1faedc580536a3a64b3cbe7a616bc2e8992635efc1fc507354dddfa0801e500d",
     "src/client/EffectsShop.luau": "2890c1890315ff7043b93bc54c71a5d542f5daba0ad00222ae81245f3907c0a6",
     "src/client/FlightAudio.luau": "f1a65191ce2122bb1ac32e088d0d7f1c144f030dc6aa06b1672021b8fb571a0e",
@@ -17,8 +17,8 @@
     "src/server/Main.server.luau": "0aacb7b2cc9765bb2084e33e6d64526378e62014e84808ff63f1e4ff6e59a9d9",
     "src/server/PlayerStats.luau": "d090befee0a80030b341dc7e4c355035960ead77add7b0d064c86dcd65fba6d6",
     "src/server/Telemetry.luau": "dd6dd079d86441fa1d67202d8c6333935f8c7ecd33fc24d100efdcaa375646c1",
-    "src/shared/BattleSimulation.luau": "a99c1542ffbda2d71e9580a45e059deff5319e66a90988d1ff2bfacd2c566689",
-    "src/shared/BattleSkills.luau": "34b1041a41c7e2fc2f3e5928f26cbc4758ebf3f4ad9bc984e97926e5c024d39a",
+    "src/shared/BattleSimulation.luau": "19bd55af334424e6090f1744927f400de21f75af3708b7342eda4bbde0f11509",
+    "src/shared/BattleSkills.luau": "027527e203e6fd1ba2f64f4c82efd1a2b5ba70c549b05dc42e885f3acecdb203",
     "src/shared/CosmeticCatalog.luau": "aa1ce8b56f7550eeb3fe77f8f1c5fa17eb29bee5f8cb759ca6e622d54fd6b4bd",
     "src/shared/PlaneCatalog.luau": "57d927f5ae22dec812dd07d214ff43c1657a74d2be3d6af4fbe955bbe5674cae",
     "src/shared/PowerCatalog.luau": "c01cc66b4be96009080b4e19f76f8e5f7821d51a67294ab5ace3544566854911",
@@ -28,8 +28,8 @@
     "tests/BattleAudio.spec.luau": "c0ff30652c7e6b040833b11953c6ba06476b96e86f735679dbb20cd02030f033",
     "tests/BattleClient.spec.luau": "c73841bc3a277bd94d03176a0a805312c2578caac0f5160e0c37cfe4dfa67c8b",
     "tests/BattleMatch.spec.luau": "c494dd0470911e71efa3f54565558b7c732c28aff932c9658ed47f5713312cbf",
-    "tests/BattleSimulation.spec.luau": "d37aea5ea07b2d9567dd108bec03f37bb95ce717e7c1e895e6ec1b6898896a6f",
-    "tests/BattleView.spec.luau": "3054aaa960ab4a616e52aaefc90b818ac3fc0af8887131bd904a2a4ffc27b2a7",
+    "tests/BattleSimulation.spec.luau": "8f8ef896d8fe8da41eda002e9518dfeee5b730fc611e9d7a4656c42f2acc5405",
+    "tests/BattleView.spec.luau": "e6fd8d892e54e453bd5c52c31a8b0551db2e67dab1ae9f07dc511c99fcca17ed",
     "tests/CosmeticCatalog.spec.luau": "b61e7a1f079c261a686ae44e149f4905ebe77a5e5811dd4788e2e154769e38a8",
     "tests/FlightAudio.spec.luau": "5be5da7f6ed4a06a414b2957c34f76a75af82f442de22c56f1f3d2806ec5bb34",
     "tests/PlaneCatalog.spec.luau": "44c072abedb21d2dd915404250f8ffa588eba1f5704fa197645342494b93c165",
@@ -42,13 +42,13 @@
   "scope": "Sky Battle Milestones 1 and 2; free playtest",
   "defaultMode": "plane_battle",
   "diagnosticOverridesAbsent": true,
-  "publishedVersion": 11,
+  "publishedVersion": 12,
   "publishedAndRealPhoneVerified": false,
   "publishedPlaceId": 86507299893768,
   "publishedUniverseId": 10770074500,
-  "sourceCommit": "27a71f8bf36447342f4e27adf255945bac2c3f6c",
-  "publishedAtUTC": "2026-10-11T01:19:15Z",
-  "publicationEvidence": "qa-2026-10-10/published-version-11.jpg",
+  "sourceCommit": "70cc5d22f3a2d1c0d9e4d3037a0a853cfe0df5a8",
+  "publishedAtUTC": "2026-10-11T02:47:04Z",
+  "publicationEvidence": "qa-2026-10-10/published-version-12.jpg",
   "publishedAccess": {
     "settingsChanged": false,
     "playtesterAvailabilityConfirmedByStudio": true,
@@ -60,8 +60,8 @@
     "matchingScripts": 35,
     "extraScripts": 0,
     "method": "UTF-8 FNV-1a checksum and byte length",
-    "evidence": "qa-2026-10-10/version-11-native.json"
+    "evidence": "qa-2026-10-10/version-12-native.json"
   },
   "publishedArtifactByteIdentical": false,
-  "publicationNote": "Version 11 updates the guided first match and protects returning players while profile loading is pending or failed. All 35 cloud sources match the candidate, with no extra scripts or diagnostic flags, four required remotes and Sensor orientation. Existing native lighting and protected migration metadata were preserved. The local XML SHA-256 identifies the local candidate, not the published native artifact. Physical phone, published multiplayer and live persistence were not retested."
+  "publicationNote": "Version 12 updates combat movement, attack timing and the attack-load ring. Five packaged scripts changed; all 35 cloud sources matched the candidate, with no extra scripts or diagnostic flags, four required remotes and Sensor orientation. Existing native lighting and protected metadata were preserved. The local XML hash does not identify the published native artifact. Meteor can still use its custom approach while waiting; tracked as a follow-up. Physical phone, published multiplayer and live persistence were not retested."
 }

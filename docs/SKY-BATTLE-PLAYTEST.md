@@ -2,11 +2,11 @@
 
 This is a free playtest candidate. Milestones 3 and 4, monetization, extra skills, daily rewards and season passes are outside scope. Passing local tests does not close the published/phone or unfamiliar-player gates.
 
-**Current test build:** Skybound Test, place **86507299893768**, universe **10770074500**, published **version 11** at **2026-10-11 01:19:15 UTC** (October 10, 18:19:15 PDT), from source commit **`27a71f8bf36447342f4e27adf255945bac2c3f6c`**. A verified new pilot now starts with one guided bot match before the normal draft. Version 11 retains version 10's [phone layout fixes](QA-2026-10-10.md#version-10-publication--phone-fit) and version 9's [fight HUD, full-roster draft, round length and Magnet changes](QA-2026-10-10.md#version-9-publication--first-player-feedback-pass). [Version 11 publication proof](validation/qa-2026-10-10/published-version-11.jpg).
+**Current test build:** Skybound Test, place **86507299893768**, universe **10770074500**, published **version 12** at **2026-10-11 02:47:04 UTC** (October 10, 19:47:04 PDT), from source commit **`70cc5d22f3a2d1c0d9e4d3037a0a853cfe0df5a8`**. Version 12 adds circling between attacks, seeded opening timing and a visible attack-load ring. A verified new pilot still starts with one guided bot match before the normal draft. The build retains version 10's [phone layout fixes](QA-2026-10-10.md#version-10-publication--phone-fit) and version 9's [fight HUD, full-roster draft, round length and Magnet changes](QA-2026-10-10.md#version-9-publication--first-player-feedback-pass). [Version 12 publication proof](validation/qa-2026-10-10/published-version-12.jpg).
 
-Access was left unchanged. Studio confirmed availability to playtesters; Creator Dashboard was not refreshed during version 11 publication. The earlier dashboard observation was **Limited**, with **Playtesters enabled** and **Friends disabled**. Independent-account gameplay, physical-phone and live-save checks below remain unverified.
+Access was left unchanged. Studio confirmed availability to playtesters; Creator Dashboard was not refreshed during version 12 publication. The earlier dashboard observation was **Limited**, with **Playtesters enabled** and **Friends disabled**. Independent-account gameplay, physical-phone and live-save checks below remain unverified.
 
-**Previous test build:** version **10**, published **2026-10-11T00:42:41Z** (October 10, 17:42:41 PDT), from source commit **`19350b1`**. [Version 10 record](QA-2026-10-10.md#version-10-publication--phone-fit).
+**Previous test build:** version **11**, published **2026-10-11T01:19:15Z** (October 10, 18:19:15 PDT), from source commit **`27a71f8bf36447342f4e27adf255945bac2c3f6c`**. Its checks are retained below.
 
 ## Build and launch
 
@@ -17,7 +17,18 @@ Access was left unchanged. Studio confirmed availability to playtesters; Creator
 5. Combat runs automatically. Both sides gain one new wild-card pick after each decisive round if the match continues, up to two. Three armor pips belong to each round; two round wins take the match. At **22 seconds**, more armor wins; level armor enters sudden death until one plane loses armor, with a **35-second hard stop**. A draw repeats the same builds with a fresh seed and no point or new pick. The match ends within **five physical rounds or 240 seconds**, using completed-round scores at the match limit.
 6. A completed guided match grants normal rewards and counts toward progression. REMATCH starts the normal full draft; both humans must agree when playing a human rival. Next opponent returns to the public queue. Direct challenges also use the normal draft. Hangar is always an exit; Sound and Motion controls are available in battle. Exiting an unfinished guide does not mark it completed.
 
-## Version 11 checks — October 10, 2026
+## Version 12 checks — October 10, 2026
+
+Local candidate SHA-256: **`c319c7b95d6f8ca331a4c3fd3d3fd72847aadfc2aa699c906c13c090103da2eb`**. Five changed scripts were synchronized; all **35 cloud script sources** matched UTF-8 FNV checksums and byte lengths, with **zero extra scripts** and no diagnostic flags. This verifies source synchronization, not byte identity between the local XML and Roblox's published native file.
+
+- **Fresh native checks:** **57** cases passed: 44 BattleSimulation and 13 BattleView. [Native results](validation/qa-2026-10-10/version-12-native.json).
+- **Offline checks:** **44 simulation**, **5 catalog** and **48 full-server scenarios** passed (15 current battle mode, 33 archived distance mode). [Simulation output](validation/qa-2026-10-10/version-12-simulation.txt), [server output](validation/qa-2026-10-10/version-12-server.txt).
+- **Actual desktop input:** completed a three-round guided match, losing **1–2** and receiving **50 session-only coins**. Afterburner and Magnet were selected and locked, including the second, three-card pick. Motion off was verified through the reduced-motion attribute and continued combat. REMATCH opened the normal four-attack, 15-second draft with score **0–0** and fresh armor. [Combat](validation/qa-2026-10-10/version-12-combat-smoke.jpg), [result](validation/qa-2026-10-10/version-12-result-smoke.jpg).
+- **Attack-load ring:** a 12-second native client probe observed loaded and unloaded states on both planes. This supplements the visual/input smoke check; it is not a player-comprehension result.
+- **Follow-up:** Meteor's approach still overrides its circling target while waiting. Applying the waiting-plane fixture to a Meteor mirror produced nine harmless bumps across four seeds; the existing no-touch circling test covers the other three offences. This remains an incomplete movement behavior to address and recheck for balance.
+- **Not repeated for this publication:** a full phone, multiplayer/network or persistence pass. Unfamiliar-player comprehension and subjective motion quality remain open. Studio confirmed publication; earlier local and historical evidence below does not close these gates.
+
+## Historical version 11 checks — October 10, 2026
 
 Local candidate SHA-256: **`e05457cb397d642b7b103ae58912092f5cad4fa140af2e7861720d134a5b91ad`**. All **35 cloud script sources** matched UTF-8 FNV checksums and byte lengths, with **zero extra scripts**. This verifies source synchronization, not byte identity between the local XML and Roblox's published native file.
 
@@ -32,7 +43,7 @@ Version 7 was published at **2026-10-10T18:58:42Z** (11:58:42 PDT), from source 
 
 ## Earlier full local QA — October 10, 2026
 
-The following five-match and two-client evidence belongs to the earlier `a0c9d9e` candidate, SHA-256 **`b0280d3c5a037e5364d260e488770a0bd84d5c73b1be7fa699c7c32c4f2d80db`**, published as version 6. It is retained as historical evidence, not a fresh visual pass of version 11. See [the full QA round](QA-2026-10-10.md).
+The following five-match and two-client evidence belongs to the earlier `a0c9d9e` candidate, SHA-256 **`b0280d3c5a037e5364d260e488770a0bd84d5c73b1be7fa699c7c32c4f2d80db`**, published as version 6. It is retained as historical evidence, not a fresh visual pass of version 12. See [the full QA round](QA-2026-10-10.md).
 
 - **Visual and normal-input play:** five complete bot matches, four before the QA fixes and one on the final candidate. Desktop, iPhone landscape/portrait emulation and Samsung A06 emulation were inspected. Actual gameplay earned 275 coins, then buying Aurora for 250 left 25; gift, equip, rematch and exit paths were exercised. On the final candidate, a completed loss awarded 50, Blue Comet was claimed/equipped, and a rematch confirmed Reroll, Pick Any and locking Pinball. No normal visual draw was observed in this pass.
 - **Mechanical checks:** 200 native Studio checks and 44 full-server scenarios passed. The latter comprise 11 current PvP scenarios and 33 explicitly opted-in archived distance regressions; those archived checks do not make distance mode the default.
@@ -44,11 +55,11 @@ All local progression above was **session-only**. Physical-phone touch/performan
 
 In the Studio testing dropdown choose **Server & Clients**, select **2** clients, then press Play or F7. Each fresh Studio pilot must first complete the guided bot match. Return both to the hangar within the same session, then press PLAY within eight seconds of one another. Repeat the pairing, hidden draft, result agreement, rematch and challenge rows below. End Session closes all test instances. See [Roblox testing modes](https://create.roblox.com/docs/studio/testing-modes).
 
-The opt-in scripts in `scripts/qa/SkyBattleNetwork.server.luau` and `.client.luau` produced the historical automated two-client evidence above and are excluded from the packaged place. **They need updating before a version 11 rerun:** the fixture assumes immediate public pairing and the old Pick Any/reroll resources. Do not treat an old report as a current pass. After the fixture is updated, temporarily install its server Script in ServerScriptService and client LocalScript in StarterPlayerScripts, then run `print(game:GetService("StudioTestService"):ExecuteMultiplayerTestAsync(2,"SkyBattleNetworkV1"))` from the Edit command bar. The JSON report ends the test; remove both QA scripts and any temporary guidance override before saving/publishing. This verifies networking with programmatic input, not human UI use or cloud saves. [StudioTestService reference](https://create.roblox.com/docs/reference/engine/classes/StudioTestService).
+The opt-in scripts in `scripts/qa/SkyBattleNetwork.server.luau` and `.client.luau` produced the historical automated two-client evidence above and are excluded from the packaged place. **They need updating before a current-build rerun:** the fixture assumes immediate public pairing and the old Pick Any/reroll resources. Do not treat an old report as a current pass. After the fixture is updated, temporarily install its server Script in ServerScriptService and client LocalScript in StarterPlayerScripts, then run `print(game:GetService("StudioTestService"):ExecuteMultiplayerTestAsync(2,"SkyBattleNetworkV1"))` from the Edit command bar. The JSON report ends the test; remove both QA scripts and any temporary guidance override before saving/publishing. This verifies networking with programmatic input, not human UI use or cloud saves. [StudioTestService reference](https://create.roblox.com/docs/reference/engine/classes/StudioTestService).
 
 ## Published destination and future updates
 
-The existing limited test destination is **Skybound Test**, start place `86507299893768`, universe `10770074500`; version **11** contains the verified 35-script source from commit `27a71f8bf36447342f4e27adf255945bac2c3f6c`. For future updates, verify the owner/destination, synchronize and compare the intended candidate, publish to this existing place, then record the new version and UTC time. Do not substitute an old open tab or create a public release. [Roblox publishing/access instructions](https://create.roblox.com/docs/production/publishing/publish-games-and-places). Keep the experience Limited/Playtesters and verify both test accounts have Playtest access; prior access records alone are not proof of today's permissions. No purchases or paid products are required.
+The existing limited test destination is **Skybound Test**, start place `86507299893768`, universe `10770074500`; version **12** contains the verified 35-script source from commit `70cc5d22f3a2d1c0d9e4d3037a0a853cfe0df5a8`. For future updates, verify the owner/destination, synchronize and compare the intended candidate, publish to this existing place, then record the new version and UTC time. Do not substitute an old open tab or create a public release. [Roblox publishing/access instructions](https://create.roblox.com/docs/production/publishing/publish-games-and-places). Keep the experience Limited/Playtesters and verify both test accounts have Playtest access; prior access records alone are not proof of today's permissions. No purchases or paid products are required.
 
 Restart existing game servers so both devices load that version. Record each account role, device model, OS, client version and network. Use one real phone and one independently connected desktop or second phone. A Studio client and the device emulator do not meet this gate.
 
@@ -84,11 +95,11 @@ Predeclared discovery targets: at least 80% reach a first fight within 20 second
 
 ## Result record (fill during the published test)
 
-- Candidate build SHA-256: `e05457cb397d642b7b103ae58912092f5cad4fa140af2e7861720d134a5b91ad` (verify against manifest after any rebuild)
+- Candidate build SHA-256: `c319c7b95d6f8ca331a4c3fd3d3fd72847aadfc2aa699c906c13c090103da2eb` (verify against manifest after any rebuild)
 - Local candidate path: `/Users/andrew/Documents/ChatGPT/color-switch/build/Sky-Battle-Playtest.rbxlx`
 - Published place / universe: `86507299893768` / `10770074500` (Skybound Test)
-- Published place version / UTC: **11** / **2026-10-11T01:19:15Z**; Studio success confirmation observed; Creator Dashboard not refreshed ([publication proof](validation/qa-2026-10-10/published-version-11.jpg))
-- Published source commit: `27a71f8bf36447342f4e27adf255945bac2c3f6c` (35 scripts matched UTF-8 FNV checksums and byte lengths; zero extra scripts; the local XML hash is not a published native-file hash)
+- Published place version / UTC: **12** / **2026-10-11T02:47:04Z**; Studio success confirmation observed; Creator Dashboard not refreshed ([publication proof](validation/qa-2026-10-10/published-version-12.jpg))
+- Published source commit: `70cc5d22f3a2d1c0d9e4d3037a0a853cfe0df5a8` (35 scripts matched UTF-8 FNV checksums and byte lengths; zero extra scripts; the local XML hash is not a published native-file hash)
 - Access retained: unchanged; Studio confirmed playtester availability. Last dashboard observation was Limited, Playtesters enabled and Friends disabled; individual test-account access still to verify
 - Accounts / roles / fresh or progressed:
 - Phone and other device / OS / orientation / network:

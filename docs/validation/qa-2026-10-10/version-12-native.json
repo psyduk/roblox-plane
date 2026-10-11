@@ -1,0 +1,186 @@
+{
+  "sourceCommit": "70cc5d22f3a2d1c0d9e4d3037a0a853cfe0df5a8",
+  "nativeTests": {
+    "simulation": "BattleSimulation: 44 tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes)",
+    "view": "BattleView: 13 native presentation tests passed"
+  },
+  "nativeTestCount": 57,
+  "clientGaugeObservation": {
+    "BattlePlane2": {
+      "loaded": true,
+      "unloaded": true
+    },
+    "BattlePlane1": {
+      "loaded": true,
+      "unloaded": true
+    }
+  },
+  "cloudSourceVerification": {
+    "flags": [],
+    "universeId": 10770074500,
+    "scripts": {
+      "ReplicatedStorage.FlightGame.Simulation": {
+        "hash": 1348073257,
+        "length": 16777
+      },
+      "ServerStorage.PowerCatalogTests": {
+        "hash": 3413969676,
+        "length": 1501
+      },
+      "ReplicatedStorage.FlightGame.PowerCatalog": {
+        "hash": 286974829,
+        "length": 1531
+      },
+      "StarterPlayer.StarterPlayerScripts.PilotAvatar": {
+        "hash": 226184736,
+        "length": 12747
+      },
+      "StarterPlayer.StarterPlayerScripts.EffectsShop": {
+        "hash": 3897165165,
+        "length": 23181
+      },
+      "ServerStorage.SimulationTests": {
+        "hash": 2691703631,
+        "length": 34187
+      },
+      "StarterPlayer.StarterPlayerScripts.BattleView": {
+        "hash": 345932765,
+        "length": 81914
+      },
+      "StarterPlayer.StarterPlayerScripts.HangarBay": {
+        "hash": 2613625484,
+        "length": 16870
+      },
+      "ServerScriptService.Telemetry": {
+        "hash": 1236797544,
+        "length": 10349
+      },
+      "ReplicatedStorage.FlightGame.World": {
+        "hash": 1690539897,
+        "length": 69619
+      },
+      "ReplicatedStorage.FlightGame.PlaneCatalog": {
+        "hash": 4066423773,
+        "length": 1814
+      },
+      "ReplicatedStorage.FlightGame.BattleSimulation": {
+        "hash": 375076913,
+        "length": 26842
+      },
+      "StarterPlayer.StarterPlayerScripts.FlightClient": {
+        "hash": 608388288,
+        "length": 28767
+      },
+      "ServerStorage.TelemetryTests": {
+        "hash": 692151504,
+        "length": 9083
+      },
+      "ServerStorage.BattleSimulationTests": {
+        "hash": 1260464577,
+        "length": 42488
+      },
+      "ServerStorage.BattleViewTests": {
+        "hash": 2533765690,
+        "length": 15611
+      },
+      "ServerScriptService.PlayerStats": {
+        "hash": 73814345,
+        "length": 26508
+      },
+      "ServerStorage.SkillCatalogTests": {
+        "hash": 3187086974,
+        "length": 4952
+      },
+      "ServerStorage.PlayerStatsTests": {
+        "hash": 2105426289,
+        "length": 40991
+      },
+      "ServerStorage.BattleClientTests": {
+        "hash": 1022380664,
+        "length": 9241
+      },
+      "ReplicatedStorage.FlightGame.BattleSkills": {
+        "hash": 2525042906,
+        "length": 9951
+      },
+      "ServerStorage.PlaneCatalogTests": {
+        "hash": 68938734,
+        "length": 1298
+      },
+      "ServerStorage.CosmeticCatalogTests": {
+        "hash": 73958080,
+        "length": 1713
+      },
+      "ServerStorage.BattleAudioTests": {
+        "hash": 4148980660,
+        "length": 16988
+      },
+      "StarterPlayer.StarterPlayerScripts.BattleLab": {
+        "hash": 17747617,
+        "length": 77302
+      },
+      "ServerScriptService.FlightServer": {
+        "hash": 1674635902,
+        "length": 38145
+      },
+      "ServerStorage.BattleMatchTests": {
+        "hash": 3794853438,
+        "length": 30265
+      },
+      "ServerStorage.FlightAudioTests": {
+        "hash": 578806971,
+        "length": 7012
+      },
+      "StarterPlayer.StarterPlayerScripts.Hud": {
+        "hash": 2293425304,
+        "length": 102487
+      },
+      "ReplicatedStorage.FlightGame.CosmeticCatalog": {
+        "hash": 3444677531,
+        "length": 3850
+      },
+      "StarterPlayer.StarterPlayerScripts.ChallengePanel": {
+        "hash": 3805931645,
+        "length": 6738
+      },
+      "ServerScriptService.BattleLab": {
+        "hash": 2258270571,
+        "length": 34634
+      },
+      "StarterPlayer.StarterPlayerScripts.BattleAudio": {
+        "hash": 3578438935,
+        "length": 22146
+      },
+      "ReplicatedStorage.FlightGame.SkillCatalog": {
+        "hash": 2949131708,
+        "length": 5096
+      },
+      "StarterPlayer.StarterPlayerScripts.FlightAudio": {
+        "hash": 310989961,
+        "length": 8984
+      }
+    },
+    "orientation": "Enum.ScreenOrientation.Sensor",
+    "placeId": 86507299893768,
+    "remotes": [
+      "ReplicatedStorage.FlightGame.Command",
+      "ReplicatedStorage.FlightGame.Snapshot",
+      "ReplicatedStorage.FlightGame.BattleCommand",
+      "ReplicatedStorage.FlightGame.BattleSnapshot"
+    ],
+    "creatorId": 4979831885
+  },
+  "knownFollowup": "Meteor's custom approach can override the waiting orbit target. Read-only review reproduced harmless bumps with an artificially prolonged waiting phase. This does not block publication; complete Meteor circling and balance remain a follow-up.",
+  "publishedVersion": 12,
+  "publishedPlaceId": 86507299893768,
+  "publishedUniverseId": 10770074500,
+  "publishedAtUTC": "2026-10-11T02:47:04Z",
+  "desktopSmoke": "Actual clicks completed guided three-round match, loss 1–2, +50 session-only coins. Selected and locked Afterburner and Magnet; the three-card second wildcard pick was observed. Motion off confirmed by client attribute and rendered combat. Rematch opened four-card normal attack draft with 15s clock, full armor and score 0–0. Both fighter AttackLoaded attributes transitioned true and false during a 12s observation. No game script console errors.",
+  "publicationOutput": [
+    "19:47:02.792 Sent message to server to publish.",
+    "19:47:04.480 Published new changes in \"Skybound Test\" to Roblox.",
+    "19:47:04.514 Place published. Playtesters can now play this place in Roblox.",
+    "19:47:04.514 Add publish notes to v12"
+  ],
+  "limits": "No physical-phone, live multiplayer, live persistence or fresh full balance test in this publication pass. Existing native lighting/protected metadata preserved; local XML is not the published native artifact."
+}
