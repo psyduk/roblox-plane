@@ -31,6 +31,8 @@ return function(Simulation, Catalog, Skills)
 		fighter._recoverX = x + math.cos(fighter.heading) * 30
 		fighter._recoverY = y + math.sin(fighter.heading) * 30
 		fighter._knockX, fighter._knockY = 0, 0
+		-- A fixture plane holds its course: it has no roll to spend.
+		fighter.dodgeLeft, fighter.dodgeCool = 0, 100
 	end
 	local function projectile(id, owner, x, y, vx, vy)
 		return { id = id, owner = owner, x = x, y = y, vx = vx, vy = vy, life = 2, radius = 3.5 }
@@ -173,13 +175,12 @@ return function(Simulation, Catalog, Skills)
 
 	test("controlled Meteor charge creates continuous space before a visible landed dive", function()
 		local state = Simulation.newRound(731, { offenceId = "Meteor", angle = 32 }, { offenceId = "Firework", angle = 32 })
-		-- A placed fixture: the Meteor is about to charge and the rival is held
-		-- in an endless slow windup beside it. This measures charge geometry,
+		-- A placed fixture: the Meteor is about to charge and the rival flies a
+		-- steady course beside it with no roll to spend. This measures charge geometry,
 		-- not approach timing or who wins the opening.
 		local meteor, rival = state.fighters[1], state.fighters[2]
 		meteor.x, meteor.y, meteor.heading, meteor.phaseLeft = 0, 50, math.pi, 0.001
-		rival.x, rival.y, rival.heading = 38, 50, math.pi
-		rival.phase, rival.phaseLeft = "Windup", 100
+		passive(rival, 30, 60, -math.pi / 2)
 		local charge, commitment, impact, waypointX, waypointY, previousHeading
 		local serial = state.eventSerial
 		for _ = 1, 300 do
@@ -195,7 +196,7 @@ return function(Simulation, Catalog, Skills)
 				end
 			end
 			serial = state.eventSerial
-			check((fighter.x - oldX) ^ 2 + (fighter.y - oldY) ^ 2 <= (65 * Simulation.FIXED_DT + 0.00001) ^ 2,
+			check((fighter.x - oldX) ^ 2 + (fighter.y - oldY) ^ 2 <= (Skills.offence.Meteor.attackSpeed * Simulation.FIXED_DT + 0.00001) ^ 2,
 				"Charging or release teleported the plane")
 			if fighter.phase == "Windup" then
 				check(not fighter.armed and fighter.invulnerable == 0, "Charge gained damage or immunity")
@@ -209,13 +210,13 @@ return function(Simulation, Catalog, Skills)
 		end
 		check(charge and commitment and impact, "Default charge did not finish in a real strike")
 		check(close(commitment.at - charge.at, Simulation.METEOR_WINDUP), "Charge duration changed")
-		check(impact.at - commitment.at >= 0.25 and impact.at - commitment.at <= 0.9, "Default strike has no visible flight")
+		check(impact.at - commitment.at >= 0.25 and impact.at - commitment.at <= 0.9, "Default strike has no visible flight " .. (impact.at - commitment.at))
 		check(math.abs(commitment.x - charge.x) > 20, "Charge failed to create real separation")
 		check(state.fighters[2].armor == 2 and state.fighters[1].armor == 3, "Strike changed the one-pip damage rule")
 		check(state.fighters[2].attacks == 0, "The held rival attacked")
 	end)
 
-	test("Meteor remains vulnerable during the backoff charge", function()
+	test("a hit during the backoff charge hurts and delays the Meteor without cancelling it", function()
 		local state = Simulation.newRound(1)
 		local fighter = state.fighters[1]
 		passive(fighter, 0, 50, 0)
@@ -224,8 +225,9 @@ return function(Simulation, Catalog, Skills)
 		passive(state.fighters[2], -40, 50, 0)
 		state.projectiles = { projectile(1, 2, -25, 50, 6000, 0) }
 		Simulation.step(state, Simulation.FIXED_DT)
-		check(fighter.armor == 2 and fighter.phase == "Recover", "Charging Meteor ignored a valid rocket")
-		check(not fighter.armed and fighter.attacks == 0, "Interrupted charge still released a dive")
+		check(fighter.armor == 2, "Charging Meteor ignored a valid rocket")
+		check(fighter.phase == "Windup" and close(fighter.phaseLeft, 0.8 - Simulation.FIXED_DT + Simulation.STAGGER), "The hit did not delay the charge by its stagger")
+		check(not fighter.armed and fighter.attacks == 0, "The struck charge released early")
 	end)
 
 	test("a committed Meteor can visibly miss and bank without damage", function()
@@ -411,8 +413,8 @@ return function(Simulation, Catalog, Skills)
 		end
 		check(activations == 1, "Boost activation duplicated")
 		for _ = 1, 60 do Simulation.step(state, Simulation.FIXED_DT) end
-		check(fighter.boostLeft == 0 and fighter.phase == "Recover", "Boost did not expire during recovery")
-		check(close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 30), "Boost speed persisted")
+		check(fighter.boostLeft == 0, "Boost did not expire")
+		check(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2) <= 30.00001, "Boost speed persisted")
 	end)
 
 	test("spring bumper ignores passive or protected contact and blocks one valid strike", function()
@@ -463,7 +465,7 @@ return function(Simulation, Catalog, Skills)
 		Simulation.step(state, Simulation.FIXED_DT)
 		check(#state.wakes == 1 and state.wakes[1].x < fighter.x, "Attack did not leave a wake behind")
 		check(state.wakes[1].armLeft > 0 and state.wakes[1].radius == Skills.wild.FizzyFuel.cloudRadius
-			and state.wakes[1].life > 2, "Cloud lacks visible arming, size or hang time")
+			and state.wakes[1].life > 1, "Cloud lacks visible arming, size or hang time")
 		local emitted = state._wakeSerial
 		fighter.phaseLeft = 0
 		for _ = 1, 12 do Simulation.step(state, Simulation.FIXED_DT) end
@@ -741,7 +743,7 @@ return function(Simulation, Catalog, Skills)
 		actor.phaseLeft = 0
 		Simulation.step(state, Simulation.FIXED_DT)
 		check(actor.phase == "Recover" and actor.tempo == Skills.wild.Afterburner.tempo, "Attacking did not start the rush")
-		check(close(actor.phaseLeft, Simulation.RECOVERY_TIME * actor.tempo), "The rush did not shorten the bank away")
+		check(close(actor.phaseLeft, Simulation.RECOVERY_TIME * actor.tempo * state.rush) and state.rush < 1, "The rush did not shorten the bank away")
 		check(rival.tempo == nil, "The rival was hurried too")
 		actor.phase, actor.phaseLeft = "Approach", 0
 		passive(rival, 40, 80, 0)
@@ -806,7 +808,8 @@ return function(Simulation, Catalog, Skills)
 			local again = Simulation.newRound(seed * 104729, { offenceId = "Firework" }, { offenceId = "Firework" })
 			local a, b = state.fighters[1].phaseLeft, state.fighters[2].phaseLeft
 			check(a == again.fighters[1].phaseLeft and b == again.fighters[2].phaseLeft, "Opening timing is not repeatable")
-			check(a >= 1.8 - 0.000001 and a <= 4.2 + 0.000001 and b >= 1.8 - 0.000001 and b <= 4.2 + 0.000001, "Opening timing left its range")
+			local base, spread = Skills.offence.Firework.approachTime, Simulation.CADENCE_SPREAD
+			check(a >= base - spread - 0.000001 and a <= base + spread + 0.000001 and b >= base - spread - 0.000001 and b <= base + spread + 0.000001, "Opening timing left its range")
 			if math.abs(a - b) > 0.2 then different = different + 1 end
 		end
 		check(different >= 25, "Both planes share one opening timing, so the same attack always strikes first")
@@ -940,24 +943,24 @@ return function(Simulation, Catalog, Skills)
 		end
 	end)
 
-	test("Bug is a small quick plane with two armor, and Giant adds one to whatever it has", function()
+	test("Bug is a small quick plane with two armor, and Giant adds two to whatever it has", function()
 		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Bug" } }, { offenceId = "Firework", wildIds = { "Giant", "Bug" } })
 		local a, b = state.fighters[1], state.fighters[2]
 		check(a.armor == 2 and a.maxArmor == 2 and a.radius < Simulation.PLANE_RADIUS * 0.5 and a.pace < 1 and a.speedScale > 1, "Bug was not a bug")
-		check(b.armor == 3 and b.combo == "GIANT BUG!", "Giant and Bug did not combine")
+		check(b.armor == 4 and b.combo == "GIANT BUG!", "Giant and Bug did not combine")
 	end)
 
 	test("Snowball starts small, grows twice and then breaks two armor a hit", function()
 		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Snowball" } }, { offenceId = "Firework", wildIds = { "Giant" } })
 		local a, b = state.fighters[1], state.fighters[2]
 		local small = a.radius
-		check(small < Simulation.PLANE_RADIUS and b.armor == 4, "Snowball did not start small")
+		check(small < Simulation.PLANE_RADIUS and b.armor == 5, "Snowball did not start small")
 		passive(a, -40, 80, 0); passive(b, 30, 50, 0)
 		shoot(state, 30, 50)
-		check(b.armor == 3 and a.snowball == 1 and a.radius > small and said(state, "skill", "Snowball"), "The first hit did not grow the plane")
+		check(b.armor == 4 and a.snowball == 1 and a.radius > small and said(state, "skill", "Snowball"), "The first hit did not grow the plane")
 		passive(b, 30, 50, 0); b.invulnerable = 0; state.projectiles = {}
 		shoot(state, 30, 50)
-		check(b.armor == 1 and a.snowball == 2, "A grown Snowball did not break two armor")
+		check(b.armor == 2 and a.snowball == 2, "A grown Snowball did not break two armor")
 		local grown = a.radius
 		passive(b, 30, 50, 0); b.invulnerable = 0; state.projectiles = {}
 		shoot(state, 30, 50)
@@ -971,12 +974,12 @@ return function(Simulation, Catalog, Skills)
 		a.armor = 1
 		state.elapsed = Skills.wild.Swap.at - 0.1
 		Simulation.step(state, Simulation.FIXED_DT)
-		check(a.armor == 1 and b.armor == 4 and not state.swapped, "The swap came early")
+		check(a.armor == 1 and b.armor == 5 and not state.swapped, "The swap came early")
 		state.elapsed = Skills.wild.Swap.at
 		Simulation.step(state, Simulation.FIXED_DT)
-		check(a.armor == 4 and b.armor == 1 and state.swapped and said(state, "skill", "Swap"), "Armor did not change hands")
+		check(a.armor == 5 and b.armor == 1 and state.swapped and said(state, "skill", "Swap"), "Armor did not change hands")
 		for _ = 1, 20 do Simulation.step(state, Simulation.FIXED_DT) end
-		check(a.armor == 4 and b.armor == 1, "The armor swapped back")
+		check(a.armor == 5 and b.armor == 1, "The armor swapped back")
 	end)
 
 	test("Gambler rolls every face from the seed and each face does what the card says", function()
@@ -1117,7 +1120,7 @@ return function(Simulation, Catalog, Skills)
 		check(#nothing.fighters[2].wildIds == 1 and #nothing.fighters[1].wildIds == 1, "A plane-shaping card was stolen")
 		local pinched = said(nothing, "skill", "Thief")
 		check(pinched and pinched.stolen == nil and not nothing.fighters[1].thiefReady, "A thief with nothing to take did not pinch ammo instead")
-		check(nothing.fighters[2].phase == "Recover" and nothing.fighters[2].phaseLeft > Simulation.RECOVERY_TIME + 1,
+		check(nothing.fighters[2].phase == "Recover" and nothing.fighters[2].phaseLeft >= Skills.wild.Thief.ammo,
 			"Losing ammo did not delay the rival's next attack")
 	end)
 
@@ -1186,7 +1189,7 @@ return function(Simulation, Catalog, Skills)
 			Simulation.step(state, Simulation.FIXED_DT)
 		end
 		check(b.armor == 3 and #state.holes == 1, "The hole bit before it had armed")
-		for _ = 1, 20 do
+		for _ = 1, 40 do
 			passive(a, -40, 50, 0); passive(b, 30, 50, 0)
 			Simulation.step(state, Simulation.FIXED_DT)
 		end
@@ -1386,5 +1389,109 @@ return function(Simulation, Catalog, Skills)
 		end
 	end)
 
-	return string.format("BattleSimulation: %d tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes, plane-changing cards)", passed)
+	test("a free plane rolls away from a shot about to reach it, then has no roll to spend", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework" })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -60, 80, 0); passive(b, 0, 50, math.pi / 2)
+		b.dodgeCool = 0
+		state.projectiles = { projectile(1, 1, -16, 52, 60, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		local roll = said(state, "dodge")
+		check(roll and roll.actor == 2 and b.dodges == 1, "A free plane did not roll away from a shot")
+		check(b.dodgeLeft > 0 and b.dodgeCool > Simulation.DODGE_COOLDOWN - 0.05, "The roll did not start its cooldown")
+		check(math.sqrt(b.vx ^ 2 + b.vy ^ 2) > 40, "The roll was no faster than cruising")
+		b.dodgeLeft = 0
+		state.projectiles = { projectile(2, 1, b.x - 16, b.y + 2, 60, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(b.dodges == 1, "A plane rolled again while its roll was spent")
+	end)
+
+	test("a plane that has turned in to aim, or is attacking, is committed and cannot roll", function()
+		for _, phase in ipairs({ "Windup", "Attack" }) do
+			local state = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework" })
+			local a, b = state.fighters[1], state.fighters[2]
+			passive(a, -60, 80, 0); passive(b, 0, 50, math.pi / 2)
+			b.dodgeCool = 0
+			b.phase, b.phaseLeft, b._attackHeading = phase, phase == "Windup" and Simulation.AIM_TIME - 0.05 or 0.4, math.pi / 2
+			state.projectiles = { projectile(1, 1, -16, 52, 60, 0) }
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(b.dodges == 0 and not said(state, "dodge"), "A committed plane rolled during " .. phase)
+		end
+		local state = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework" })
+		local b = state.fighters[2]
+		passive(state.fighters[1], -60, 80, 0); passive(b, 0, 50, math.pi / 2)
+		b.dodgeCool = 0
+		b.phase, b.phaseLeft = "Windup", Simulation.AIM_TIME + 0.4
+		state.projectiles = { projectile(1, 1, -16, 52, 60, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(b.dodges == 1 and b.phase == "Windup", "A plane still circling with its charge could not roll")
+	end)
+
+	test("a plane on its last armor is ready to roll again sooner", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework" })
+		local b = state.fighters[2]
+		passive(state.fighters[1], -60, 80, 0); passive(b, 0, 50, math.pi / 2)
+		b.dodgeCool, b.armor = 0, 1
+		state.projectiles = { projectile(1, 1, -16, 52, 60, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(b.dodges == 1 and b.dodgeCool < Simulation.DODGE_COOLDOWN * Simulation.DANGER_DODGE + 0.000001, "Last armor did not shorten the roll cooldown")
+	end)
+
+	test("planes take turns: one waits out its rival's charge, but not for ever", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework" })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -30, 50, 0); passive(b, 30, 50, math.pi)
+		a.phase, a.phaseLeft = "Windup", 100
+		b.phase, b.phaseLeft = "Approach", 0
+		Simulation.step(state, Simulation.FIXED_DT); Simulation.step(state, Simulation.FIXED_DT)
+		check(b.phase == "Approach", "A plane started charging while its rival was charging")
+		b.phaseLeft = -Simulation.TURN_WAIT
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(b.phase == "Windup", "A plane waited for ever")
+		local free = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework" })
+		passive(free.fighters[1], -30, 50, 0); passive(free.fighters[2], 30, 50, math.pi)
+		free.fighters[2].phase, free.fighters[2].phaseLeft = "Approach", 0
+		Simulation.step(free, Simulation.FIXED_DT); Simulation.step(free, Simulation.FIXED_DT)
+		check(free.fighters[2].phase == "Windup", "A plane with a clear turn did not charge")
+	end)
+
+	test("every attack begun speeds the round up, down to a floor", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework" })
+		local a = state.fighters[1]
+		check(state.rush == 1 and state.exchanges == 0, "A round started hurried")
+		local last = 1
+		for count = 1, 20 do
+			passive(a, -40, 50, 0); passive(state.fighters[2], 40, 80, 0)
+			a.phase, a.phaseLeft = "Windup", 0
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(state.exchanges == count and state.rush <= last and state.rush >= Simulation.RUSH_FLOOR, "The rush left its range")
+			last = state.rush
+			state.projectiles = {}
+		end
+		check(close(last, Simulation.RUSH_FLOOR), "The rush never reached its floor")
+		a.phaseLeft = 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(a.phase == "Recover" and close(a.phaseLeft, Simulation.RECOVERY_TIME * Simulation.RUSH_FLOOR), "A hurried round did not shorten the bank away")
+	end)
+
+	test("a plane that is hit while free rallies; a hit does not cancel the rival's own attack", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework" })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -40, 80, 0); passive(b, 30, 50, 0)
+		shoot(state, 30, 50)
+		check(b.armor == 2 and b.phase == "Recover" and b.rally == Simulation.RALLY, "The struck plane did not rally")
+		check(close(b.phaseLeft, Simulation.RECOVERY_TIME * Simulation.RALLY), "The rally did not shorten the bank away")
+		check(a.phase == "Recover" and a.phaseLeft > 50 and a.rally == nil, "Landing a shot changed the shooter's own timing")
+		b.phase, b.phaseLeft = "Approach", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(b.phase == "Windup" and b.rally == nil, "The rally outlived one trip")
+		passive(a, -40, 80, 0); a.invulnerable = 0
+		a.phase, a.phaseLeft = "Attack", 0.3
+		a._attackHeading = 0
+		state.projectiles = { projectile(950, 2, a.x + 4, a.y, -60, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(a.armor == 2 and a.phase == "Attack", "A hit cancelled an attack already under way")
+	end)
+
+	return string.format("BattleSimulation: %d tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes, plane-changing cards, rolls, turns, tempo)", passed)
 end

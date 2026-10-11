@@ -2,6 +2,27 @@
 
 Measured 2026-10-10. Active roster only: four offences and five wild cards. Milestones 3/4 and expansion skills are outside this run. These are deterministic simulation results, not proof of human enjoyment, phone readability or published networking.
 
+## Combat-feel revision — measured 2026-10-11
+
+This supersedes every table below. The rules changed (planes keep flying, rolls, turns, hits no longer cancel, the round speeds up); see [COMBAT-CONTRACT.md](COMBAT-CONTRACT.md). Method: `build/testenv/bin/python scripts/qa/combat_feel.py 24 --pairs`, 24 seeds for each of the 64 ordered pairings, bare attacks, 1,536 rounds.
+
+| Attack | Field score | Attacks that land | Attacks per round |
+|---|---:|---:|---:|
+| Meteor | 53% | 48% | 4.4 |
+| Firework | 48% | 34% | 5.4 |
+| Machine Gun | 43% | 43% | 4.7 |
+| Pinball | 53% | 43% | 5.3 |
+| Sniper | 49% | 29% | 3.9 |
+| Boomerang | 49% | 35% | 5.3 |
+| Black Hole | 53% | 48% | 4.5 |
+| UFO Beam | 52% | 73% | 3.2 |
+
+Whole field: 9.2 attacks a round, 43% land, median round 14.5 seconds (p90 22.0), 89% knockouts, 0.1% draws.
+
+One wild card against a bare plane, both seats, two seeds per ordered pairing (256 rounds each): Snowball 69, Spring Bumper 67, Chicken 66, Giant 66, Hot Potato 66, Magnet 66, Fizzy Fuel 65, Rewind 65, Decoy 64, Gambler 64, Mothership 64, Wrap 64, Eject 62, Vampire 61, Second Wind 56, Afterburner 54, Bug 54, Thief 53, Squadron 51, Swap 50. Two-card builds were not re-screened.
+
+Still fragile: shortening Meteor's charge from 1.0 to 0.8 seconds moved Meteor against Firework from 58% to 29% over 160 rounds. Approach time is now a weak lever (Boomerang stayed above 60% at nearly double its approach time), so balance was done on the weapons themselves.
+
 ## Tempo revision — measured 2026-10-10, source `072782f`
 
 This section supersedes the tables below, which describe the 35-second rules. Rounds now check armor at 22 seconds and settle level armor by sudden death; approach and recovery are shorter; Magnet pulls during the attack. Same method: 20 seeds, nine angle pairs, 2,880 base rounds; wild cards from 3 seeds.

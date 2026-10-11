@@ -11,7 +11,7 @@ BattleSimulation.MAX_TOTAL_SPEED = 88
 BattleSimulation.MAX_TURN_RATE = 9.6
 -- Pull toward the owner's plane, and the stronger pull toward a shot in the air.
 BattleSimulation.MAGNET_SPEED = 14
-BattleSimulation.MAGNET_SHOT_SPEED = 45
+BattleSimulation.MAGNET_SHOT_SPEED = 28
 BattleSimulation.FIXED_DT = 1 / 60
 BattleSimulation.MAX_STEP_DT = 0.25
 -- A round is decided on armor at REGULATION_TIME. Level armor goes to sudden
@@ -23,12 +23,38 @@ BattleSimulation.ARENA = { left = -72, right = 72, bottom = 8, top = 96 }
 BattleSimulation.PLANE_RADIUS = 5
 BattleSimulation.IMPACT_PROTECTION = 0.85
 BattleSimulation.HIT_KNOCK = 36
-BattleSimulation.APPROACH_TIME = 3
-BattleSimulation.RECOVERY_TIME = 2
+BattleSimulation.APPROACH_TIME = 1.7
+BattleSimulation.RECOVERY_TIME = 1
+-- How far a plane's seeded timing may drift either side of its base approach.
+BattleSimulation.CADENCE_SPREAD = 0.6
+-- Every attack begun shortens the trips that follow, down to a floor, so a
+-- round ends faster than it started.
+BattleSimulation.RUSH_STEP = 0.95
+BattleSimulation.RUSH_FLOOR = 0.6
+-- A plane that has just been hit is back for its answer sooner.
+BattleSimulation.RALLY = 0.5
+-- Being hit while charging does not cancel the attack; it only delays it.
+BattleSimulation.STAGGER = 0.3
+-- A plane keeps circling while it charges and turns its nose in at the end.
+BattleSimulation.TURN_WAIT = 1.2
+BattleSimulation.AIM_TIME = 0.35
+BattleSimulation.AIM_SPEED = 22
+-- A plane that is free to fly rolls out of the way of a shot or dive that is
+-- about to reach it. A plane that is charging or attacking is committed and
+-- cannot; neither can one that rolled a moment ago.
+BattleSimulation.DODGE_REACT = 0.34
+BattleSimulation.DODGE_TIME = 0.45
+BattleSimulation.DODGE_SPEED = 48
+BattleSimulation.DODGE_COOLDOWN = 2.4
+BattleSimulation.DODGE_MARGIN = 2
+BattleSimulation.HOLE_SCARE = 10
+BattleSimulation.DANGER_DODGE = 0.6
+-- The hit that leaves a plane on its last armor throws it harder.
+BattleSimulation.DANGER_KNOCK = 1.4
 -- A plane that is not yet ready to attack circles its rival at this distance.
 -- Flying nose-first at the rival is saved for the attack itself, so closing in
 -- always means something is about to happen.
-BattleSimulation.STANDOFF = 34
+BattleSimulation.STANDOFF = 46
 BattleSimulation.ORBIT_LEAD = 0.9
 BattleSimulation.ORBIT_SPEED = 28
 -- Closer than this with nothing loaded, a circling plane peels away.
@@ -42,6 +68,7 @@ BattleSimulation.MAX_WAKES = 12
 
 local PI, TAU = math.pi, math.pi * 2
 local EPSILON = 0.000000001
+local PLANE_REACH = BattleSimulation.PLANE_RADIUS
 local function finite(value)
 	return type(value) == "number" and value == value and value > -math.huge and value < math.huge
 end
@@ -179,7 +206,7 @@ local function updateBounds(state)
 end
 
 -- Helpers handed to every skill hook.
-local api = { event = event, clamp = clamp, direction = direction,
+local api = { event = event, clamp = clamp, direction = direction, atan2 = atan2,
 	IMPACT_PROTECTION = BattleSimulation.IMPACT_PROTECTION }
 
 -- A decoy that is reached pops, and comes back after its cooldown.
@@ -268,8 +295,8 @@ function BattleSimulation.newRound(seed, settingsA, settingsB)
 	local state = {
 		seed = seed, elapsed = 0, finished = false, winner = nil, reason = nil,
 		fighters = {}, projectiles = {}, wakes = {}, events = {}, eventSerial = 0,
-		pressure = 0, regulationTime = BattleSimulation.REGULATION_TIME, maxTime = BattleSimulation.MAX_TIME, _accumulator = 0, _projectileSerial = 0, _bumpCooldown = 0,
-		_wakeSerial = 0, spin = seed % 2 == 0 and 1 or -1,
+		_hurt = {}, pressure = 0, regulationTime = BattleSimulation.REGULATION_TIME, maxTime = BattleSimulation.MAX_TIME, _accumulator = 0, _projectileSerial = 0, _bumpCooldown = 0,
+		_wakeSerial = 0, spin = seed % 2 == 0 and 1 or -1, exchanges = 0, rush = 1,
 	}
 	updateBounds(state)
 	local configs = { settings(settingsA, "Meteor"), settings(settingsB, "Firework") }
@@ -282,20 +309,20 @@ function BattleSimulation.newRound(seed, settingsA, settingsB)
 			id = id, offenceId = config.offenceId, settings = config,
 			wildIds = config.wildIds, boostLeft = 0,
 			_cadence = (seed * 48271 + (seed % 2 == 0 and id or 3 - id) * 1299709) % 2147483647,
-			_approachOffset = ((seed * 48271 + (seed % 2 == 0 and id or 3 - id) * 1299709) % 2147483647) / 2147483647 * 2.4 - 1.2,
+			_approachOffset = (((seed * 48271 + (seed % 2 == 0 and id or 3 - id) * 1299709) % 2147483647) / 2147483647 * 2 - 1) * BattleSimulation.CADENCE_SPREAD,
 			x = -52 * side, y = 31 + random() * 13,
 			heading = heading, vx = math.cos(heading) * 29, vy = math.sin(heading) * 29,
 			armor = 3, maxArmor = 3, scale = 1, speedScale = 1, shotScale = 1, squad = 0, phase = "Approach", phaseLeft = (Skills.offence[config.offenceId].approachTime or BattleSimulation.APPROACH_TIME) +
 				(configs[1].offenceId == "Meteor" and configs[2].offenceId == "Meteor" and id == seed % 2 + 1 and (0.25 + (seed * 69621 % 9999) / 9999 * 0.35) or 0),
 			windupDuration = Skills.offence[config.offenceId].windup,
-			armed = false, invulnerable = 0, attacks = 0, hits = 0,
+			armed = false, invulnerable = 0, attacks = 0, hits = 0, dodges = 0, dodgeLeft = 0, dodgeCool = 0,
 			radius = BattleSimulation.PLANE_RADIUS, lockX = 0, lockY = 50,
 			_knockX = 0, _knockY = 0, _attackHit = false,
 		}
 		-- The opening pass gets the same seeded timing spread as every later one,
 		-- so the same attack does not always strike first.
 		-- One extra step of the cadence separates the two planes' timing.
-		fighter.phaseLeft = fighter.phaseLeft + (fighter._cadence * 16807) % 2147483647 / 2147483647 * 2.4 - 1.2
+		fighter.phaseLeft = math.max(0.5, fighter.phaseLeft + ((fighter._cadence * 16807) % 2147483647 / 2147483647 * 2 - 1) * BattleSimulation.CADENCE_SPREAD)
 		state.fighters[id] = fighter
 		wild(fighter, "start", state, fighter)
 		event(state, "launch", fighter.x, fighter.y, id, 0)
@@ -338,11 +365,12 @@ local function recover(state, fighter, opponent, duration)
 	-- to prevent identical recovery cycles from becoming permanent trades or
 	-- interruptions. The seed records every pass; no accuracy/winner roll.
 	fighter._cadence = (fighter._cadence * 16807) % 2147483647
-	fighter._approachOffset = fighter._cadence / 2147483647 * 2.4 - 1.2
+	fighter._approachOffset = (fighter._cadence / 2147483647 * 2 - 1) * BattleSimulation.CADENCE_SPREAD
 	-- Both planes circle the same way round, or they would meet head-on.
 	state.spin = fighter._cadence % 2 == 0 and 1 or -1
-	fighter.phase, fighter.phaseLeft = "Recover", ((duration or offenceOf(fighter).recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.88 or 1) * (fighter.tempo or 1) * (fighter.pace or 1)
+	fighter.phase, fighter.phaseLeft = "Recover", ((duration or offenceOf(fighter).recoveryTime or BattleSimulation.RECOVERY_TIME) * (fighter.rally or 1) * state.rush + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.88 or 1) * (fighter.tempo or 1) * (fighter.pace or 1)
 	fighter._bumperRecovery = nil
+	fighter.dodgeLeft = 0
 	fighter.armed = false
 	local awayX, awayY = direction(fighter.x - opponent.x, fighter.y - opponent.y, fighter.id == 1 and -1 or 1)
 	fighter._recoverX = clamp(fighter.x + awayX * 32, -48, 48)
@@ -405,6 +433,8 @@ local function beginAttack(state, fighter, opponent)
 	fighter.armed = rams(fighter) ~= nil
 	fighter.attacks = fighter.attacks + 1
 	fighter._attackHit, fighter._wrapped = false, false
+	state.exchanges = state.exchanges + 1
+	state.rush = math.max(BattleSimulation.RUSH_FLOOR, BattleSimulation.RUSH_STEP ^ state.exchanges)
 	wild(fighter, "attack", state, fighter, opponent)
 	-- The direction is locked for the whole attack; no homing after launch.
 	fighter._attackHeading = fighter.heading
@@ -433,10 +463,13 @@ local function prepare(state, fighter, opponent, dt)
 	if fighter.phase == "Approach" then
 		-- Drones find their own way, so a mothership is always in position.
 		local inPosition = carrier or (offence.inPosition ~= nil and offence.inPosition(api, state, fighter, opponent, dx, dy))
-		if fighter.phaseLeft <= 0 or (fighter.phaseLeft < offence.earliest and inPosition) then
+		-- Planes take turns: one does not start its charge while its rival is
+		-- charging, unless it has already waited long enough.
+		local waiting = opponent.phase == "Windup" and not opponent.decoy and fighter.phaseLeft > -BattleSimulation.TURN_WAIT
+		if not waiting and (fighter.phaseLeft <= 0 or (fighter.phaseLeft < offence.earliest and inPosition)) then
 			fighter.phase, fighter.phaseLeft = "Windup", carrier and Skills.wild.Mothership.windup or fighter.windupDuration
-			-- A skill's hurry lasts for one trip back to the attack.
-			fighter.tempo = nil
+			-- A skill's hurry, and a rally after being hit, last for one trip back to the attack.
+			fighter.tempo, fighter.rally = nil, nil
 			if offence.windupStart and not carrier then offence.windupStart(api, state, fighter, opponent) end
 			lockTarget(fighter, opponent)
 			event(state, "windup", fighter.x, fighter.y, fighter.id, opponent.id)
@@ -450,21 +483,28 @@ local function prepare(state, fighter, opponent, dt)
 		if offence.release and not carrier then offence.release(api, state, fighter, opponent) end
 		recover(state, fighter, opponent)
 	elseif fighter.phase == "Recover" and fighter.phaseLeft <= 0 then
-		fighter.phase, fighter.phaseLeft = "Approach", ((offence.approachTime or BattleSimulation.APPROACH_TIME) + fighter._approachOffset) * (fighter.tempo or 1) * (fighter.pace or 1)
+		fighter.phase, fighter.phaseLeft = "Approach", ((offence.approachTime or BattleSimulation.APPROACH_TIME) + fighter._approachOffset) * (fighter.tempo or 1) * (fighter.pace or 1) * (fighter.rally or 1) * state.rush
 	end
 
 	local targetX, targetY = opponent.x, opponent.y
 	local speed, turnRate = 28, 2.8
 	local wantX, wantY, wantSpeed, wantTurn
+	-- A point on the standoff ring a little way round from here.
+	local function ring()
+		local awayX, awayY = direction(-dx, -dy, fighter.id == 1 and -1 or 1)
+		local c, s = math.cos(BattleSimulation.ORBIT_LEAD), math.sin(BattleSimulation.ORBIT_LEAD) * state.spin
+		local reach = offence.standoff or BattleSimulation.STANDOFF
+		return clamp(opponent.x + (awayX * c - awayY * s) * reach, state.bounds.left + 6, state.bounds.right - 6),
+			clamp(opponent.y + (awayX * s + awayY * c) * reach, state.bounds.bottom + 6, state.bounds.top - 6)
+	end
+	local free = (fighter.phase == "Approach" or fighter.phase == "Recover") and not fighter.hold and not fighter.throw
+	local aiming = false
 	if fighter.phase == "Approach" or (carrier and fighter.phase == "Windup") then
 		-- A mothership never closes in: it circles until the drones are away.
-		fighter.circling = carrier or fighter.phaseLeft >= offence.earliest
+		-- Only an attack that needs to be close flies nose-first at the rival.
+		fighter.circling = carrier or fighter.phaseLeft >= offence.earliest or not (offence.ram or offence.range)
 		if fighter.circling then
-			-- Aim for a point on the standoff ring a little way round from here.
-			local awayX, awayY = direction(-dx, -dy, fighter.id == 1 and -1 or 1)
-			local c, s = math.cos(BattleSimulation.ORBIT_LEAD), math.sin(BattleSimulation.ORBIT_LEAD) * state.spin
-			targetX = clamp(opponent.x + (awayX * c - awayY * s) * BattleSimulation.STANDOFF, state.bounds.left + 6, state.bounds.right - 6)
-			targetY = clamp(opponent.y + (awayX * s + awayY * c) * BattleSimulation.STANDOFF, state.bounds.bottom + 6, state.bounds.top - 6)
+			targetX, targetY = ring()
 			speed, turnRate = BattleSimulation.ORBIT_SPEED, 3.4
 		end
 		if offence.approach and not carrier then
@@ -472,10 +512,22 @@ local function prepare(state, fighter, opponent, dt)
 		end
 	elseif fighter.phase == "Windup" then
 		lockTarget(fighter, opponent)
-		targetX, targetY = fighter.lockX, fighter.lockY
-		speed, turnRate = 9, 5.5
+		aiming = fighter.phaseLeft <= (offence.aimTime or BattleSimulation.AIM_TIME)
+		if aiming then
+			targetX, targetY = fighter.lockX, fighter.lockY
+			speed, turnRate = BattleSimulation.AIM_SPEED, 9
+		else
+			-- Still flying: the charge is carried round the ring, not hovered.
+			targetX, targetY = ring()
+			speed, turnRate = BattleSimulation.ORBIT_SPEED, 3.4
+		end
 		if offence.windupMove and not carrier then
 			wantX, wantY, wantSpeed, wantTurn = offence.windupMove(api, state, fighter, opponent)
+			-- An attack that steers its own charge is committed for all of it.
+			if wantX or wantSpeed then
+				aiming = true
+				targetX, targetY = fighter.lockX, fighter.lockY
+			end
 		end
 	elseif fighter.phase == "Attack" then
 		speed = carrier and 20 or offence.attackSpeed
@@ -494,6 +546,68 @@ local function prepare(state, fighter, opponent, dt)
 		targetX, targetY = fighter.x + awayX * 30, fighter.y + awayY * 30
 		turnRate = math.max(turnRate, 4.5)
 	end
+	-- A plane still circling with its charge can roll too; once its nose turns
+	-- in to aim, it is committed.
+	free = not fighter.hold and not fighter.throw and (free or (fighter.phase == "Windup" and not aiming))
+	fighter.dodgeCool = math.max(0, fighter.dodgeCool - dt)
+	fighter.dodgeLeft = free and math.max(0, fighter.dodgeLeft - dt) or 0
+	if free and fighter.dodgeLeft <= 0 and fighter.dodgeCool <= 0 then
+		local function roll(sx, sy)
+			local b = state.bounds
+			if fighter.x + sx * 14 < b.left + 3 or fighter.x + sx * 14 > b.right - 3
+				or fighter.y + sy * 14 < b.bottom + 3 or fighter.y + sy * 14 > b.top - 3 then sx, sy = -sx, -sy end
+			-- A plane on its last armor flies for its life and is ready to roll again sooner.
+			fighter.dodgeLeft, fighter.dodgeCool = BattleSimulation.DODGE_TIME, BattleSimulation.DODGE_COOLDOWN * (fighter.armor <= 1 and BattleSimulation.DANGER_DODGE or 1) * (fighter.dodgeScale or 1)
+			fighter._dodgeX, fighter._dodgeY = sx, sy
+			fighter.dodges = fighter.dodges + 1
+			event(state, "dodge", fighter.x, fighter.y, fighter.id, opponent.id).heading = atan2(sy, sx)
+			return true
+		end
+		-- A shot or an armed nose that will reach this plane in a moment.
+		local function threat(x, y, vx, vy, radius)
+			local px, py, rx, ry = x - fighter.x, y - fighter.y, vx - fighter.vx, vy - fighter.vy
+			local closing = rx * rx + ry * ry
+			if closing < EPSILON then return false end
+			local when = -(px * rx + py * ry) / closing
+			if when < 0 or when > BattleSimulation.DODGE_REACT then return false end
+			local mx, my = px + rx * when, py + ry * when
+			local reach = fighter.radius + radius + BattleSimulation.DODGE_MARGIN
+			if mx * mx + my * my > reach * reach then return false end
+			-- Roll away from the line the threat is flying, to whichever side is nearer.
+			if mx * mx + my * my < 0.25 then
+				local side = fighter._cadence % 2 == 0 and 1 or -1
+				return roll(direction(-ry * side, rx * side))
+			end
+			return roll(direction(-mx, -my))
+		end
+		local rolled = opponent.armed and not opponent.decoy and threat(opponent.x, opponent.y, opponent.vx, opponent.vy, PLANE_REACH)
+		for _, projectile in ipairs(state.projectiles) do
+			if not rolled and projectile.owner ~= fighter.id then
+				rolled = threat(projectile.x, projectile.y, projectile.vx, projectile.vy, projectile.radius or 3.5)
+			end
+		end
+		for _, drone in ipairs(state.drones or {}) do
+			if not rolled and drone.owner ~= fighter.id and drone.armed then
+				rolled = threat(drone.x, drone.y, drone.vx, drone.vy, Skills.wild.Mothership.droneRadius)
+			end
+		end
+		-- A hole that opens beside the plane, or a beam about to close on it, is
+		-- fled directly.
+		for _, hole in ipairs(state.holes or {}) do
+			local gap = (hole.x - fighter.x) ^ 2 + (hole.y - fighter.y) ^ 2
+			if not rolled and hole.owner ~= fighter.id and gap < (hole.core + fighter.radius + BattleSimulation.HOLE_SCARE) ^ 2 then
+				rolled = roll(direction(fighter.x - hole.x, fighter.y - hole.y, fighter.id == 1 and -1 or 1))
+			end
+		end
+		if not rolled and not opponent.decoy and opponent.grab and opponent.phase == "Windup" and opponent.phaseLeft <= BattleSimulation.DODGE_REACT
+			and dx * dx + dy * dy < (opponent.grab + BattleSimulation.DODGE_MARGIN * 3) ^ 2 then
+			roll(direction(-dx, -dy, fighter.id == 1 and -1 or 1))
+		end
+	end
+	if free and fighter.dodgeLeft > 0 then
+		targetX, targetY = fighter.x + fighter._dodgeX * 40, fighter.y + fighter._dodgeY * 40
+		speed, turnRate = BattleSimulation.DODGE_SPEED, BattleSimulation.MAX_TURN_RATE
+	end
 	if fighter.secondWind then speed, turnRate = speed * 1.12, turnRate * 1.2 end
 	speed = speed * (fighter.speedScale or 1)
 	turnRate = math.min(turnRate, BattleSimulation.MAX_TURN_RATE)
@@ -501,7 +615,7 @@ local function prepare(state, fighter, opponent, dt)
 		-- Looking ahead turns the plane away from the visible edge before impact.
 		local lookX = fighter.x + math.cos(fighter.heading) * speed * 0.45
 		local lookY = fighter.y + math.sin(fighter.heading) * speed * 0.45
-		if fighter.phase ~= "Windup" and (lookX < state.bounds.left + 3 or lookX > state.bounds.right - 3 or
+		if not aiming and fighter.dodgeLeft <= 0 and (lookX < state.bounds.left + 3 or lookX > state.bounds.right - 3 or
 			lookY < state.bounds.bottom + 3 or lookY > state.bounds.top - 3) then
 			targetX, targetY = 0, (state.bounds.bottom + state.bounds.top) / 2
 			turnRate = fighter.boostLeft > 0 and 5.2 or 4.5
@@ -532,9 +646,11 @@ local function damage(state, actorId, targetId, x, y, dirX, dirY, source, skillI
 	target.armor = math.max(0, target.armor - amount)
 	target.invulnerable = BattleSimulation.IMPACT_PROTECTION
 	-- A hit should throw the plane, not nudge it.
-	target._knockX, target._knockY = dirX * BattleSimulation.HIT_KNOCK, dirY * BattleSimulation.HIT_KNOCK
+	local knock = BattleSimulation.HIT_KNOCK * (target.armor == 1 and BattleSimulation.DANGER_KNOCK or 1)
+	target._knockX, target._knockY = dirX * knock, dirY * knock
 	actor.hits = actor.hits + 1
 	actor._attackHit = true
+	state._hurt[targetId] = true
 	event(state, source == "wake" and "wake_hit" or "hit", x, y, actorId, targetId, source, skillId).amount = amount
 	-- A hot potato always jumps to whoever was hit last.
 	for _, potato in ipairs(state.potatoes or {}) do
@@ -556,6 +672,7 @@ local function tick(state)
 	state.elapsed = math.min(BattleSimulation.MAX_TIME, state.elapsed + dt)
 	updateBounds(state)
 	state._bumpCooldown = math.max(0, state._bumpCooldown - dt)
+	state._hurt = {}
 	if state.recording then
 		-- Keep a few seconds of the round, four pictures a second, for Rewind.
 		local history = state._history or {}
@@ -572,7 +689,8 @@ local function tick(state)
 	end
 	local previous = {}
 	for id, fighter in ipairs(state.fighters) do
-		previous[id] = { id = id, x = fighter.x, y = fighter.y, vx = fighter.vx, vy = fighter.vy, heading = fighter.heading }
+		previous[id] = { id = id, x = fighter.x, y = fighter.y, vx = fighter.vx, vy = fighter.vy, heading = fighter.heading, armed = fighter.armed,
+			phase = fighter.phase, phaseLeft = fighter.phaseLeft, grab = not launching(fighter) and offenceOf(fighter).range or nil }
 	end
 	-- Both plans read the same pre-tick snapshot, avoiding first-player bias.
 	-- A plane goes for whichever is nearer: its rival or its rival's decoy.
@@ -580,7 +698,8 @@ local function tick(state)
 		local real = previous[id]
 		local x, y = decoyAt(state, state.fighters[id], real.x, real.y, real.heading)
 		if not x or (x - viewer.x) ^ 2 + (y - viewer.y) ^ 2 >= (real.x - viewer.x) ^ 2 + (real.y - viewer.y) ^ 2 then return real end
-		return { id = id, x = x, y = y, vx = real.vx, vy = real.vy, heading = real.heading, decoy = true }
+		return { id = id, x = x, y = y, vx = real.vx, vy = real.vy, heading = real.heading, armed = real.armed, decoy = true,
+			phase = real.phase, phaseLeft = real.phaseLeft, grab = real.grab }
 	end
 	for id, fighter in ipairs(state.fighters) do prepare(state, fighter, quarry(previous[id], 3 - id), dt) end
 	-- A live magnet yanks the rival toward its owner's attack: the nearest shot
@@ -963,13 +1082,22 @@ local function tick(state)
 	end
 	state.wakes = remainingWakes
 	for id, fighter in ipairs(state.fighters) do
-		if resolved[id] or resolved[3 - id] then
-			recover(state, fighter, state.fighters[3 - id])
+		local rival = state.fighters[3 - id]
+		if resolved[id] and fighter.phase == "Attack" and rams(fighter) then
+			-- The dive is spent on whatever it struck.
+			recover(state, fighter, rival)
+		elseif resolved[3 - id] and not fighter.hold and not fighter.throw and (fighter.phase == "Approach" or fighter.phase == "Recover") then
+			-- Struck while free: bank away and come back sooner for the answer.
+			if state._hurt[id] then fighter.rally = BattleSimulation.RALLY end
+			recover(state, fighter, rival)
+		elseif resolved[3 - id] and fighter.phase == "Windup" then
+			-- Struck mid-charge: the attack is delayed, not cancelled.
+			fighter.phaseLeft = fighter.phaseLeft + BattleSimulation.STAGGER
 		elseif edgeHit[id] and fighter.phase == "Attack" then
 			if rams(fighter) and not fighter._attackHit then
 				event(state, "miss", fighter.x, fighter.y, id, 3 - id)
 			end
-			recover(state, fighter, state.fighters[3 - id])
+			recover(state, fighter, rival)
 		end
 	end
 	-- A hot potato goes off in the hands of whoever holds it. Nothing blocks it.

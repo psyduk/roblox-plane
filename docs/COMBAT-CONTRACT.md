@@ -4,6 +4,35 @@ Version: `sky-battle-combat-v1`. Active roster: `sky-battle-public-v1`.
 This table governs the first test. Expansion skills and Milestones 3/4 are not implemented.
 The server runs the pure simulation and adjudicates damage; clients present its snapshots and events.
 
+## Combat-feel revision (October 11, 2026)
+
+This section supersedes the rules below wherever they differ. It exists because the earlier rules made a round a timer race: both planes slowed to a hover to attack, 81% of attacks landed, a hit cancelled the rival's charge, and the first hit decided 78% of rounds.
+
+- **Planes keep flying.** A charging plane carries its charge round the standoff ring (46 units, per-attack override allowed) at cruising speed and turns its nose in only for the last 0.35 seconds. Attacks that steer their own charge (Meteor, Sniper, UFO Beam, and Pinball's final aim) are committed for all of it.
+- **Rolls.** A plane that is free (approaching, recovering, or still circling with a charge) rolls out of the way of a rival shot, armed nose or armed drone that will reach it within 0.34 seconds, flees a rival's black hole that opens beside it, and breaks away from a beam about to close. A roll lasts 0.45 seconds at 48 units/s and cannot be repeated for 2.4 seconds (60% of that on the last armor; Afterburner 55%, Second Wind 50%). A plane that has turned in to aim, is attacking, held or thrown cannot roll. A roll is a movement, not immunity: a shot that still reaches the plane hits.
+- **Turns.** A plane does not start charging while its rival is charging, for up to 1.2 seconds past its own approach time.
+- **A hit no longer cancels anything.** Only a ramming plane whose dive connected banks away. A plane hit while free banks away and rallies: its bank and next approach are halved. A plane hit while charging keeps its charge and loses 0.3 seconds. A plane hit while attacking carries on. A blocked hit (Spring Bumper) gives the bumper's recoil and no rally.
+- **The round speeds up.** Every attack begun multiplies later approach and bank times by 0.95, down to 0.6. Base approach is 1.7 seconds and bank 1.0, with a seeded spread of ±0.6 seconds.
+- **Last armor.** The hit that leaves a plane on one armor throws it 1.4 times as hard.
+- **Retuned skills.** Meteor dives at 75; Machine Gun's stream tracks a rolling rival at 2.5 rad/s; Pinball's ball is faster and larger; Sniper's bullet is thinner and its reload longer; Boomerang's blade is smaller and returns slower; Black Hole arms in 0.8 seconds with a weaker pull; UFO Beam reaches 28 and chases at 48. Giant adds two armor. Mothership launches far less often. Fizzy clouds last 1.4 seconds. Magnet pulls for 0.6 seconds. Hot Potato's fuse is 8 seconds and Swap happens at 6. Exact values live in `BattleSkills.luau`.
+
+Measured with `scripts/qa/combat_feel.py 24 --pairs` (1,536 bare-attack rounds, every ordered pairing):
+
+| Measure | Before | After |
+|---|---:|---:|
+| Attacks per round | 4.7 | 9.2 |
+| Attacks that land | 81% | 43% |
+| Shot travel before a hit (median) | 0.37s | 0.52s |
+| Charges that never fire | 29% | 6% |
+| First hitter wins the round | 78% | 70% |
+| Winner was behind at some point | 26% | 34% |
+| Longest quiet gap (median) | 5.7s | 2.5s |
+| Round length (median) | 17.0s | 14.5s |
+| Rounds ending by knockout | 96% | 89% |
+| Field score, weakest to strongest attack | 44–55% (four attacks) | 43–53% (eight attacks) |
+
+Open after this revision: several pairings are lopsided (UFO Beam over Black Hole near 87% and Pinball over Firework near 71% are the worst); Squadron, Swap, Thief, Afterburner, Bug and Second Wind give their owner little (50–56% against a bare plane, where most cards give 61–69%); shot travel and round length are just short of their 0.6-second and 15-second targets. These are simulation results, not a playtest.
+
 ## Shared adjudication
 
 - Three armor. Each accepted damaging event removes exactly one pip. No cosmetic, ownership, spending or mastery stat changes combat access or strength.

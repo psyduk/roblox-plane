@@ -481,6 +481,8 @@ function BattleView:_resetRound(roundId)
 		hide(fighter.magnetRing)
 		hide(fighter.windRing)
 		hide(fighter.loadRing)
+		hide(fighter.dangerRing)
+		fighter.dodgeTime, fighter.closeTime, fighter.dangerTime = -100, -100, -100
 		hide(fighter.burnerFlames)
 		hide(fighter.magnetGrip)
 		fighter.magnetBeam.Transparency, fighter.windAura.Transparency = 1, 1
@@ -730,6 +732,8 @@ function BattleView:_fighter(id, index)
 		signatureSparks = makeRing(fx, "SignatureSpark", 8, COLORS.yellow),
 		lampAnchor = lampAnchor, noseLight = noseLight, shotTime = -100, secondWindTime = -100, magnetTime = -100,
 		vampireTime = -100, ejectTime = -100, snowTime = -100, swapTime = -100, wingmen = {}, wingShown = 0,
+		dodgeTime = -100, closeTime = -100, dangerTime = -100, dodgeSpin = 1,
+		dangerRing = makeRing(fx, "LastArmor", 12, COLORS.coral),
 		magnetRing = makeRing(fx, "MagnetPull", 10, Color3.fromRGB(255, 120, 190)),
 		windRing = makeRing(fx, "SecondWind", 10, Color3.fromRGB(130, 255, 190)),
 		loadRing = makeRing(fx, "AttackLoad", 10, color),
@@ -1338,6 +1342,13 @@ function BattleView:_events(simulation)
 					self:_burst(x, y, POWER.bumper, true)
 					self:_particles(x, y, POWER.bumper, 70, 0, 0, 110)
 					self:_jolt(3.2, 0.8, 0.1, 0.4, 0.6)
+				elseif kind == "dodge" and actor then
+					-- A barrel roll out of the line of fire: a quick ring and a puff of air.
+					actor.dodgeTime = self.clock
+					actor.dodgeSpin = math.sin(numeric(event.heading, 0)) >= 0 and 1 or -1
+					self:_burst(x, y, actor.color:Lerp(COLORS.cream, 0.6), false)
+					self:_particles(x, y, COLORS.cream, 16, 0, 0, 55)
+					self:_jolt(0.6, 0.2, 0, 0, 0.3)
 				elseif kind == "bounce" or kind == "wall" or kind == "bump" then
 					self:_burst(x, y, COLORS.steel, false)
 					self:_particles(x, y, COLORS.cream, 12, 3, 0, 40)
@@ -1446,6 +1457,25 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 			popping and (0.15 + blockAge / 0.38 * 0.6) or (ready and 0.3 or 0.76), 0, ready and 0.5 or 0.22)
 	else
 		hide(fighter.statusRing)
+	end
+	-- One armor left: a red ring beats around the plane until the round ends.
+	local danger = moving and numeric(state.armor, 3) == 1 and numeric(state.maxArmor, 3) > 1
+	if danger then
+		local beat = self.reducedMotion and 0 or math.abs(math.sin(self.clock * 7))
+		ring(fighter.dangerRing, center, 9.4 + beat * 1.3, COLORS.coral, 0.15 + beat * 0.45, -self.clock * 0.6, 0.55)
+		if not flashing then fighter.highlight.OutlineColor = COLORS.coral:Lerp(COLORS.ink, 1 - beat) end
+	else
+		hide(fighter.dangerRing)
+	end
+	-- A rival's shot that has just gone past without touching was a close call.
+	if moving and hitAge > 0.3 and self.clock - fighter.dodgeTime > 0.6 then
+		for _, rocket in pairs(self.rockets) do
+			if rocket.owner ~= state.id and rocket.position and rocket.velocity then
+				local gap = rocket.position - fighter.position
+				local flat = Vector3.new(gap.X, gap.Y, 0)
+				if flat.Magnitude < 13 * numeric(state.scale, 1) + 3 and flat:Dot(rocket.velocity) > 0 then fighter.closeTime = self.clock end
+			end
+		end
 	end
 	if windup and type(state.lockX) == "number" and type(state.lockY) == "number" then
 		local target = ORIGIN + Vector3.new(state.lockX, state.lockY, 7)
@@ -1564,6 +1594,9 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 	elseif numeric(state.chickenLeft, 0) > 0 then tell = "BAWK!"
 	elseif self.clock - fighter.vampireTime < 0.8 then tell = "SLURP!"
 	elseif hitAge < 0.45 then tell = "POW!"
+	elseif self.clock - fighter.dangerTime < 1.1 then tell = "LAST ARMOR!"
+	elseif self.clock - fighter.dodgeTime < 0.6 then tell = table.find(fighter.wildIds or {}, "Afterburner") and "BURNER DODGE!" or "DODGED!"
+	elseif self.clock - fighter.closeTime < 0.5 then tell = "CLOSE!"
 	elseif blockAge < 0.45 then tell = "BOING!"
 	elseif secondWindAge < 0.85 then tell = "SECOND WIND!"
 	elseif magnet then tell = "PULL!"
@@ -1835,6 +1868,11 @@ function BattleView:update(snapshot, dt, viewportRect)
 		if type(state.throw) == "table" and not knockedOut and not self.reducedMotion then
 			displayPose = displayPose * CFrame.Angles(0, 0, self.clock * 18)
 		end
+		-- A dodge is one full barrel roll about the nose.
+		local rolling = (self.clock - fighter.dodgeTime) / 0.42
+		if rolling >= 0 and rolling < 1 and not knockedOut and not self.reducedMotion then
+			displayPose = displayPose * CFrame.Angles(fighter.dodgeSpin * (1 - (1 - rolling) ^ 2) * math.pi * 2, 0, 0)
+		end
 		fighter.model:PivotTo(displayPose)
 		if self.World.animateCosmetic then
 			self.World.animateCosmetic(fighter.model, dt, moving, knockedOut or self.freeze > 0, self.reducedMotion)
@@ -1902,7 +1940,14 @@ function BattleView:update(snapshot, dt, viewportRect)
 			chicken and math.clamp(size, 0.7, 1.6) or 1)
 		local propellerPhase = knockedOut and fighter.stoppedPropeller or self.clock * (moving and 52 or 16)
 		if fighter.propeller then fighter.propeller:PivotTo(displayPose * mount(fighter, "Nose") * CFrame.Angles(propellerPhase, 0, 0)) end
-		if fighter.armor and armor < fighter.armor then self:_hit(fighter, state.x, state.y) end
+		if fighter.armor and armor < fighter.armor then
+			self:_hit(fighter, state.x, state.y)
+			-- Down to the last armor: the crowd and the camera both feel it.
+			if armor == 1 and moving then
+				fighter.dangerTime = self.clock
+				self:_jolt(2, 0.5, 0.05, 0.3, 0.6)
+			end
+		end
 		fighter.armor = armor
 		fighter.model:SetAttribute("Armor", armor)
 		fighter.model:SetAttribute("Phase", state.phase or "Approach")
@@ -2025,6 +2070,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 			rocket.trail:Clear()
 		end
 		rocket.position = rocket.position and rocket.position:Lerp(target, smoothing) or target
+		rocket.velocity = Vector3.new(vx, vy, 0)
 		local rocketPose = CFrame.new(rocket.position) * CFrame.Angles(0, 0, blade and self.clock * 22 or math.atan2(vy, vx))
 		rocket.model:PivotTo(rocketPose)
 		local sputter = 1 + math.sin(self.clock * 49 + numeric(tonumber(id), 0)) * 0.23

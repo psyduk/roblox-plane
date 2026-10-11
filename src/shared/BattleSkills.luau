@@ -45,8 +45,8 @@ local BattleSkills = { offence = {}, wild = {}, form = {} }
 local PI = math.pi
 
 BattleSkills.offence.Meteor = {
-	windup = 1, aimTime = 0.4, attackTime = 1.05, attackSpeed = 65,
-	earliest = 1.85, leadSpeed = 65, leadFactor = 0.85, ram = "meteor",
+	windup = 1, aimTime = 0.4, attackTime = 1.05, attackSpeed = 75,
+	earliest = 1.05, leadSpeed = 75, leadFactor = 0.85, ram = "meteor", approachTime = 1.3,
 	inPosition = function(_, _, fighter, opponent, dx)
 		return fighter.y >= opponent.y + 8 and math.abs(dx) < 68
 	end,
@@ -88,7 +88,7 @@ BattleSkills.offence.Meteor = {
 
 BattleSkills.offence.Firework = {
 	windup = 1, attackTime = 0.5, attackSpeed = 27,
-	earliest = 1.1, leadSpeed = 60, leadFactor = 0.55,
+	earliest = 0.6, leadSpeed = 60, leadFactor = 0.55, approachTime = 1.9,
 	inPosition = function(_, _, _, _, dx, dy)
 		return dx * dx + dy * dy < 76 * 76
 	end,
@@ -104,8 +104,8 @@ BattleSkills.offence.Firework = {
 
 BattleSkills.offence.MachineGun = {
 	windup = 0.65, attackTime = 0.65, attackSpeed = 25,
-	earliest = 0.95, leadSpeed = 90, leadFactor = 0.35,
-	approachTime = 2.9, recoveryTime = 2,
+	earliest = 0.55, leadSpeed = 90, leadFactor = 0.35,
+	approachTime = 1.35, recoveryTime = 0.8, track = 2.5,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 68 * 68 end,
 	attack = function(api, state, fighter, opponent)
 		fighter._burstNext, fighter._burstShots = 0, 0
@@ -114,6 +114,12 @@ BattleSkills.offence.MachineGun = {
 	end,
 	attackTick = function(api, state, fighter, dt)
 		fighter._burstNext = fighter._burstNext - dt
+		-- The gunner walks the stream after a rival that rolls away, but slowly.
+		local self = BattleSkills.offence.MachineGun
+		local rival = state.fighters[3 - fighter.id]
+		local want = api.atan2(rival.y - fighter.y, rival.x - fighter.x)
+		local off = (want - fighter._attackHeading + PI) % (2 * PI) - PI
+		fighter._attackHeading = fighter._attackHeading + api.clamp(off, -self.track * dt, self.track * dt)
 		if fighter._burstShots >= 6 or fighter._burstNext > 0 then return end
 		fighter._burstShots = fighter._burstShots + 1
 		fighter._burstNext = fighter._burstNext + 0.1
@@ -126,8 +132,8 @@ BattleSkills.offence.MachineGun = {
 
 BattleSkills.offence.Pinball = {
 	windup = 1, attackTime = 0.5, attackSpeed = 27,
-	earliest = 1.15, leadSpeed = 72, leadFactor = 0.45,
-	ballSpeed = 78, ballLife = 3.4, ballRadius = 3.2, bounces = 3,
+	earliest = 0.65, leadSpeed = 72, leadFactor = 0.45, aimTime = 0.45, approachTime = 1.3,
+	ballSpeed = 88, ballLife = 3.4, ballRadius = 4.2, bounces = 3,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 85 * 85 end,
 	windupStart = function(_, state, fighter)
 		-- Bank off whichever wall is nearest when the charge begins.
@@ -142,6 +148,8 @@ BattleSkills.offence.Pinball = {
 		-- Aim at the rival's reflection in the chosen wall, so the shot that
 		-- leaves the nose reaches them after one real bounce.
 		local b, self = state.bounds, BattleSkills.offence.Pinball
+		-- Until the last moment the plane keeps circling with its charge.
+		if fighter.phaseLeft > self.aimTime then return end
 		local edge = fighter._bankEdge or "left"
 		local function mirrored(x, y)
 			if edge == "left" or edge == "right" then return 2 * b[edge] - x, y end
@@ -152,7 +160,7 @@ BattleSkills.offence.Pinball = {
 		mx, my = mirrored(api.clamp(opponent.x + opponent.vx * lead, b.left + 6, b.right - 6),
 			api.clamp(opponent.y + opponent.vy * lead, b.bottom + 6, b.top - 6))
 		fighter._bankX, fighter._bankY = mx, my
-		return mx, my, 9, 6
+		return mx, my, 22, 6
 	end,
 	attack = function(api, state, fighter, opponent)
 		local self = BattleSkills.offence.Pinball
@@ -170,9 +178,11 @@ BattleSkills.offence.Pinball = {
 -- Rush: after you attack, the trip back to your next attack is much shorter.
 BattleSkills.wild.Afterburner = {
 	steal = true,
-	duration = 0.9, tempo = 0.95,
+	duration = 0.9, tempo = 0.75, dodge = 0.55,
 	start = function(_, _, fighter)
 		fighter._boostPending = false
+		-- Spare thrust: the plane is ready to roll again much sooner.
+		fighter.dodgeScale = BattleSkills.wild.Afterburner.dodge
 	end,
 	attack = function(_, _, fighter)
 		fighter._boostPending = true
@@ -210,7 +220,7 @@ BattleSkills.wild.SpringBumper = {
 -- Trap: every attack leaves a wall of fizz that hangs in the air.
 BattleSkills.wild.FizzyFuel = {
 	steal = true,
-	spill = 1.0, every = 0.18, cloudLife = 2.2, cloudRadius = 3.6,
+	spill = 1.0, every = 0.18, cloudLife = 1.4, cloudRadius = 3,
 	start = function(_, _, fighter)
 		fighter._wakeLeft, fighter._wakeNext = 0, 0
 	end,
@@ -235,7 +245,7 @@ BattleSkills.wild.FizzyFuel = {
 -- Pull: one hard yank drags the rival toward you as you strike.
 BattleSkills.wild.Magnet = {
 	steal = true,
-	duration = 0.8,
+	duration = 0.6,
 	start = function(_, _, fighter) fighter.magnetLeft = 0 end,
 	attack = function(api, state, fighter)
 		fighter.magnetLeft = BattleSkills.wild.Magnet.duration
@@ -246,10 +256,12 @@ BattleSkills.wild.Magnet = {
 -- Comeback: on the last armor the plane flies faster and attacks sooner.
 BattleSkills.wild.SecondWind = {
 	steal = true,
+	dodge = 0.5,
 	start = function(_, _, fighter) fighter.secondWind = false end,
 	damaged = function(api, state, fighter)
 		if fighter.armor ~= 1 or fighter.secondWind then return end
 		fighter.secondWind = true
+		fighter.dodgeScale = math.min(fighter.dodgeScale or 1, BattleSkills.wild.SecondWind.dodge)
 		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "secondwind", "SecondWind")
 	end,
 }
@@ -264,9 +276,9 @@ BattleSkills.wild.Squadron = {
 	end,
 }
 
--- Huge: double size and an extra armor, but slow and easy to hit.
+-- Huge: double size and two extra armor, but slow and easy to hit.
 BattleSkills.wild.Giant = {
-	armor = 1, size = 1.9, speed = 0.86, shot = 1.7,
+	armor = 2, size = 1.9, speed = 0.86, shot = 1.7,
 	start = function(_, _, fighter)
 		local self = BattleSkills.wild.Giant
 		fighter.armor = fighter.armor + self.armor
@@ -327,8 +339,8 @@ BattleSkills.wild.Eject = {
 -- The parachuting pilot's attack: quick, small and easy to miss with.
 BattleSkills.form.PeaShooter = {
 	windup = 0.5, attackTime = 0.3, attackSpeed = 12,
-	earliest = 0.9, leadSpeed = 70, leadFactor = 0.5,
-	approachTime = 3, recoveryTime = 2,
+	earliest = 0.5, leadSpeed = 70, leadFactor = 0.5,
+	approachTime = 1.7, recoveryTime = 1,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 70 * 70 end,
 	attack = function(api, state, fighter, opponent)
 		local dx, dy = math.cos(fighter.heading), math.sin(fighter.heading)
@@ -376,7 +388,7 @@ BattleSkills.wild.Snowball = {
 -- Trade: at half time the two planes swap armor. It happens once, even if
 -- both pilots brought the card.
 BattleSkills.wild.Swap = {
-	at = 9,
+	at = 6,
 	start = function(_, state, fighter) fighter.swapAt = BattleSkills.wild.Swap.at end,
 	moved = function(api, state, fighter)
 		if state.swapped or state.elapsed < BattleSkills.wild.Swap.at then return end
@@ -411,9 +423,9 @@ BattleSkills.wild.Gambler = {
 -- armor, and a miss leaves a long wait.
 BattleSkills.offence.Sniper = {
 	windup = 1.35, lockTime = 0.3, attackTime = 0.35, attackSpeed = 8,
-	earliest = 1.6, leadSpeed = 220, leadFactor = 1,
-	approachTime = 3.3, recoveryTime = 2.8,
-	bulletSpeed = 220, bulletLife = 1, bulletRadius = 2.3, power = 2,
+	earliest = 0.9, leadSpeed = 220, leadFactor = 1,
+	approachTime = 2.2, recoveryTime = 1.7,
+	bulletSpeed = 220, bulletLife = 1, bulletRadius = 2, power = 2,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy > 40 * 40 end,
 	approach = function(api, state, fighter, opponent, dx, dy)
 		-- A sniper wants room: back away from a rival that gets close.
@@ -449,7 +461,7 @@ BattleSkills.wild.Wrap = {
 -- last, except that the first hit on its owner does not count. When the fuse
 -- runs out, the holder loses an armor.
 BattleSkills.wild.HotPotato = {
-	fuse = 10,
+	fuse = 8,
 	start = function(_, state, fighter)
 		state.potatoes = state.potatoes or {}
 		state.potatoes[#state.potatoes + 1] = { holder = 3 - fighter.id, left = BattleSkills.wild.HotPotato.fuse, owner = fighter.id, grace = 1 }
@@ -501,10 +513,10 @@ BattleSkills.wild.Thief = {
 		target.wildIds, fighter.wildIds = kept, mine
 		-- Stop only the stolen card; the rival's other card keeps its state.
 		-- Existing shots/clouds and an already-ejected pilot keep their form.
-		if taken == "Afterburner" then target._boostPending, target.boostLeft, target.tempo = false, 0, nil
+		if taken == "Afterburner" then target._boostPending, target.boostLeft, target.tempo, target.dodgeScale = false, 0, nil, nil
 		elseif taken == "SpringBumper" then target.bumperReady = false
 		elseif taken == "Chicken" then target.chickenReady = false
-		elseif taken == "SecondWind" then target.secondWind = false
+		elseif taken == "SecondWind" then target.secondWind, target.dodgeScale = false, nil
 		elseif taken == "Wrap" then target.wrapShots = false
 		elseif taken == "Magnet" then target.magnetLeft = 0
 		elseif taken == "FizzyFuel" then target._wakeLeft, target._wakeNext = 0, 0
@@ -518,9 +530,9 @@ BattleSkills.wild.Thief = {
 -- once, on the way out or on the way home.
 BattleSkills.offence.Boomerang = {
 	windup = 0.9, attackTime = 0.45, attackSpeed = 24,
-	earliest = 1.2, leadSpeed = 80, leadFactor = 0.5,
-	approachTime = 3, recoveryTime = 2.45,
-	bladeSpeed = 82, bladeLife = 3, bladeRadius = 3, outTime = 0.62, returnSpeed = 74,
+	earliest = 0.7, leadSpeed = 80, leadFactor = 0.5, standoff = 40,
+	approachTime = 2, recoveryTime = 1.2,
+	bladeSpeed = 82, bladeLife = 3, bladeRadius = 2.2, outTime = 0.62, returnSpeed = 56,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 62 * 62 end,
 	attack = function(api, state, fighter, opponent)
 		local self = BattleSkills.offence.Boomerang
@@ -537,9 +549,9 @@ BattleSkills.offence.Boomerang = {
 -- an armor.
 BattleSkills.offence.BlackHole = {
 	windup = 0.85, attackTime = 0.4, attackSpeed = 20,
-	earliest = 1.2, leadSpeed = 60, leadFactor = 0.6,
-	approachTime = 3, recoveryTime = 2,
-	holeLife = 2.6, armTime = 0.55, core = 4.5, reach = 34, pull = 20, bend = 170, lead = 0.35,
+	earliest = 0.7, leadSpeed = 60, leadFactor = 0.6,
+	approachTime = 1.7, recoveryTime = 1,
+	holeLife = 2.6, armTime = 0.8, core = 4, reach = 34, pull = 15, bend = 170, lead = 0.35,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 70 * 70 end,
 	attack = function(api, state, fighter, opponent)
 		local self = BattleSkills.offence.BlackHole
@@ -561,9 +573,9 @@ BattleSkills.offence.BlackHole = {
 -- an armor.
 BattleSkills.offence.UFOBeam = {
 	windup = 0.7, attackTime = 0.6, attackSpeed = 10,
-	earliest = 1.1, leadSpeed = 60, leadFactor = 0.3,
-	approachTime = 2.85, recoveryTime = 2.3,
-	range = 24, chase = 38, throwSpeed = 80, throwTime = 2.2,
+	earliest = 0.65, leadSpeed = 60, leadFactor = 0.3,
+	approachTime = 1.45, recoveryTime = 1.15,
+	range = 28, chase = 48, throwSpeed = 80, throwTime = 2.2,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 32 * 32 end,
 	approach = function(_, _, fighter, opponent)
 		-- With the beam loaded, chase harder than a circling plane flies.
@@ -607,8 +619,8 @@ BattleSkills.offence.UFOBeam = {
 -- Each drone homes on the rival, carries out the plane's attack once from
 -- wherever it is, and flies off. A rival's shot that meets a drone pops it.
 BattleSkills.wild.Mothership = {
-	size = 1.3, speed = 0.9, pace = 1.06, windup = 0.4, launchTime = 0.35,
-	drones = 2, fan = 0.9, stagger = 0.35, droneSpeed = 46, droneTurn = 3.2, droneRadius = 2.2,
+	size = 1.3, speed = 0.9, pace = 2.3, windup = 0.4, launchTime = 0.35,
+	drones = 2, fan = 0.9, stagger = 0.35, droneSpeed = 40, droneTurn = 3.2, droneRadius = 2.2,
 	arm = 0.9, range = 30, flight = 2.4, leave = 0.7, dive = 0.5,
 	start = function(_, _, fighter)
 		local self = BattleSkills.wild.Mothership

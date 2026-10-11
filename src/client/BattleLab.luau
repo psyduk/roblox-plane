@@ -816,6 +816,8 @@ function BattleLab:feedback(data)
                     self:call((mine and "YOUR " or rival.."'S ")..string.upper(skill.name)..": "..skill.word,mine and "you" or "rival",2,1)
                     self.wildTimes[mine and 1 or 2][skill.id]=os.clock()
                 end
+            elseif event.kind=="dodge" then
+                self:call(mine and "NICE DODGE!" or rival.." DODGED IT",mine and "good" or "rival",1,0.8)
             elseif event.kind=="sudden_death" then
                 self:call("SUDDEN DEATH! NEXT HIT WINS","good",3,2)
             elseif event.kind=="miss" then
@@ -1036,7 +1038,9 @@ function BattleLab:update(dt)
             self.status.Text=line; self.status.TextColor3=accents[side]:Lerp(WHITE,0.35)
             self.statusEdge.Color=accents[side]; self.statusEdge.Transparency=0.1
         else
-            self.status.Text=(sim.pressure or 0)>0 and "WIND CLOSING IN" or (data.matchPoint and "MATCH POINT" or "LINING UP…")
+            -- Every attack shortens the next trip, and the pill says so as it happens.
+            local rush=sim.rush or 1
+            self.status.Text=rush<=0.65 and "FRENZY!" or ((sim.pressure or 0)>0 and "WIND CLOSING IN" or (rush<=0.82 and "HEATING UP…" or (data.matchPoint and "MATCH POINT" or "LINING UP…")))
             if data.matchPoint then self.status.TextColor3=GOLD end
         end
     end

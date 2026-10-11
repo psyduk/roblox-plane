@@ -61,7 +61,7 @@ local KINDS = {
     snowball=true, swap=true, gambler=true, sniper=true,
     wrap=true, potato=true, potato_pass=true, decoy_pop=true, thief=true, boomerang=true, catch=true,
     hole=true, hole_close=true, beam=true, beam_miss=true, throw=true, slam=true,
-    drone=true, drone_fire=true, drone_pop=true, rewind=true,
+    drone=true, drone_fire=true, drone_pop=true, rewind=true, dodge=true,
 }
 local function finite(value)
     return type(value)=="number" and value==value and value>-math.huge and value<math.huge
@@ -168,8 +168,10 @@ function BattleAudio:_ambience(snapshot)
     local elapsed=simulation and finite(simulation.elapsed) and simulation.elapsed or 0
     local fighting=phase=="Fight"
     local closing=fighting and pressure>0
+    -- Every attack speeds the round up, and the band keeps pace with it.
+    local rush=fighting and simulation and finite(simulation.rush) and math.clamp(simulation.rush,0.5,1) or 1
     -- The battle loop steps right back at the result so the sting can land.
-    self:_loop("music",active and ((fighting or phase=="Countdown") and 0.24 or ((phase=="Results" or phase=="RoundOver" or phase=="MatchOver") and 0.05 or 0.13)) or 0,closing and 1.04 or 1)
+    self:_loop("music",active and ((fighting or phase=="Countdown") and 0.24 or ((phase=="Results" or phase=="RoundOver" or phase=="MatchOver") and 0.05 or 0.13)) or 0,1+(1-rush)*0.3+(closing and 0.03 or 0))
     self:_loop("crowd",active and ((fighting or phase=="Countdown") and 0.22 or 0.1) or 0,1)
     self:_loop("storm",closing and 0.14+pressure*0.3 or 0,1)
     if phase=="Countdown" and finite(snapshot.endsAt) then
@@ -458,6 +460,10 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
         -- A jet lighting: ignition roar and a long fly-by.
         voice("jump",0.24,0.5,0.5,2.0)
         shot("ignite",0.7,0.75); shot("whoosh",0.6,1.3)
+    elseif kind=="dodge" then
+        -- A barrel roll out of the way: a quick, bright swish.
+        shot("whoosh",0.42,1.7)
+        voice("jump",0.08,1.6,0.16,2.4)
     elseif kind=="bump" then
         -- A normal collision pushes without armor loss: never use the hit mix.
         voice("land",0.065,1.55,0.11)
