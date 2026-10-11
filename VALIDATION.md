@@ -1,4 +1,4 @@
-# Circle, then strike — October 10, 2026 (not committed, not published)
+# Circle, then strike — October 10, 2026 (commit `a4f2546`, not published)
 
 The owner reported that planes kept flying at each other and colliding with nothing happening. Measured over 400 bare rounds: about 7.2 harmless bumps and 3.9 hits per round, and 2.8 of 5.4 close passes ended with no damage. The cause was the wait between attacks: a plane with nothing to fire flew straight at its rival.
 
