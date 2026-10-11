@@ -116,7 +116,7 @@ return function(Audio)
         assert(calls[6].name=="jump" and calls[6].finishPitch>calls[6].pitch)
         local wake=event(5,"skill",1); wake.skillId="FizzyFuel"
         mix:update(snapshot("Fight",1,{wake}))
-        assert(#calls==6,"wake emission sounded like an armor hit")
+        assert(#calls==7 and calls[7].name=="land" and calls[7].volume<calls[4].volume,"Laying fizz sounded like an armor hit")
     end)
     test("Meteor charge and committed dive differ from Firework arming and ignition",function()
         local mix,calls=fixture()
@@ -267,6 +267,12 @@ return function(Audio)
         mix:update(snapshot("Fight",0.4,{magnet}));assert(attributes.LastEvent=="magnet")
         local wind=event(5,"skill",0.5);wind.skillId="SecondWind"
         mix:update(snapshot("Fight",0.5,{wind}));assert(attributes.LastEvent=="secondwind")
+        local fizz=event(6,"skill",0.6);fizz.skillId="FizzyFuel"
+        mix:update(snapshot("Fight",0.6,{fizz}));assert(attributes.LastEvent=="fizz","Fizzy Fuel has no sound of its own")
+        local wall=event(7,"bounce",0.7);wall.source="pinball"
+        mix:update(snapshot("Fight",0.7,{wall}));assert(attributes.LastEvent=="pinball_bounce","A Pinball bounce was silent")
+        local other=event(8,"bounce",0.8)
+        mix:update(snapshot("Fight",0.8,{other}));assert(attributes.LastEvent=="pinball_bounce","An unowned bounce made a Pinball sound")
     end)
     test("RoundOver and MatchOver use result crash eligibility and reset on next Pick",function()
         local mix,calls=fixture()

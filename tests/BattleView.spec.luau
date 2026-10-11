@@ -244,5 +244,25 @@ return function(View, World, Simulation)
         f.phase,f.phaseLeft="Recover",2;advance(s,0.1)
         assert(lit()==0 and view.fighters[1].model:GetAttribute("AttackLoaded")==false,"Gauge stayed lit while banking away")
     end)
+    test("each power shows its own equipment: ball, beam, jet and aura",function(view,cues,advance,snapshot)
+        local s=snapshot(440,"Fight",3,3);local sim=s.simulation;local f=sim.fighters[1]
+        f.vx=20;f.phase,f.phaseLeft="Recover",2
+        sim.projectiles={{id=1,owner=1,x=0,y=50,vx=60,vy=0,life=2,radius=3.2,source="pinball",bounces=3}}
+        advance(s,0.1)
+        local ball;for _,rocket in pairs(view.rockets) do ball=rocket end
+        assert(ball and ball.ball.Transparency<0.5 and ball.body.Transparency==1 and ball.nose.Transparency==1,"Pinball's ball looked like a rocket")
+        sim.projectiles={{id=2,owner=1,x=0,y=50,vx=60,vy=0,life=2,radius=3.5}}
+        advance(s,0.1)
+        local rocket;for _,item in pairs(view.rockets) do rocket=item end
+        assert(rocket.ball.Transparency==1 and rocket.body.Transparency==0,"A rocket looked like Pinball's ball")
+        local me=view.fighters[1]
+        assert(me.magnetBeam.Transparency==1 and me.burnerFlames[1].Transparency==1 and me.windAura.Transparency==1,"A power effect showed with no power active")
+        f.magnetLeft=0.5;advance(s,0.1)
+        assert(me.magnetBeam.Transparency<0.5 and me.magnetBeam.Size.X>20,"Magnet drew no beam to the rival")
+        f.magnetLeft=0;f.boostLeft=0.8;advance(s,0.1)
+        assert(me.magnetBeam.Transparency==1 and me.burnerFlames[1].Transparency<0.5 and me.burnerFlames[1].Size.X>15,"Afterburner drew no jet")
+        f.boostLeft=0;f.secondWind=true;advance(s,0.1)
+        assert(me.burnerFlames[1].Transparency==1 and me.windAura.Transparency<0.6,"Second Wind drew no aura")
+    end)
     return string.format("BattleView: %d native presentation tests passed",passed)
 end

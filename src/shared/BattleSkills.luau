@@ -14,10 +14,12 @@
 --   earliest             an approach may end this many seconds early if inPosition
 --   leadSpeed, leadFactor  how far ahead of the rival the attack aims
 --   ram                  set to a source name if the plane's nose is the weapon
+-- A launched projectile may carry `bounces`: it reflects off the arena edge that
+-- many times before it can leave.
 --   inPosition(api, state, fighter, opponent, dx, dy) -> boolean
 --   approach(api, state, fighter, opponent, dx, dy) -> targetX, targetY, speed, turnRate
 --   windupStart(api, state, fighter, opponent)
---   windupMove(api, state, fighter) -> targetX, targetY, speed, turnRate
+--   windupMove(api, state, fighter, opponent) -> targetX, targetY, speed, turnRate
 --   attack(api, state, fighter, opponent)
 -- A movement hook may return nil for any value to keep the default.
 --
@@ -91,7 +93,7 @@ BattleSkills.offence.Firework = {
 
 BattleSkills.offence.MachineGun = {
 	windup = 0.65, attackTime = 0.65, attackSpeed = 25,
-	earliest = 1.0, leadSpeed = 90, leadFactor = 0.35,
+	earliest = 0.95, leadSpeed = 90, leadFactor = 0.35,
 	approachTime = 2.9, recoveryTime = 2,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 68 * 68 end,
 	attack = function(api, state, fighter, opponent)
@@ -112,36 +114,51 @@ BattleSkills.offence.MachineGun = {
 }
 
 BattleSkills.offence.Pinball = {
-	windup = 2.4, attackTime = 1.3, attackSpeed = 65,
-	earliest = 1.7, leadSpeed = 72, leadFactor = 0.45, ram = "pinball", wallRam = true,
-	-- The rebound is the hardest attack to dodge, so it comes round less often.
-	approachTime = 3.2, recoveryTime = 2.2,
+	windup = 1, attackTime = 0.5, attackSpeed = 27,
+	earliest = 1.15, leadSpeed = 72, leadFactor = 0.45,
+	ballSpeed = 78, ballLife = 3.4, ballRadius = 3.2, bounces = 3,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 85 * 85 end,
-	windupStart = function(_, state, fighter, opponent)
+	windupStart = function(_, state, fighter)
+		-- Bank off whichever wall is nearest when the charge begins.
 		local b = state.bounds
-		local nearest, edge = math.huge, "left"
+		local nearest = math.huge
 		for _, candidate in ipairs({ { "left", fighter.x - b.left }, { "right", b.right - fighter.x },
 			{ "bottom", fighter.y - b.bottom }, { "top", b.top - fighter.y } }) do
-			if candidate[2] < nearest then nearest, edge = candidate[2], candidate[1] end
+			if candidate[2] < nearest then nearest, fighter._bankEdge = candidate[2], candidate[1] end
 		end
-		-- The virtual rival is reflected across the selected rail. Following
-		-- this visible straight run-up produces a real specular rebound.
-		local predictedX = math.max(b.left + 8, math.min(b.right - 8, opponent.x + opponent.vx * 0.65))
-		local predictedY = math.max(b.bottom + 8, math.min(b.top - 8, opponent.y + opponent.vy * 0.65))
-		fighter._bankX, fighter._bankY = predictedX, predictedY
-		if edge == "left" or edge == "right" then
-			fighter._bankX = 2 * b[edge] - predictedX
-		else fighter._bankY = 2 * b[edge] - predictedY end
 	end,
-	windupMove = function(_, _, fighter) return fighter._bankX, fighter._bankY, 45, 8 end,
+	windupMove = function(api, state, fighter, opponent)
+		-- Aim at the rival's reflection in the chosen wall, so the shot that
+		-- leaves the nose reaches them after one real bounce.
+		local b, self = state.bounds, BattleSkills.offence.Pinball
+		local edge = fighter._bankEdge or "left"
+		local function mirrored(x, y)
+			if edge == "left" or edge == "right" then return 2 * b[edge] - x, y end
+			return x, 2 * b[edge] - y
+		end
+		local mx, my = mirrored(opponent.x, opponent.y)
+		local lead = math.sqrt((mx - fighter.x) ^ 2 + (my - fighter.y) ^ 2) / self.ballSpeed * self.leadFactor
+		mx, my = mirrored(api.clamp(opponent.x + opponent.vx * lead, b.left + 6, b.right - 6),
+			api.clamp(opponent.y + opponent.vy * lead, b.bottom + 6, b.top - 6))
+		fighter._bankX, fighter._bankY = mx, my
+		return mx, my, 9, 6
+	end,
 	attack = function(api, state, fighter, opponent)
-		local entry = api.event(state, "ricochet", fighter.x, fighter.y, fighter.id, opponent.id, "pinball", "Pinball")
-		entry.heading = fighter._attackHeading
+		local self = BattleSkills.offence.Pinball
+		local dx, dy = math.cos(fighter.heading), math.sin(fighter.heading)
+		api.launch(state, fighter, {
+			x = fighter.x + dx * 7, y = fighter.y + dy * 7,
+			vx = dx * self.ballSpeed, vy = dy * self.ballSpeed, life = self.ballLife, radius = self.ballRadius,
+			source = "pinball", bounces = self.bounces,
+		})
+		local entry = api.event(state, "ricochet", fighter.x + dx * 7, fighter.y + dy * 7, fighter.id, opponent.id, "pinball", "Pinball")
+		entry.heading = fighter.heading
 	end,
 }
 
+-- Rush: after you attack, the trip back to your next attack is much shorter.
 BattleSkills.wild.Afterburner = {
-	duration = 0.9,
+	duration = 0.9, tempo = 0.95,
 	start = function(_, _, fighter)
 		fighter._boostPending = false
 	end,
@@ -151,12 +168,15 @@ BattleSkills.wild.Afterburner = {
 	recover = function(api, state, fighter)
 		if not fighter._boostPending then return end
 		fighter.boostLeft = BattleSkills.wild.Afterburner.duration
+		fighter.tempo = BattleSkills.wild.Afterburner.tempo
 		fighter._boostPending = false
 		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "afterburner", "Afterburner")
 	end,
 }
 
+-- Block: the first hit bounces off, at the cost of a slow turn back.
 BattleSkills.wild.SpringBumper = {
+	recoil = 1.4,
 	start = function(_, _, fighter)
 		fighter.bumperReady = true
 	end,
@@ -165,7 +185,7 @@ BattleSkills.wild.SpringBumper = {
 		target.bumperReady = false
 		-- The spring absorbs a whole hit, but its visible recoil banks the
 		-- defender longer before the next attack. It never weakens the block.
-		target._bumperRecovery = 0.7
+		target._bumperRecovery = BattleSkills.wild.SpringBumper.recoil
 		target.invulnerable = api.IMPACT_PROTECTION
 		target._knockX, target._knockY = dirX * 32, dirY * 32
 		actor._knockX, actor._knockY = -dirX * 24, -dirY * 24
@@ -174,38 +194,41 @@ BattleSkills.wild.SpringBumper = {
 	end,
 }
 
+-- Trap: every attack leaves a wall of fizz that hangs in the air.
 BattleSkills.wild.FizzyFuel = {
+	spill = 1.0, every = 0.18, cloudLife = 2.2, cloudRadius = 3.6,
 	start = function(_, _, fighter)
 		fighter._wakeLeft, fighter._wakeNext = 0, 0
 	end,
 	attack = function(api, state, fighter)
-		fighter._wakeLeft, fighter._wakeNext = 0.8, 0
+		fighter._wakeLeft, fighter._wakeNext = BattleSkills.wild.FizzyFuel.spill, 0
 		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "wake", "FizzyFuel")
 	end,
 	moved = function(api, state, fighter, dt)
-		-- Committing spills fuel for 0.8s, including the beginning of the bank if
-		-- the strike connects immediately. Otherwise successful attacks leave no
-		-- useful trail for a rival to cross on the next approach.
+		-- Committing spills fuel, including the beginning of the bank away if
+		-- the strike connects at once, so the cloud wall always gets laid.
+		local self = BattleSkills.wild.FizzyFuel
 		if fighter._wakeLeft <= 0 then return end
 		fighter._wakeLeft = math.max(0, fighter._wakeLeft - dt)
 		fighter._wakeNext = fighter._wakeNext - dt
 		if fighter._wakeNext > 0 then return end
-		fighter._wakeNext = fighter._wakeNext + 0.16
+		fighter._wakeNext = fighter._wakeNext + self.every
 		api.puff(state, fighter, fighter.x - math.cos(fighter.heading) * 12,
-			fighter.y - math.sin(fighter.heading) * 12, "FizzyFuel")
+			fighter.y - math.sin(fighter.heading) * 12, "FizzyFuel", { life = self.cloudLife, radius = self.cloudRadius })
 	end,
 }
 
+-- Pull: one hard yank drags the rival toward you as you strike.
 BattleSkills.wild.Magnet = {
+	duration = 0.8,
 	start = function(_, _, fighter) fighter.magnetLeft = 0 end,
-	-- The pull starts with the strike, so it drags the rival into the attack
-	-- instead of into the owner's unguarded turn away.
 	attack = function(api, state, fighter)
-		fighter.magnetLeft = 1
+		fighter.magnetLeft = BattleSkills.wild.Magnet.duration
 		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "magnet", "Magnet")
 	end,
 }
 
+-- Comeback: on the last armor the plane flies faster and attacks sooner.
 BattleSkills.wild.SecondWind = {
 	start = function(_, _, fighter) fighter.secondWind = false end,
 	damaged = function(api, state, fighter)

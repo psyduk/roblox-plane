@@ -404,7 +404,7 @@ return function(Simulation, Catalog, Skills)
 		fighter.phaseLeft = 0
 		Simulation.step(state, Simulation.FIXED_DT)
 		check(fighter.phase == "Recover" and fighter.boostLeft > 0, "Attack did not trigger recovery boost")
-		check(close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 44), "Boost did not change recovery speed")
+		check(close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 56), "Boost did not change recovery speed")
 		local activations = 0
 		for _, entry in ipairs(state.events) do
 			if entry.kind == "skill" and entry.skillId == "Afterburner" then activations = activations + 1 end
@@ -462,7 +462,8 @@ return function(Simulation, Catalog, Skills)
 		fighter.phase, fighter.phaseLeft = "Windup", 0
 		Simulation.step(state, Simulation.FIXED_DT)
 		check(#state.wakes == 1 and state.wakes[1].x < fighter.x, "Attack did not leave a wake behind")
-		check(state.wakes[1].armLeft > 0 and state.wakes[1].radius == Simulation.WAKE_RADIUS, "Wake lacks visible arming/radius")
+		check(state.wakes[1].armLeft > 0 and state.wakes[1].radius == Skills.wild.FizzyFuel.cloudRadius
+			and state.wakes[1].life > 2, "Cloud lacks visible arming, size or hang time")
 		local emitted = state._wakeSerial
 		fighter.phaseLeft = 0
 		for _ = 1, 12 do Simulation.step(state, Simulation.FIXED_DT) end
@@ -492,7 +493,7 @@ return function(Simulation, Catalog, Skills)
 		armed(state.fighters[1], -8, 0); passive(state.fighters[2], 0, 50, 0)
 		Simulation.step(state, Simulation.FIXED_DT)
 		check(state.fighters[2].armor == 3 and not state.fighters[2].bumperReady, "Recoil weakened the promised full block")
-		check(close(state.fighters[2].phaseLeft, Simulation.RECOVERY_TIME + 0.7), "Defender did not take visible extra recovery")
+		check(close(state.fighters[2].phaseLeft, Simulation.RECOVERY_TIME + Skills.wild.SpringBumper.recoil), "Defender did not take visible extra recovery")
 		check(close(state.fighters[1].phaseLeft, Simulation.RECOVERY_TIME), "Attacker inherited defender recoil")
 	end)
 
@@ -536,7 +537,7 @@ return function(Simulation, Catalog, Skills)
 			passive(fighter, id == 1 and -50 or 50, 50, id == 1 and math.pi or 0)
 			fighter._wakeLeft = 0
 		end
-		for _ = 1, math.ceil(Simulation.WAKE_LIFE / Simulation.FIXED_DT) + 2 do Simulation.step(state, Simulation.FIXED_DT) end
+		for _ = 1, math.ceil(Skills.wild.FizzyFuel.cloudLife / Simulation.FIXED_DT) + 2 do Simulation.step(state, Simulation.FIXED_DT) end
 		check(#state.wakes == 0, "Expired wake persisted")
 	end)
 
@@ -551,7 +552,7 @@ return function(Simulation, Catalog, Skills)
 		fighter.phaseLeft = 0
 		for _ = 1, 12 do Simulation.step(state, Simulation.FIXED_DT) end
 		check(fighter.phase == "Recover" and fighter.boostLeft > 0 and state._wakeSerial > 1, "Paired wild cards did not both run")
-		check(close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 44), "Boost speed lost when paired with a wake")
+		check(close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 56), "Boost speed lost when paired with a wake")
 	end)
 
 	test("spring bumper still blocks once beside another wild card", function()
@@ -640,16 +641,53 @@ return function(Simulation, Catalog, Skills)
 		end
 	end)
 
-	test("Pinball arms only on a true rail reflection", function()
+	test("Pinball fires a ball that banks off a wall and never rams", function()
 		local state = Simulation.newRound(1, { offenceId = "Pinball" })
-		local actor = state.fighters[1]
-		passive(actor, -71.8, 50, math.pi); passive(state.fighters[2], 40, 70, 0)
-		actor.phase, actor.phaseLeft, actor._bankX, actor._bankY = "Windup", 1, -150, 50
-		Simulation.step(state, Simulation.FIXED_DT)
-		check(actor.armed and actor.phase == "Attack" and math.abs(actor._attackHeading) < 0.00001, "Rail failed specular reflection")
-		local entry = state.events[#state.events]
-		check(entry.kind == "ricochet" and entry.source == "pinball", "Bounce lacks authoritative cue")
-		check(actor.armor == 3 and state.fighters[2].armor == 3, "Rail dealt damage")
+		local actor, rival = state.fighters[1], state.fighters[2]
+		passive(actor, -40, 50, math.pi); passive(rival, 40, 50, 0)
+		rival.vx, rival.vy, rival._recoverX, rival._recoverY = 0, 0, 40, 50
+		actor.phase, actor.phaseLeft = "Approach", 0.001
+		local launched, bounced, hit
+		for _ = 1, 240 do
+			passive(rival, 40, 50, 0); rival.vx, rival.vy = 0, 0
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(not actor.armed, "Pinball armed the plane's nose")
+			for _, entry in ipairs(state.events) do
+				if entry.kind == "ricochet" then launched = entry end
+				if entry.kind == "bounce" and entry.source == "pinball" then bounced = bounced or entry end
+				if entry.kind == "hit" and entry.source == "pinball" then hit = entry end
+			end
+			if hit then break end
+		end
+		check(launched and launched.actor == 1 and launched.skillId == "Pinball", "Launch lacks its authoritative cue")
+		check(bounced and close(bounced.x, Simulation.ARENA.left), "The ball did not bank off the nearest wall")
+		check(hit and bounced.serial < hit.serial and rival.armor == 2, "The banked ball did not land after its bounce")
+		check(#state.projectiles == 0, "A ball that hit kept flying")
+	end)
+
+	test("a bouncing ball reflects a set number of times and then leaves", function()
+		local state = Simulation.newRound(1)
+		passive(state.fighters[1], -50, 20, 0); passive(state.fighters[2], 50, 20, 0)
+		local ball = projectile(1, 1, 0, 80, 0, 300)
+		ball.bounces, ball.life, ball.source = 2, 10, "pinball"
+		state.projectiles = { ball }
+		local bounces, missed = 0, false
+		local serial = state.eventSerial
+		for _ = 1, 120 do
+			passive(state.fighters[1], -50, 20, 0); passive(state.fighters[2], 50, 20, 0)
+			Simulation.step(state, Simulation.FIXED_DT)
+			for _, entry in ipairs(state.events) do
+				if entry.serial > serial then
+					serial = entry.serial
+					if entry.kind == "bounce" then bounces = bounces + 1 end
+					if entry.kind == "miss" then missed = true end
+				end
+			end
+			for _, live in ipairs(state.projectiles) do
+				check(live.y <= state.bounds.top + 0.001 and live.y >= state.bounds.bottom - 0.001 or live.bounces == 0, "A live bounce left the arena")
+			end
+		end
+		check(bounces == 2 and missed and #state.projectiles == 0, "Bounce count was not honoured")
 	end)
 
 	test("Second Wind triggers once at one armor without healing including simultaneous hits", function()
@@ -666,20 +704,41 @@ return function(Simulation, Catalog, Skills)
 		check(triggers == 2, "Second Wind trigger duplicated or missing")
 	end)
 
-	test("Magnet pulls symmetrically once and recovery can escape at full pressure", function()
-		local function pulled(both)
-			local state = Simulation.newRound(1, { wildIds = { "Magnet" } }, { wildIds = both and { "Magnet" } or {} })
-			state.elapsed = 34
-			passive(state.fighters[1], -25, 50, math.pi); passive(state.fighters[2], 25, 50, 0)
-			state.fighters[1].magnetLeft = 1
-			if both then state.fighters[2].magnetLeft = 1 end
-			Simulation.step(state, Simulation.FIXED_DT)
-			check(state.fighters[1].x < -25 and state.fighters[2].x > 25, "Pull pinned escaping automatic pilots")
-			return state
-		end
-		local one, two = pulled(false), pulled(true)
-		check(close(one.fighters[1].vx, two.fighters[1].vx) and close(one.fighters[2].vx, two.fighters[2].vx), "Two magnets stacked")
-		check(close(math.abs(one.fighters[1].vx), 30 - Simulation.MAGNET_SPEED), "Pull overcame thrust or was asymmetric")
+	test("Magnet yanks only the rival toward its owner", function()
+		local state = Simulation.newRound(1, { wildIds = { "Magnet" } }, {})
+		passive(state.fighters[1], -25, 50, math.pi); passive(state.fighters[2], 25, 50, 0)
+		state.fighters[1].magnetLeft = 0.5
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(close(state.fighters[1].vx, -30), "The magnet moved its own plane")
+		check(close(state.fighters[2].vx, 30 - Simulation.MAGNET_SPEED), "The rival was not yanked toward the magnet")
+		check(Simulation.MAGNET_SPEED >= 25, "The yank is too gentle to see")
+		local both = Simulation.newRound(1, { wildIds = { "Magnet" } }, { wildIds = { "Magnet" } })
+		passive(both.fighters[1], -25, 50, math.pi); passive(both.fighters[2], 25, 50, 0)
+		both.fighters[1].magnetLeft, both.fighters[2].magnetLeft = 0.5, 0.5
+		Simulation.step(both, Simulation.FIXED_DT)
+		check(close(both.fighters[1].vx, -both.fighters[2].vx), "Two magnets did not pull evenly")
+		local attack = Simulation.newRound(1, { offenceId = "Firework", wildIds = { "Magnet" } })
+		passive(attack.fighters[1], -40, 50, 0); passive(attack.fighters[2], 40, 80, 0)
+		attack.fighters[1].phase, attack.fighters[1].phaseLeft = "Windup", 0
+		Simulation.step(attack, Simulation.FIXED_DT)
+		check(close(attack.fighters[1].magnetLeft, Skills.wild.Magnet.duration), "The yank did not start with the attack")
+	end)
+
+	test("Afterburner shortens only the trip after its owner's own attack", function()
+		local state = Simulation.newRound(1, { offenceId = "Firework", wildIds = { "Afterburner" } }, { offenceId = "Firework" })
+		local actor, rival = state.fighters[1], state.fighters[2]
+		passive(actor, -40, 50, 0); passive(rival, 40, 80, 0)
+		actor.phase, actor.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		actor.phaseLeft = 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(actor.phase == "Recover" and actor.tempo == Skills.wild.Afterburner.tempo, "Attacking did not start the rush")
+		check(close(actor.phaseLeft, Simulation.RECOVERY_TIME * actor.tempo), "The rush did not shorten the bank away")
+		check(rival.tempo == nil, "The rival was hurried too")
+		actor.phase, actor.phaseLeft = "Approach", 0
+		passive(rival, 40, 80, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(actor.phase == "Windup" and actor.tempo == nil, "The rush outlived one trip")
 	end)
 
 	test("final total speed caps knockback plus Second Wind and Afterburner", function()

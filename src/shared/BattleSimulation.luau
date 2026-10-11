@@ -9,7 +9,7 @@ local BattleSimulation = {}
 BattleSimulation.CONTRACT_VERSION = "sky-battle-combat-v1"
 BattleSimulation.MAX_TOTAL_SPEED = 88
 BattleSimulation.MAX_TURN_RATE = 9.6
-BattleSimulation.MAGNET_SPEED = 7
+BattleSimulation.MAGNET_SPEED = 30
 BattleSimulation.FIXED_DT = 1 / 60
 BattleSimulation.MAX_STEP_DT = 0.25
 -- A round is decided on armor at REGULATION_TIME. Level armor goes to sudden
@@ -20,6 +20,7 @@ BattleSimulation.PRESSURE_START = 10
 BattleSimulation.ARENA = { left = -72, right = 72, bottom = 8, top = 96 }
 BattleSimulation.PLANE_RADIUS = 5
 BattleSimulation.IMPACT_PROTECTION = 0.85
+BattleSimulation.HIT_KNOCK = 36
 BattleSimulation.APPROACH_TIME = 3
 BattleSimulation.RECOVERY_TIME = 2
 -- A plane that is not yet ready to attack circles its rival at this distance.
@@ -137,7 +138,7 @@ end
 
 -- Leave a short-lived puff that hurts the rival once it has armed. Each plane
 -- keeps at most six; the oldest gives way.
-function api.puff(state, fighter, x, y, skillId)
+function api.puff(state, fighter, x, y, skillId, options)
 	local owned, oldest = 0, nil
 	for index, wake in ipairs(state.wakes) do
 		if wake.owner == fighter.id then
@@ -150,8 +151,9 @@ function api.puff(state, fighter, x, y, skillId)
 	state._wakeSerial = state._wakeSerial + 1
 	local wake = {
 		id = state._wakeSerial, owner = fighter.id, skillId = skillId, x = x, y = y,
-		radius = BattleSimulation.WAKE_RADIUS, life = BattleSimulation.WAKE_LIFE,
-		maxLife = BattleSimulation.WAKE_LIFE, armLeft = BattleSimulation.WAKE_ARM_TIME,
+		radius = options and options.radius or BattleSimulation.WAKE_RADIUS,
+		life = options and options.life or BattleSimulation.WAKE_LIFE,
+		maxLife = options and options.life or BattleSimulation.WAKE_LIFE, armLeft = BattleSimulation.WAKE_ARM_TIME,
 	}
 	state.wakes[#state.wakes + 1] = wake
 	return wake
@@ -237,7 +239,7 @@ local function recover(state, fighter, opponent, duration)
 	fighter._approachOffset = fighter._cadence / 2147483647 * 2.4 - 1.2
 	-- Both planes circle the same way round, or they would meet head-on.
 	state.spin = fighter._cadence % 2 == 0 and 1 or -1
-	fighter.phase, fighter.phaseLeft = "Recover", ((duration or Skills.offence[fighter.offenceId].recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.88 or 1)
+	fighter.phase, fighter.phaseLeft = "Recover", ((duration or Skills.offence[fighter.offenceId].recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.88 or 1) * (fighter.tempo or 1)
 	fighter._bumperRecovery = nil
 	fighter.armed = false
 	local awayX, awayY = direction(fighter.x - opponent.x, fighter.y - opponent.y, fighter.id == 1 and -1 or 1)
@@ -281,22 +283,21 @@ local function prepare(state, fighter, opponent, dt)
 		local inPosition = offence.inPosition ~= nil and offence.inPosition(api, state, fighter, opponent, dx, dy)
 		if fighter.phaseLeft <= 0 or (fighter.phaseLeft < offence.earliest and inPosition) then
 			fighter.phase, fighter.phaseLeft = "Windup", fighter.windupDuration
+			-- A skill's hurry lasts for one trip back to the attack.
+			fighter.tempo = nil
 			if offence.windupStart then offence.windupStart(api, state, fighter, opponent) end
 			lockTarget(fighter, opponent)
 			event(state, "windup", fighter.x, fighter.y, fighter.id, opponent.id)
 		end
 	elseif fighter.phase == "Windup" and fighter.phaseLeft <= 0 then
-		if offence.wallRam then
-			event(state, "miss", fighter.x, fighter.y, fighter.id, opponent.id, "pinball")
-			recover(state, fighter, opponent)
-		else beginAttack(state, fighter, opponent) end
+		beginAttack(state, fighter, opponent)
 	elseif fighter.phase == "Attack" and fighter.phaseLeft <= 0 then
 		if offence.ram and not fighter._attackHit then
 			event(state, "miss", fighter.x, fighter.y, fighter.id, opponent.id)
 		end
 		recover(state, fighter, opponent)
 	elseif fighter.phase == "Recover" and fighter.phaseLeft <= 0 then
-		fighter.phase, fighter.phaseLeft = "Approach", (offence.approachTime or BattleSimulation.APPROACH_TIME) + fighter._approachOffset
+		fighter.phase, fighter.phaseLeft = "Approach", ((offence.approachTime or BattleSimulation.APPROACH_TIME) + fighter._approachOffset) * (fighter.tempo or 1)
 	end
 
 	local targetX, targetY = opponent.x, opponent.y
@@ -320,7 +321,7 @@ local function prepare(state, fighter, opponent, dt)
 		targetX, targetY = fighter.lockX, fighter.lockY
 		speed, turnRate = 9, 5.5
 		if offence.windupMove then
-			wantX, wantY, wantSpeed, wantTurn = offence.windupMove(api, state, fighter)
+			wantX, wantY, wantSpeed, wantTurn = offence.windupMove(api, state, fighter, opponent)
 		end
 	elseif fighter.phase == "Attack" then
 		speed = offence.attackSpeed
@@ -329,7 +330,7 @@ local function prepare(state, fighter, opponent, dt)
 	elseif fighter.phase == "Recover" then
 		targetX, targetY = fighter._recoverX, fighter._recoverY
 		speed, turnRate = 30, 3.5
-		if fighter.boostLeft > 0 then speed, turnRate = 44, 5.2 end
+		if fighter.boostLeft > 0 then speed, turnRate = 56, 6 end
 	end
 	targetX, targetY = wantX or targetX, wantY or targetY
 	speed, turnRate = wantSpeed or speed, wantTurn or turnRate
@@ -372,7 +373,8 @@ local function damage(state, actorId, targetId, x, y, dirX, dirY, source, skillI
 	end
 	target.armor = math.max(0, target.armor - 1)
 	target.invulnerable = BattleSimulation.IMPACT_PROTECTION
-	target._knockX, target._knockY = dirX * 22, dirY * 22
+	-- A hit should throw the plane, not nudge it.
+	target._knockX, target._knockY = dirX * BattleSimulation.HIT_KNOCK, dirY * BattleSimulation.HIT_KNOCK
 	actor.hits = actor.hits + 1
 	actor._attackHit = true
 	event(state, source == "wake" and "wake_hit" or "hit", x, y, actorId, targetId, source, skillId)
@@ -391,12 +393,11 @@ local function tick(state)
 	end
 	-- Both plans read the same pre-tick snapshot, avoiding first-player bias.
 	for id, fighter in ipairs(state.fighters) do prepare(state, fighter, previous[3 - id], dt) end
-	-- One symmetric bounded pull regardless of whether one or both magnets are
-	-- active. It cannot overwhelm even the slowest attack thrust, and never
-	-- touches projectiles or wakes. Cap final velocity after knockback and pull.
-	local pulling = (state.fighters[1].magnetLeft or 0) > 0 or (state.fighters[2].magnetLeft or 0) > 0
+	-- A live magnet yanks the rival toward its owner; the owner is not moved.
+	-- It never touches projectiles or wakes. Cap final velocity after knockback
+	-- and pull.
 	for id, fighter in ipairs(state.fighters) do
-		if pulling then
+		if (state.fighters[3 - id].magnetLeft or 0) > 0 then
 			local opponent = previous[3 - id]
 			local nx, ny = direction(opponent.x - fighter.x, opponent.y - fighter.y)
 			fighter.vx, fighter.vy = fighter.vx + nx * BattleSimulation.MAGNET_SPEED, fighter.vy + ny * BattleSimulation.MAGNET_SPEED
@@ -412,14 +413,6 @@ local function tick(state)
 		fighter.x = clamp(x, state.bounds.left, state.bounds.right)
 		fighter.y = clamp(y, state.bounds.bottom, state.bounds.top)
 		edgeHit[id] = x ~= fighter.x or y ~= fighter.y
-		if edgeHit[id] and fighter.phase == "Windup" and Skills.offence[fighter.offenceId].wallRam then
-			local dx, dy = math.cos(fighter.heading), math.sin(fighter.heading)
-			if x ~= fighter.x then dx = -dx end
-			if y ~= fighter.y then dy = -dy end
-			fighter.heading = atan2(dy, dx)
-			beginAttack(state, fighter, previous[3 - id])
-			edgeHit[id] = false
-		end
 		wild(fighter, "moved", state, fighter, dt)
 	end
 
@@ -499,6 +492,16 @@ local function tick(state)
 			-- Impact protection absorbs subsequent projectiles visibly at contact;
 			-- they never wait inside a protected plane to deal delayed damage.
 			if not successful and not absorbed then event(state, "miss", projectile.x, projectile.y, projectile.owner, targetId) end
+		elseif projectile.life > 0 and (projectile.bounces or 0) > 0 and (projectile.x < state.bounds.left or projectile.x > state.bounds.right
+			or projectile.y < state.bounds.bottom or projectile.y > state.bounds.top) then
+			-- A bouncing shot reflects off the visible arena edge and flies on.
+			if projectile.x < state.bounds.left or projectile.x > state.bounds.right then projectile.vx = -projectile.vx end
+			if projectile.y < state.bounds.bottom or projectile.y > state.bounds.top then projectile.vy = -projectile.vy end
+			projectile.x = clamp(projectile.x, state.bounds.left, state.bounds.right)
+			projectile.y = clamp(projectile.y, state.bounds.bottom, state.bounds.top)
+			projectile.bounces = projectile.bounces - 1
+			event(state, "bounce", projectile.x, projectile.y, projectile.owner, 0, projectile.source)
+			surviving[#surviving + 1] = projectile
 		elseif projectile.life <= 0 or projectile.x < state.bounds.left - 10 or projectile.x > state.bounds.right + 10 or
 			projectile.y < state.bounds.bottom - 10 or projectile.y > state.bounds.top + 10 then
 			event(state, "miss", projectile.x, projectile.y, projectile.owner, targetId)

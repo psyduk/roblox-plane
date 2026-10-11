@@ -57,13 +57,16 @@ local KINDS = {
     launch=true, windup=true, dive=true, rocket=true, hit=true, bump=true,
     bumper_block=true, wake_hit=true, afterburner=true, finish=true, knockout=true,
     burst=true, tracer_hit=true, ricochet=true, magnet=true, secondwind=true,
+    fizz=true, pinball_bounce=true,
 }
 local function finite(value)
     return type(value)=="number" and value==value and value>-math.huge and value<math.huge
 end
 local function audibleKind(event)
     if event.kind=="skill" then
-        return ({Afterburner="afterburner",Magnet="magnet",SecondWind="secondwind"})[event.skillId]
+        return ({Afterburner="afterburner",Magnet="magnet",SecondWind="secondwind",FizzyFuel="fizz"})[event.skillId]
+    elseif event.kind=="bounce" then
+        return event.source=="pinball" and "pinball_bounce" or nil
     elseif event.kind=="blocked" then
         return event.skillId=="SpringBumper" and "bumper_block" or nil
     end
@@ -312,16 +315,32 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
         -- Connections are light ticks; only the threshold event breaks armor.
         voice("chime",0.065,2.1,0.08)
     elseif kind=="ricochet" then
-        voice("jump",0.22,0.8,0.24,1.9); shot("comic",0.4,1.4)
+        -- Pinball is the arcade power: a flipper thwack and a rising bleep.
+        voice("jump",0.24,0.8,0.24,2.2); voice("chime",0.16,1.2,0.2,2.4)
+        shot("comic",0.5,1.5); shot("click",0.4,0.8)
+    elseif kind=="pinball_bounce" then
+        -- Each wall is a bumper: a bright ping that climbs with every bounce.
+        voice("chime",0.2,1.9,0.16,2.6); voice("land",0.1,2.2,0.08)
+        shot("beep",0.35,2.2); shot("comic",0.3,1.8)
     elseif kind=="magnet" then
-        voice("jump",0.13,1.6,0.35,0.7); voice("chime",0.1,0.8,0.3)
+        -- A heavy electric hum that drops as the rival is dragged in.
+        voice("jump",0.22,1.9,0.6,0.45); voice("chime",0.14,0.6,0.5,0.4)
+        shot("sub",0.5,1.3); shot("rise",0.35,0.7)
     elseif kind=="secondwind" then
-        voice("chime",0.18,0.9,0.5,1.7); shot("whoosh",0.22,1.2)
+        -- The comeback: thunder, a rising rush and the crowd on its feet.
+        voice("chime",0.22,0.9,0.6,1.9)
+        shot("thunder",0.7,1.1); shot("rise",0.45,1.3); shot("cheer",0.4,1.1)
+    elseif kind=="fizz" then
+        -- A shaken can: a hiss and a pop.
+        voice("land",0.1,2.6,0.25,1.6)
+        shot("ignite",0.3,1.9); shot("click",0.3,1.3)
     elseif kind=="hit" then
         if event.source=="machinegun" then
             voice("land",0.2,1.4,0.16); shot("punch",0.55,1.35); shot("thump",0.35,1.3)
         elseif event.source=="pinball" then
-            voice("jump",0.2,1.3,0.25,0.7); shot("comic",0.5,0.85); shot("thump",0.6,1.2)
+            -- Jackpot: the smack, then a falling arcade trill.
+            voice("jump",0.26,2.0,0.3,0.6); voice("chime",0.2,2.4,0.3,1.2)
+            shot("comic",0.65,0.85); shot("thump",0.7,1.2); shot("beep",0.3,1.6)
         elseif event.source=="meteor" then
             voice("boom",0.30,0.8,0.46,0.55)
             voice("land",0.30,0.55,0.18)
@@ -333,18 +352,23 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
             -- A rocket: the bang first, then the same body blow underneath.
             shot("blast",0.7,1.1); shot("thump",0.55,1.1); shot("punch",0.4,1.15)
         end
-        -- Every damaging hit breaks one armor pip and the crowd feels it.
-        shot("shatter",0.34,1.1); shot("gasp",0.3,1)
+        -- Every damaging hit breaks one armor pip: glass, a deep body blow
+        -- under it, and the crowd feels it.
+        shot("shatter",0.42,1.1); shot("sub",0.55,1.15); shot("gasp",0.34,1)
     elseif kind=="bumper_block" then
-        voice("jump",0.27,0.85,0.4,1.9)
-        voice("chime",0.12,1.6,0.28)
-        shot("comic",0.6,1)
+        -- A giant spring: the boing, then a metal clang as both planes fly apart.
+        voice("jump",0.32,0.7,0.5,2.3)
+        voice("chime",0.16,1.6,0.3)
+        shot("comic",0.75,0.8); shot("crunch",0.45,1.4)
     elseif kind=="wake_hit" then
-        voice("land",0.23,1.25,0.2)
-        voice("boom",0.17,1.8,0.3,1.1)
-        shot("punch",0.4,1.3); shot("shatter",0.26,1.3)
+        -- The cloud bursts: a wet pop and a hiss, then the armor cracks.
+        voice("land",0.26,1.6,0.2)
+        voice("boom",0.2,2.2,0.3,1.2)
+        shot("ignite",0.45,1.7); shot("punch",0.45,1.3); shot("shatter",0.34,1.3); shot("sub",0.4,1.3)
     elseif kind=="afterburner" then
-        voice("jump",0.17,0.65,0.32,1.8)
+        -- A jet lighting: ignition roar and a long fly-by.
+        voice("jump",0.24,0.5,0.5,2.0)
+        shot("ignite",0.7,0.75); shot("whoosh",0.6,1.3)
     elseif kind=="bump" then
         -- A normal collision pushes without armor loss: never use the hit mix.
         voice("land",0.065,1.55,0.11)

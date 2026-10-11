@@ -27,6 +27,12 @@ local COLORS = {
 	storm = Color3.fromRGB(86, 64, 150),
 }
 -- Same order as the hangar's paint swatch, so a pilot's paint carries over.
+-- Each power owns one colour, so a glance says which one just fired.
+local POWER = {
+	pinball = Color3.fromRGB(80, 215, 255), fizz = Color3.fromRGB(96, 255, 190),
+	magnet = Color3.fromRGB(255, 96, 200), wind = Color3.fromRGB(150, 255, 120),
+	burner = Color3.fromRGB(120, 200, 255), bumper = Color3.fromRGB(215, 255, 80),
+}
 local PLANE_COLORS = { COLORS.coral, COLORS.cyan, COLORS.yellow, COLORS.purple }
 local PLAYER_COLORS = { COLORS.coral, COLORS.cyan }
 local FAN_COLORS = { COLORS.coral, COLORS.cyan, COLORS.yellow, COLORS.cream, COLORS.purple }
@@ -299,8 +305,11 @@ local function makeRocket(parent)
 	local crossFin = part(model, "CrossFins", Vector3.new(1.6, 0.3, 3.2), CFrame.new(-1.65, 0, 0), COLORS.coral)
 	local exhaust = ellipsoid(model, "Exhaust", Vector3.new(3.5, 1.1, 1.1), CFrame.new(-4, 0, 0), COLORS.fire, Enum.Material.Neon)
 	local core = ellipsoid(model, "ExhaustCore", Vector3.new(2.6, 0.55, 0.55), CFrame.new(-3.5, 0, 0), COLORS.cream, Enum.Material.Neon)
+	-- The same pooled projectile can be a rocket, a tracer or Pinball's ball.
+	local ball = part(model, "PinballBall", Vector3.one * 6.4, CFrame.identity, POWER.pinball, Enum.Material.Neon, Enum.PartType.Ball)
+	local ballCore = part(model, "PinballCore", Vector3.one * 3.4, CFrame.new(0, 0, 0.4), COLORS.cream, Enum.Material.Neon, Enum.PartType.Ball)
 	local stripes = {}
-	local pieces = { body, nose, fin, crossFin, exhaust, core }
+	local pieces = { body, nose, fin, crossFin, exhaust, core, ball, ballCore }
 	for _, x in ipairs({ -0.8, 0.65 }) do
 		local stripe = part(model, "CandyStripe", Vector3.new(0.45, 1.72, 1.72), CFrame.new(x, 0, 0), COLORS.coral, nil, Enum.PartType.Cylinder)
 		table.insert(stripes, stripe)
@@ -329,7 +338,7 @@ local function makeRocket(parent)
 		Lifetime = NumberRange.new(0.35, 0.7), Speed = NumberRange.new(2, 9), Size = fade(1.5, 0),
 		LightEmission = 1, Color = ColorSequence.new(COLORS.yellow, COLORS.fire), ZOffset = 1,
 	})
-	return { fizz = fizz, model = model, body = body, nose = nose, fin = fin, crossFin = crossFin, trail = trail, pieces = pieces,
+	return { ball = ball, ballCore = ballCore, fizz = fizz, model = model, body = body, nose = nose, fin = fin, crossFin = crossFin, trail = trail, pieces = pieces,
 		stripes = stripes, sparks = sparks, exhaust = exhaust, core = core }
 end
 
@@ -407,6 +416,9 @@ function BattleView:_resetRound(roundId)
 		hide(fighter.magnetRing)
 		hide(fighter.windRing)
 		hide(fighter.loadRing)
+		hide(fighter.burnerFlames)
+		hide(fighter.magnetGrip)
+		fighter.magnetBeam.Transparency, fighter.windAura.Transparency = 1, 1
 		fighter.approachSpan = nil
 		hide(fighter.cometFlames)
 		hide(fighter.signatureSparks)
@@ -576,6 +588,16 @@ function BattleView:_fighter(id, index)
 			index == 1 and COLORS.fire or (index == 2 and COLORS.yellow or COLORS.cream), Enum.Material.Neon)
 		cometFlames[index].Transparency = 1
 	end
+	local burnerFlames = {}
+	for index = 1, 3 do
+		burnerFlames[index] = ellipsoid(fx, "AfterburnerFlame" .. index, Vector3.one, CFrame.identity,
+			index == 1 and POWER.burner or (index == 2 and COLORS.boost or COLORS.cream), Enum.Material.Neon)
+		burnerFlames[index].Transparency = 1
+	end
+	local magnetBeam = part(fx, "MagnetBeam", Vector3.one, CFrame.identity, POWER.magnet, Enum.Material.Neon)
+	magnetBeam.Transparency = 1
+	local windAura = ellipsoid(fx, "SecondWindAura", Vector3.one, CFrame.identity, POWER.wind, Enum.Material.ForceField)
+	windAura.Transparency = 1
 	local muzzleFlashes = {}
 	for index = 1, 2 do
 		muzzleFlashes[index] = ellipsoid(fx, "LauncherFlash" .. index, Vector3.one, CFrame.identity, COLORS.yellow, Enum.Material.Neon)
@@ -629,6 +651,8 @@ function BattleView:_fighter(id, index)
 		magnetRing = makeRing(fx, "MagnetPull", 10, Color3.fromRGB(255, 120, 190)),
 		windRing = makeRing(fx, "SecondWind", 10, Color3.fromRGB(130, 255, 190)),
 		loadRing = makeRing(fx, "AttackLoad", 10, color),
+		burnerFlames = burnerFlames, magnetBeam = magnetBeam, magnetGrip = makeRing(fx, "MagnetGrip", 8, POWER.magnet),
+		windAura = windAura,
 		scuff = scuff, debris = debris, crashLanded = false, index = index,
 	}
 	-- Smoke is positioned in world space and must never enlarge aircraft
@@ -858,20 +882,35 @@ function BattleView:_hit(fighter, x, y, source, actorColor)
 		if self.clock - fighter.lastHitBurst < 0.12 then return end
 		fighter.lastHitBurst = self.clock
 	end
-	local color = source == "meteor" and COLORS.yellow or (source == "rocket" and actorColor and actorColor:Lerp(COLORS.cream, 0.55) or COLORS.cream)
+	local color = source == "meteor" and COLORS.yellow or (source == "pinball" and POWER.pinball or (source == "wake" and POWER.fizz
+		or (source == "rocket" and actorColor and actorColor:Lerp(COLORS.cream, 0.55) or COLORS.cream)))
 	self:_burst(x, y, color, true, source)
 	x, y = numeric(x, 0), numeric(y, CENTER_Y)
 	if source == "meteor" then
-		self:_particles(x, y, COLORS.fire, 46, 12, 16, 70)
-		self:_jolt(3.4, 1, 0.1, 0.55, 0.7)
+		-- A slam: fire, black smoke and the longest freeze in the game.
+		self:_particles(x, y, COLORS.fire, 70, 22, 28, 85)
+		self:_jolt(5, 1, 0.15, 0.75, 0.8)
 	elseif source == "rocket" then
 		-- A firework is supposed to burst: a big ball of the shooter's colour.
-		self:_particles(x, y, actorColor or COLORS.yellow, 70, 8, 8, 95)
-		self:_particles(x, y, COLORS.yellow, 30, 0, 0, 55)
-		self:_jolt(2.6, 0.85, 0.08, 0.45, 0.7)
+		self:_particles(x, y, actorColor or COLORS.yellow, 90, 8, 10, 110)
+		self:_particles(x, y, COLORS.yellow, 40, 0, 0, 60)
+		self:_jolt(3.6, 0.9, 0.1, 0.6, 0.75)
+	elseif source == "pinball" then
+		-- An arcade smack: a clean electric-blue star, no smoke.
+		self:_particles(x, y, POWER.pinball, 80, 0, 0, 120)
+		self:_particles(x, y, COLORS.cream, 30, 0, 0, 50)
+		self:_jolt(3.8, 0.95, 0.12, 0.6, 0.75)
+	elseif source == "machinegun" then
+		-- The burst chews through: hot sparks and shrapnel smoke.
+		self:_particles(x, y, COLORS.yellow, 60, 14, 6, 90)
+		self:_jolt(3.2, 0.8, 0.08, 0.45, 0.65)
+	elseif source == "wake" then
+		-- The cloud pops in a green splash.
+		self:_particles(x, y, POWER.fizz, 70, 10, 0, 70)
+		self:_jolt(3, 0.8, 0.08, 0.45, 0.6)
 	else
-		self:_particles(x, y, color, 34, 8, 8, 60)
-		self:_jolt(2.2, 0.7, 0.07, 0.35, 0.5)
+		self:_particles(x, y, color, 44, 10, 10, 70)
+		self:_jolt(3, 0.8, 0.08, 0.45, 0.6)
 	end
 end
 
@@ -911,12 +950,29 @@ function BattleView:_events(simulation)
 					self:_particles(x, y, COLORS.yellow, 5, 0, 0, 16)
 				elseif kind == "ricochet" then
 					if actor then actor.shotTime = self.clock end
-					self:_burst(x, y, Color3.fromRGB(110, 220, 255), false, "dive", numeric(event.heading, 0))
-					self:_jolt(0.5, 0.15, 0, 0, 0.1)
+					self:_burst(x, y, POWER.pinball, false, "dive", numeric(event.heading, 0))
+					self:_particles(x, y, POWER.pinball, 24, 0, 0, 55)
+					self:_jolt(1, 0.3, 0, 0.1, 0.15)
+				elseif kind == "bounce" and event.source == "pinball" then
+					-- Every wall the ball touches lights up, so the path can be followed.
+					self:_burst(x, y, POWER.pinball, true)
+					self:_particles(x, y, POWER.pinball, 36, 0, 0, 75)
+					self:_jolt(1.6, 0.4, 0, 0.12, 0.2)
 				elseif kind == "skill" and event.skillId == "Magnet" and actor then
 					actor.magnetTime = self.clock
+					self:_burst(x, y, POWER.magnet, false)
+					self:_jolt(1.2, 0.35, 0, 0.1, 0.2)
 				elseif kind == "skill" and event.skillId == "SecondWind" and actor then
 					actor.secondWindTime = self.clock
+					self:_burst(x, y, POWER.wind, true)
+					self:_particles(x, y, POWER.wind, 60, 0, 0, 80)
+					self:_jolt(2.4, 0.6, 0.08, 0.3, 0.6)
+				elseif kind == "skill" and event.skillId == "Afterburner" then
+					-- The burner lights with a bang right behind the plane.
+					self:_particles(x, y, POWER.burner, 40, 6, 24, 70)
+					self:_jolt(1.4, 0.4, 0, 0.12, 0.25)
+				elseif kind == "skill" and event.skillId == "FizzyFuel" then
+					self:_particles(x, y, POWER.fizz, 30, 0, 0, 45)
 				elseif kind == "miss" and actor and actor.offenceId == "Meteor" then
 					self:_particles(x, y, COLORS.fire, 7, 3, 0, 14)
 				elseif kind == "miss" and actor and actor.offenceId == "Firework" then
@@ -924,9 +980,10 @@ function BattleView:_events(simulation)
 					self:_particles(x, y, actor.color, 26, 6, 0, 45)
 				elseif kind == "blocked" then
 					if actor then actor.blockTime = self.clock end
-					self:_burst(x, y, COLORS.yellow, false)
-					self:_particles(x, y, COLORS.yellow, 30, 0, 0, 65)
-					self:_jolt(1.6, 0.5, 0.05, 0.15, 0.4)
+					-- The spring fires both planes apart in a ring of lime sparks.
+					self:_burst(x, y, POWER.bumper, true)
+					self:_particles(x, y, POWER.bumper, 70, 0, 0, 110)
+					self:_jolt(3.2, 0.8, 0.1, 0.4, 0.6)
 				elseif kind == "bounce" or kind == "wall" or kind == "bump" then
 					self:_burst(x, y, COLORS.steel, false)
 					self:_particles(x, y, COLORS.cream, 12, 3, 0, 40)
@@ -961,12 +1018,19 @@ function BattleView:_signatureEffects(fighter, state, simulation, moving, pose)
 		piece.Transparency = (windup or armed or shooting) and (0.05 + (1 - charge) * 0.15) or 0.62
 		if not meteor and windup then piece.Transparency = 0.15 + (math.sin(self.clock * 24 + index * math.pi) + 1) * 0.2 end
 	end
-	if (meteor or fighter.offenceId == "Pinball") and (windup or armed) then
+	if meteor and (windup or armed) then
 		local shellCharge = armed and 1 or charge
 		fighter.chargeShell.Size = Vector3.new(8 + shellCharge * 3.5, 3.6 + shellCharge * 2.6, 3.4 + shellCharge * 2.2) * SCALE * fighter.visualScale
 		fighter.chargeShell.CFrame = pose * mount(fighter, "Centre")
-		fighter.chargeShell.Color = fighter.offenceId == "Pinball" and Color3.fromRGB(110, 220, 255) or (armed and COLORS.yellow or COLORS.fire)
+		fighter.chargeShell.Color = armed and COLORS.yellow or COLORS.fire
 		fighter.chargeShell.Transparency = armed and 0.62 or (0.92 - charge * 0.35)
+	elseif fighter.offenceId == "Pinball" and windup then
+		-- The ball swells on the nose until it is ready to fly.
+		local size = (1.2 + charge * 5.2) * (self.reducedMotion and 1 or 1 + math.sin(self.clock * 26) * 0.06)
+		fighter.chargeShell.Size = Vector3.one * size
+		fighter.chargeShell.CFrame = pose * mount(fighter, "Nose") * CFrame.new(size * 0.45, 0, 0)
+		fighter.chargeShell.Color = POWER.pinball
+		fighter.chargeShell.Transparency = 0.25
 	else
 		fighter.chargeShell.Transparency = 1
 	end
@@ -1049,21 +1113,54 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 		if boosted then
 			local side = index == 1 and -1 or 1
 			local length = 6 + math.sin(self.clock * 28 + index) * 2
-			streak.Size = Vector3.new(length, 0.36, 0.25)
-			streak.CFrame = displayPose * mount(fighter, "Tail") * CFrame.new(-length * 0.2, side * 3.1, 3)
-			streak.Color, streak.Transparency = COLORS.boost, 0.18
+			streak.Size = Vector3.new(length * 2.2, 0.5, 0.25)
+			streak.CFrame = displayPose * mount(fighter, "Tail") * CFrame.new(-length * 0.6, side * 3.1, 3)
+			streak.Color, streak.Transparency = COLORS.boost, 0.1
 		else
 			streak.Transparency = 1
 		end
 	end
+	-- Afterburner: a long blue-white jet out of the tail for as long as it burns.
+	for index, flame in ipairs(fighter.burnerFlames) do
+		if boosted then
+			local flicker = self.reducedMotion and 1 or 1 + math.sin(self.clock * 40 + index * 2) * 0.15
+			local length = (30 - index * 7) * flicker
+			local width = 5.2 - index * 1.3
+			flame.Size = Vector3.new(length, width, width * 0.8)
+			flame.CFrame = displayPose * mount(fighter, "Tail") * CFrame.new(-length * 0.42, 0, index * 0.2)
+			flame.Transparency = 0.3 - index * 0.08
+		else flame.Transparency = 1 end
+	end
+	-- Magnet: a hot-pink beam from the owner clamps a ring onto the rival.
 	local magnet = moving and numeric(state.magnetLeft, 0) > self.sampleAge
 	local secondWindAge = self.clock - fighter.secondWindTime
+	local rival = self.fighters[state.id == 1 and 2 or 1]
 	if magnet then
-		ring(fighter.magnetRing, center, 9 + math.sin(self.clock * 6) * 1.2, Color3.fromRGB(255, 120, 190), 0.4, -self.clock * 0.8, 0.32)
-	else hide(fighter.magnetRing) end
+		ring(fighter.magnetRing, center, 9 + math.sin(self.clock * 6) * 1.2, POWER.magnet, 0.25, -self.clock * 0.8, 0.5)
+		if rival and rival.position then
+			local from, to = center, rival.position + Vector3.new(0, 0, 9)
+			local span = to - from
+			local wobble = self.reducedMotion and 1 or 1 + math.sin(self.clock * 50) * 0.3
+			fighter.magnetBeam.Size = Vector3.new(span.Magnitude, 1.5 * wobble, 0.3)
+			fighter.magnetBeam.CFrame = CFrame.new((from + to) / 2) * CFrame.Angles(0, 0, math.atan2(span.Y, span.X))
+			fighter.magnetBeam.Transparency = 0.2
+			ring(fighter.magnetGrip, to, 7.5 - (self.clock * 14 % 3), POWER.magnet, 0.1, self.clock * 3, 0.6)
+		end
+	else
+		hide(fighter.magnetRing); hide(fighter.magnetGrip)
+		fighter.magnetBeam.Transparency = 1
+	end
+	-- Second Wind: the whole plane burns green from the moment it wakes up.
 	if moving and state.secondWind == true then
-		ring(fighter.windRing, center, 8.4, Color3.fromRGB(130, 255, 190), 0.45, self.reducedMotion and 0 or self.clock * 0.6, 0.24)
-	else hide(fighter.windRing) end
+		local beat = self.reducedMotion and 0 or math.sin(self.clock * 9)
+		ring(fighter.windRing, center, 8.4 + beat * 0.6, POWER.wind, 0.3, self.reducedMotion and 0 or self.clock * 1.4, 0.4)
+		fighter.windAura.Size = Vector3.new(15, 9.5, 9) * (1 + beat * 0.06) * SCALE * fighter.visualScale
+		fighter.windAura.CFrame = displayPose * mount(fighter, "Centre")
+		fighter.windAura.Transparency = 0.35
+	else
+		hide(fighter.windRing)
+		fighter.windAura.Transparency = 1
+	end
 	-- The load gauge rides on the plane: it fills piece by piece while the
 	-- plane circles with nothing to fire, then snaps full and bright the moment
 	-- the attack is loaded. An empty ring means a pass is only a pass.
@@ -1089,9 +1186,10 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 	elseif blockAge < 0.45 then tell = "BOING!"
 	elseif secondWindAge < 0.85 then tell = "SECOND WIND!"
 	elseif magnet then tell = "PULL!"
+	elseif boosted then tell = "ZOOM!"
 	elseif windup then tell = offence and offence.windupTell or "LOCKED ON"
 	elseif moving and state.phase == "Attack" then tell = offence and offence.attackTell or "FIRE!"
-	elseif boosted then tell = "BOOST!" end
+	end
 	fighter.gui.Enabled = tell ~= nil
 	if tell and tell ~= fighter.label.Text then fighter.tellTime = self.realClock end
 	fighter.label.Text = tell or ""
@@ -1136,10 +1234,11 @@ function BattleView:_wakes(simulation, moving)
 		local edgeColor = owner and owner.color or COLORS.fire
 		-- Keep the authoritative collision footprint fixed as it fades. These
 		-- bright discs are hazardous, unlike the thin cosmetic contrails.
-		wake.disc.Size = Vector3.new(0.16, radius * 2, radius * 2)
+		local bubble = self.reducedMotion and 1 or 1 + math.sin(self.clock * 7 + numeric(tonumber(entry.id), 0) * 1.7) * 0.07
+		wake.disc.Size = Vector3.new(0.16, radius * 2 * bubble, radius * 2 * bubble)
 		wake.disc.CFrame = CFrame.new(center) * CFrame.Angles(0, math.pi / 2, 0)
-		wake.disc.Color = arming and COLORS.yellow or COLORS.fire
-		wake.disc.Transparency = life <= 0 and 1 or (arming and 0.8 or (0.5 + (1 - fraction) * 0.25))
+		wake.disc.Color = arming and COLORS.cream or POWER.fizz
+		wake.disc.Transparency = life <= 0 and 1 or (arming and 0.8 or (0.3 + (1 - fraction) * 0.4))
 		ring(wake.edge, center + Vector3.new(0, 0, 0.2), radius, edgeColor,
 			life <= 0 and 1 or (arming and 0.5 or (0.12 + (1 - fraction) * 0.35)), self.clock * 0.5, 0.36)
 	end
@@ -1435,6 +1534,12 @@ function BattleView:update(snapshot, dt, viewportRect)
 		local owner = self.fighters[state.owner or state.actor]
 		local color = owner and owner.color or PLAYER_COLORS[tonumber(state.owner) or 1] or COLORS.yellow
 		local tracer = state.source == "machinegun"
+		local ball = state.source == "pinball"
+		local squash = (ball and not self.reducedMotion) and 1 + 0.12 * math.sin(self.clock * 30) or 1
+		rocket.ball.Size = Vector3.new(6.4 * squash, 6.4 / squash, 6.4)
+		rocket.ball.Transparency, rocket.ballCore.Transparency = ball and 0.15 or 1, ball and 0 or 1
+		rocket.body.Transparency = ball and 1 or 0
+		if ball then tracer = true end
 		rocket.body.Size = tracer and Vector3.new(3.4, 0.36, 0.36) or Vector3.new(5, 1.65, 1.65)
 		rocket.body.Material = tracer and Enum.Material.Neon or Enum.Material.SmoothPlastic
 		rocket.body.Color = tracer and COLORS.yellow or COLORS.cream
@@ -1463,9 +1568,9 @@ function BattleView:update(snapshot, dt, viewportRect)
 			spark.Transparency = moving and not tracer and not self.reducedMotion and progress or 1
 		end
 		rocket.trail.Enabled = moving
-		rocket.trail.Color = ColorSequence.new(color, COLORS.cream)
-		rocket.trail.Lifetime = tracer and 0.12 or 0.55
-		rocket.trail.WidthScale = NumberSequence.new(tracer and 0.25 or 1, 0)
+		rocket.trail.Color = ColorSequence.new(ball and POWER.pinball or color, COLORS.cream)
+		rocket.trail.Lifetime = ball and 0.9 or (tracer and 0.12 or 0.55)
+		rocket.trail.WidthScale = NumberSequence.new(ball and 4 or (tracer and 0.25 or 1), 0)
 		rocket.fizz.Rate = moving and not tracer and not self.reducedMotion and 55 or 0
 		rocket.fizz.Color = ColorSequence.new(COLORS.cream, color)
 	end

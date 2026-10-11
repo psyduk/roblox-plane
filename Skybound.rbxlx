@@ -587,7 +587,7 @@ local BattleSimulation = {}
 BattleSimulation.CONTRACT_VERSION = "sky-battle-combat-v1"
 BattleSimulation.MAX_TOTAL_SPEED = 88
 BattleSimulation.MAX_TURN_RATE = 9.6
-BattleSimulation.MAGNET_SPEED = 7
+BattleSimulation.MAGNET_SPEED = 30
 BattleSimulation.FIXED_DT = 1 / 60
 BattleSimulation.MAX_STEP_DT = 0.25
 -- A round is decided on armor at REGULATION_TIME. Level armor goes to sudden
@@ -598,6 +598,7 @@ BattleSimulation.PRESSURE_START = 10
 BattleSimulation.ARENA = { left = -72, right = 72, bottom = 8, top = 96 }
 BattleSimulation.PLANE_RADIUS = 5
 BattleSimulation.IMPACT_PROTECTION = 0.85
+BattleSimulation.HIT_KNOCK = 36
 BattleSimulation.APPROACH_TIME = 3
 BattleSimulation.RECOVERY_TIME = 2
 -- A plane that is not yet ready to attack circles its rival at this distance.
@@ -715,7 +716,7 @@ end
 
 -- Leave a short-lived puff that hurts the rival once it has armed. Each plane
 -- keeps at most six; the oldest gives way.
-function api.puff(state, fighter, x, y, skillId)
+function api.puff(state, fighter, x, y, skillId, options)
 	local owned, oldest = 0, nil
 	for index, wake in ipairs(state.wakes) do
 		if wake.owner == fighter.id then
@@ -728,8 +729,9 @@ function api.puff(state, fighter, x, y, skillId)
 	state._wakeSerial = state._wakeSerial + 1
 	local wake = {
 		id = state._wakeSerial, owner = fighter.id, skillId = skillId, x = x, y = y,
-		radius = BattleSimulation.WAKE_RADIUS, life = BattleSimulation.WAKE_LIFE,
-		maxLife = BattleSimulation.WAKE_LIFE, armLeft = BattleSimulation.WAKE_ARM_TIME,
+		radius = options and options.radius or BattleSimulation.WAKE_RADIUS,
+		life = options and options.life or BattleSimulation.WAKE_LIFE,
+		maxLife = options and options.life or BattleSimulation.WAKE_LIFE, armLeft = BattleSimulation.WAKE_ARM_TIME,
 	}
 	state.wakes[#state.wakes + 1] = wake
 	return wake
@@ -815,7 +817,7 @@ local function recover(state, fighter, opponent, duration)
 	fighter._approachOffset = fighter._cadence / 2147483647 * 2.4 - 1.2
 	-- Both planes circle the same way round, or they would meet head-on.
 	state.spin = fighter._cadence % 2 == 0 and 1 or -1
-	fighter.phase, fighter.phaseLeft = "Recover", ((duration or Skills.offence[fighter.offenceId].recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.88 or 1)
+	fighter.phase, fighter.phaseLeft = "Recover", ((duration or Skills.offence[fighter.offenceId].recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.88 or 1) * (fighter.tempo or 1)
 	fighter._bumperRecovery = nil
 	fighter.armed = false
 	local awayX, awayY = direction(fighter.x - opponent.x, fighter.y - opponent.y, fighter.id == 1 and -1 or 1)
@@ -859,22 +861,21 @@ local function prepare(state, fighter, opponent, dt)
 		local inPosition = offence.inPosition ~= nil and offence.inPosition(api, state, fighter, opponent, dx, dy)
 		if fighter.phaseLeft &lt;= 0 or (fighter.phaseLeft &lt; offence.earliest and inPosition) then
 			fighter.phase, fighter.phaseLeft = "Windup", fighter.windupDuration
+			-- A skill's hurry lasts for one trip back to the attack.
+			fighter.tempo = nil
 			if offence.windupStart then offence.windupStart(api, state, fighter, opponent) end
 			lockTarget(fighter, opponent)
 			event(state, "windup", fighter.x, fighter.y, fighter.id, opponent.id)
 		end
 	elseif fighter.phase == "Windup" and fighter.phaseLeft &lt;= 0 then
-		if offence.wallRam then
-			event(state, "miss", fighter.x, fighter.y, fighter.id, opponent.id, "pinball")
-			recover(state, fighter, opponent)
-		else beginAttack(state, fighter, opponent) end
+		beginAttack(state, fighter, opponent)
 	elseif fighter.phase == "Attack" and fighter.phaseLeft &lt;= 0 then
 		if offence.ram and not fighter._attackHit then
 			event(state, "miss", fighter.x, fighter.y, fighter.id, opponent.id)
 		end
 		recover(state, fighter, opponent)
 	elseif fighter.phase == "Recover" and fighter.phaseLeft &lt;= 0 then
-		fighter.phase, fighter.phaseLeft = "Approach", (offence.approachTime or BattleSimulation.APPROACH_TIME) + fighter._approachOffset
+		fighter.phase, fighter.phaseLeft = "Approach", ((offence.approachTime or BattleSimulation.APPROACH_TIME) + fighter._approachOffset) * (fighter.tempo or 1)
 	end
 
 	local targetX, targetY = opponent.x, opponent.y
@@ -898,7 +899,7 @@ local function prepare(state, fighter, opponent, dt)
 		targetX, targetY = fighter.lockX, fighter.lockY
 		speed, turnRate = 9, 5.5
 		if offence.windupMove then
-			wantX, wantY, wantSpeed, wantTurn = offence.windupMove(api, state, fighter)
+			wantX, wantY, wantSpeed, wantTurn = offence.windupMove(api, state, fighter, opponent)
 		end
 	elseif fighter.phase == "Attack" then
 		speed = offence.attackSpeed
@@ -907,7 +908,7 @@ local function prepare(state, fighter, opponent, dt)
 	elseif fighter.phase == "Recover" then
 		targetX, targetY = fighter._recoverX, fighter._recoverY
 		speed, turnRate = 30, 3.5
-		if fighter.boostLeft &gt; 0 then speed, turnRate = 44, 5.2 end
+		if fighter.boostLeft &gt; 0 then speed, turnRate = 56, 6 end
 	end
 	targetX, targetY = wantX or targetX, wantY or targetY
 	speed, turnRate = wantSpeed or speed, wantTurn or turnRate
@@ -950,7 +951,8 @@ local function damage(state, actorId, targetId, x, y, dirX, dirY, source, skillI
 	end
 	target.armor = math.max(0, target.armor - 1)
 	target.invulnerable = BattleSimulation.IMPACT_PROTECTION
-	target._knockX, target._knockY = dirX * 22, dirY * 22
+	-- A hit should throw the plane, not nudge it.
+	target._knockX, target._knockY = dirX * BattleSimulation.HIT_KNOCK, dirY * BattleSimulation.HIT_KNOCK
 	actor.hits = actor.hits + 1
 	actor._attackHit = true
 	event(state, source == "wake" and "wake_hit" or "hit", x, y, actorId, targetId, source, skillId)
@@ -969,12 +971,11 @@ local function tick(state)
 	end
 	-- Both plans read the same pre-tick snapshot, avoiding first-player bias.
 	for id, fighter in ipairs(state.fighters) do prepare(state, fighter, previous[3 - id], dt) end
-	-- One symmetric bounded pull regardless of whether one or both magnets are
-	-- active. It cannot overwhelm even the slowest attack thrust, and never
-	-- touches projectiles or wakes. Cap final velocity after knockback and pull.
-	local pulling = (state.fighters[1].magnetLeft or 0) &gt; 0 or (state.fighters[2].magnetLeft or 0) &gt; 0
+	-- A live magnet yanks the rival toward its owner; the owner is not moved.
+	-- It never touches projectiles or wakes. Cap final velocity after knockback
+	-- and pull.
 	for id, fighter in ipairs(state.fighters) do
-		if pulling then
+		if (state.fighters[3 - id].magnetLeft or 0) &gt; 0 then
 			local opponent = previous[3 - id]
 			local nx, ny = direction(opponent.x - fighter.x, opponent.y - fighter.y)
 			fighter.vx, fighter.vy = fighter.vx + nx * BattleSimulation.MAGNET_SPEED, fighter.vy + ny * BattleSimulation.MAGNET_SPEED
@@ -990,14 +991,6 @@ local function tick(state)
 		fighter.x = clamp(x, state.bounds.left, state.bounds.right)
 		fighter.y = clamp(y, state.bounds.bottom, state.bounds.top)
 		edgeHit[id] = x ~= fighter.x or y ~= fighter.y
-		if edgeHit[id] and fighter.phase == "Windup" and Skills.offence[fighter.offenceId].wallRam then
-			local dx, dy = math.cos(fighter.heading), math.sin(fighter.heading)
-			if x ~= fighter.x then dx = -dx end
-			if y ~= fighter.y then dy = -dy end
-			fighter.heading = atan2(dy, dx)
-			beginAttack(state, fighter, previous[3 - id])
-			edgeHit[id] = false
-		end
 		wild(fighter, "moved", state, fighter, dt)
 	end
 
@@ -1077,6 +1070,16 @@ local function tick(state)
 			-- Impact protection absorbs subsequent projectiles visibly at contact;
 			-- they never wait inside a protected plane to deal delayed damage.
 			if not successful and not absorbed then event(state, "miss", projectile.x, projectile.y, projectile.owner, targetId) end
+		elseif projectile.life &gt; 0 and (projectile.bounces or 0) &gt; 0 and (projectile.x &lt; state.bounds.left or projectile.x &gt; state.bounds.right
+			or projectile.y &lt; state.bounds.bottom or projectile.y &gt; state.bounds.top) then
+			-- A bouncing shot reflects off the visible arena edge and flies on.
+			if projectile.x &lt; state.bounds.left or projectile.x &gt; state.bounds.right then projectile.vx = -projectile.vx end
+			if projectile.y &lt; state.bounds.bottom or projectile.y &gt; state.bounds.top then projectile.vy = -projectile.vy end
+			projectile.x = clamp(projectile.x, state.bounds.left, state.bounds.right)
+			projectile.y = clamp(projectile.y, state.bounds.bottom, state.bounds.top)
+			projectile.bounces = projectile.bounces - 1
+			event(state, "bounce", projectile.x, projectile.y, projectile.owner, 0, projectile.source)
+			surviving[#surviving + 1] = projectile
 		elseif projectile.life &lt;= 0 or projectile.x &lt; state.bounds.left - 10 or projectile.x &gt; state.bounds.right + 10 or
 			projectile.y &lt; state.bounds.bottom - 10 or projectile.y &gt; state.bounds.top + 10 then
 			event(state, "miss", projectile.x, projectile.y, projectile.owner, targetId)
@@ -1165,10 +1168,12 @@ return BattleSimulation
 --   earliest             an approach may end this many seconds early if inPosition
 --   leadSpeed, leadFactor  how far ahead of the rival the attack aims
 --   ram                  set to a source name if the plane's nose is the weapon
+-- A launched projectile may carry `bounces`: it reflects off the arena edge that
+-- many times before it can leave.
 --   inPosition(api, state, fighter, opponent, dx, dy) -&gt; boolean
 --   approach(api, state, fighter, opponent, dx, dy) -&gt; targetX, targetY, speed, turnRate
 --   windupStart(api, state, fighter, opponent)
---   windupMove(api, state, fighter) -&gt; targetX, targetY, speed, turnRate
+--   windupMove(api, state, fighter, opponent) -&gt; targetX, targetY, speed, turnRate
 --   attack(api, state, fighter, opponent)
 -- A movement hook may return nil for any value to keep the default.
 --
@@ -1242,7 +1247,7 @@ BattleSkills.offence.Firework = {
 
 BattleSkills.offence.MachineGun = {
 	windup = 0.65, attackTime = 0.65, attackSpeed = 25,
-	earliest = 1.0, leadSpeed = 90, leadFactor = 0.35,
+	earliest = 0.95, leadSpeed = 90, leadFactor = 0.35,
 	approachTime = 2.9, recoveryTime = 2,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy &lt; 68 * 68 end,
 	attack = function(api, state, fighter, opponent)
@@ -1263,36 +1268,51 @@ BattleSkills.offence.MachineGun = {
 }
 
 BattleSkills.offence.Pinball = {
-	windup = 2.4, attackTime = 1.3, attackSpeed = 65,
-	earliest = 1.7, leadSpeed = 72, leadFactor = 0.45, ram = "pinball", wallRam = true,
-	-- The rebound is the hardest attack to dodge, so it comes round less often.
-	approachTime = 3.2, recoveryTime = 2.2,
+	windup = 1, attackTime = 0.5, attackSpeed = 27,
+	earliest = 1.15, leadSpeed = 72, leadFactor = 0.45,
+	ballSpeed = 78, ballLife = 3.4, ballRadius = 3.2, bounces = 3,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy &lt; 85 * 85 end,
-	windupStart = function(_, state, fighter, opponent)
+	windupStart = function(_, state, fighter)
+		-- Bank off whichever wall is nearest when the charge begins.
 		local b = state.bounds
-		local nearest, edge = math.huge, "left"
+		local nearest = math.huge
 		for _, candidate in ipairs({ { "left", fighter.x - b.left }, { "right", b.right - fighter.x },
 			{ "bottom", fighter.y - b.bottom }, { "top", b.top - fighter.y } }) do
-			if candidate[2] &lt; nearest then nearest, edge = candidate[2], candidate[1] end
+			if candidate[2] &lt; nearest then nearest, fighter._bankEdge = candidate[2], candidate[1] end
 		end
-		-- The virtual rival is reflected across the selected rail. Following
-		-- this visible straight run-up produces a real specular rebound.
-		local predictedX = math.max(b.left + 8, math.min(b.right - 8, opponent.x + opponent.vx * 0.65))
-		local predictedY = math.max(b.bottom + 8, math.min(b.top - 8, opponent.y + opponent.vy * 0.65))
-		fighter._bankX, fighter._bankY = predictedX, predictedY
-		if edge == "left" or edge == "right" then
-			fighter._bankX = 2 * b[edge] - predictedX
-		else fighter._bankY = 2 * b[edge] - predictedY end
 	end,
-	windupMove = function(_, _, fighter) return fighter._bankX, fighter._bankY, 45, 8 end,
+	windupMove = function(api, state, fighter, opponent)
+		-- Aim at the rival's reflection in the chosen wall, so the shot that
+		-- leaves the nose reaches them after one real bounce.
+		local b, self = state.bounds, BattleSkills.offence.Pinball
+		local edge = fighter._bankEdge or "left"
+		local function mirrored(x, y)
+			if edge == "left" or edge == "right" then return 2 * b[edge] - x, y end
+			return x, 2 * b[edge] - y
+		end
+		local mx, my = mirrored(opponent.x, opponent.y)
+		local lead = math.sqrt((mx - fighter.x) ^ 2 + (my - fighter.y) ^ 2) / self.ballSpeed * self.leadFactor
+		mx, my = mirrored(api.clamp(opponent.x + opponent.vx * lead, b.left + 6, b.right - 6),
+			api.clamp(opponent.y + opponent.vy * lead, b.bottom + 6, b.top - 6))
+		fighter._bankX, fighter._bankY = mx, my
+		return mx, my, 9, 6
+	end,
 	attack = function(api, state, fighter, opponent)
-		local entry = api.event(state, "ricochet", fighter.x, fighter.y, fighter.id, opponent.id, "pinball", "Pinball")
-		entry.heading = fighter._attackHeading
+		local self = BattleSkills.offence.Pinball
+		local dx, dy = math.cos(fighter.heading), math.sin(fighter.heading)
+		api.launch(state, fighter, {
+			x = fighter.x + dx * 7, y = fighter.y + dy * 7,
+			vx = dx * self.ballSpeed, vy = dy * self.ballSpeed, life = self.ballLife, radius = self.ballRadius,
+			source = "pinball", bounces = self.bounces,
+		})
+		local entry = api.event(state, "ricochet", fighter.x + dx * 7, fighter.y + dy * 7, fighter.id, opponent.id, "pinball", "Pinball")
+		entry.heading = fighter.heading
 	end,
 }
 
+-- Rush: after you attack, the trip back to your next attack is much shorter.
 BattleSkills.wild.Afterburner = {
-	duration = 0.9,
+	duration = 0.9, tempo = 0.95,
 	start = function(_, _, fighter)
 		fighter._boostPending = false
 	end,
@@ -1302,12 +1322,15 @@ BattleSkills.wild.Afterburner = {
 	recover = function(api, state, fighter)
 		if not fighter._boostPending then return end
 		fighter.boostLeft = BattleSkills.wild.Afterburner.duration
+		fighter.tempo = BattleSkills.wild.Afterburner.tempo
 		fighter._boostPending = false
 		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "afterburner", "Afterburner")
 	end,
 }
 
+-- Block: the first hit bounces off, at the cost of a slow turn back.
 BattleSkills.wild.SpringBumper = {
+	recoil = 1.4,
 	start = function(_, _, fighter)
 		fighter.bumperReady = true
 	end,
@@ -1316,7 +1339,7 @@ BattleSkills.wild.SpringBumper = {
 		target.bumperReady = false
 		-- The spring absorbs a whole hit, but its visible recoil banks the
 		-- defender longer before the next attack. It never weakens the block.
-		target._bumperRecovery = 0.7
+		target._bumperRecovery = BattleSkills.wild.SpringBumper.recoil
 		target.invulnerable = api.IMPACT_PROTECTION
 		target._knockX, target._knockY = dirX * 32, dirY * 32
 		actor._knockX, actor._knockY = -dirX * 24, -dirY * 24
@@ -1325,38 +1348,41 @@ BattleSkills.wild.SpringBumper = {
 	end,
 }
 
+-- Trap: every attack leaves a wall of fizz that hangs in the air.
 BattleSkills.wild.FizzyFuel = {
+	spill = 1.0, every = 0.18, cloudLife = 2.2, cloudRadius = 3.6,
 	start = function(_, _, fighter)
 		fighter._wakeLeft, fighter._wakeNext = 0, 0
 	end,
 	attack = function(api, state, fighter)
-		fighter._wakeLeft, fighter._wakeNext = 0.8, 0
+		fighter._wakeLeft, fighter._wakeNext = BattleSkills.wild.FizzyFuel.spill, 0
 		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "wake", "FizzyFuel")
 	end,
 	moved = function(api, state, fighter, dt)
-		-- Committing spills fuel for 0.8s, including the beginning of the bank if
-		-- the strike connects immediately. Otherwise successful attacks leave no
-		-- useful trail for a rival to cross on the next approach.
+		-- Committing spills fuel, including the beginning of the bank away if
+		-- the strike connects at once, so the cloud wall always gets laid.
+		local self = BattleSkills.wild.FizzyFuel
 		if fighter._wakeLeft &lt;= 0 then return end
 		fighter._wakeLeft = math.max(0, fighter._wakeLeft - dt)
 		fighter._wakeNext = fighter._wakeNext - dt
 		if fighter._wakeNext &gt; 0 then return end
-		fighter._wakeNext = fighter._wakeNext + 0.16
+		fighter._wakeNext = fighter._wakeNext + self.every
 		api.puff(state, fighter, fighter.x - math.cos(fighter.heading) * 12,
-			fighter.y - math.sin(fighter.heading) * 12, "FizzyFuel")
+			fighter.y - math.sin(fighter.heading) * 12, "FizzyFuel", { life = self.cloudLife, radius = self.cloudRadius })
 	end,
 }
 
+-- Pull: one hard yank drags the rival toward you as you strike.
 BattleSkills.wild.Magnet = {
+	duration = 0.8,
 	start = function(_, _, fighter) fighter.magnetLeft = 0 end,
-	-- The pull starts with the strike, so it drags the rival into the attack
-	-- instead of into the owner's unguarded turn away.
 	attack = function(api, state, fighter)
-		fighter.magnetLeft = 1
+		fighter.magnetLeft = BattleSkills.wild.Magnet.duration
 		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "magnet", "Magnet")
 	end,
 }
 
+-- Comeback: on the last armor the plane flies faster and attacks sooner.
 BattleSkills.wild.SecondWind = {
 	start = function(_, _, fighter) fighter.secondWind = false end,
 	damaged = function(api, state, fighter)
@@ -1402,23 +1428,23 @@ local skills = {
 		windupTell = "SPINNING UP", attackTell = "RAT-A-TAT!",
 		color = { r = 255, g = 220, b = 90 }, starter = true, rarity = "common" },
 	Pinball = { id = "Pinball", kind = "offence", name = "Pinball", icon = "↗️", word = "RICOCHET!",
-		promise = "Bounce off a wall and slam into your rival.",
-		windupTell = "BANKING...", attackTell = "RICOCHET!",
+		promise = "Fire a ball that bounces off the walls.",
+		windupTell = "AIMING...", attackTell = "PING!",
 		color = { r = 110, g = 220, b = 255 }, starter = true, rarity = "common" },
 	Afterburner = { id = "Afterburner", kind = "wild", name = "Afterburner", icon = "🔥", word = "ZOOM!",
-		when = "AFTER YOU ATTACK", promise = "Zoom away fast and turn tighter.",
+		when = "AFTER YOU ATTACK", promise = "Jet away and attack again sooner.",
 		color = { r = 255, g = 168, b = 66 }, starter = true, rarity = "common" },
 	SpringBumper = { id = "SpringBumper", kind = "wild", name = "Spring Bumper", icon = "🛡️", word = "BOING!",
-		when = "FIRST HIT ON YOU", promise = "Bounce the hit away. You attack a bit later after.",
+		when = "FIRST HIT ON YOU", promise = "Spring the hit away. Your next attack is slower.",
 		color = { r = 196, g = 255, b = 91 }, starter = true, rarity = "common" },
 	FizzyFuel = { id = "FizzyFuel", kind = "wild", name = "Fizzy Fuel", icon = "🥤", word = "FIZZ!",
-		when = "WHEN YOU ATTACK", promise = "Leave a fizzy trail that hurts your rival.",
+		when = "WHEN YOU ATTACK", promise = "Leave a cloud wall that hurts your rival.",
 		color = { r = 96, g = 255, b = 214 }, starter = true, rarity = "common" },
 	Magnet = { id = "Magnet", kind = "wild", name = "Magnet", icon = "🧲", word = "PULL!",
-		when = "WHEN YOU ATTACK", promise = "Pull your rival in toward your attack.",
+		when = "WHEN YOU ATTACK", promise = "Yank your rival toward you.",
 		color = { r = 255, g = 120, b = 190 }, starter = true, rarity = "common" },
 	SecondWind = { id = "SecondWind", kind = "wild", name = "Second Wind", icon = "💨", word = "WHOOSH!",
-		when = "ON YOUR LAST ARMOR", promise = "Fly faster and attack sooner.",
+		when = "ON YOUR LAST ARMOR", promise = "Power up! Fly faster and attack sooner.",
 		color = { r = 130, g = 255, b = 190 }, starter = true, rarity = "common" },
 }
 
@@ -6047,7 +6073,7 @@ return function(Simulation, Catalog, Skills)
 		fighter.phaseLeft = 0
 		Simulation.step(state, Simulation.FIXED_DT)
 		check(fighter.phase == "Recover" and fighter.boostLeft &gt; 0, "Attack did not trigger recovery boost")
-		check(close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 44), "Boost did not change recovery speed")
+		check(close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 56), "Boost did not change recovery speed")
 		local activations = 0
 		for _, entry in ipairs(state.events) do
 			if entry.kind == "skill" and entry.skillId == "Afterburner" then activations = activations + 1 end
@@ -6105,7 +6131,8 @@ return function(Simulation, Catalog, Skills)
 		fighter.phase, fighter.phaseLeft = "Windup", 0
 		Simulation.step(state, Simulation.FIXED_DT)
 		check(#state.wakes == 1 and state.wakes[1].x &lt; fighter.x, "Attack did not leave a wake behind")
-		check(state.wakes[1].armLeft &gt; 0 and state.wakes[1].radius == Simulation.WAKE_RADIUS, "Wake lacks visible arming/radius")
+		check(state.wakes[1].armLeft &gt; 0 and state.wakes[1].radius == Skills.wild.FizzyFuel.cloudRadius
+			and state.wakes[1].life &gt; 2, "Cloud lacks visible arming, size or hang time")
 		local emitted = state._wakeSerial
 		fighter.phaseLeft = 0
 		for _ = 1, 12 do Simulation.step(state, Simulation.FIXED_DT) end
@@ -6135,7 +6162,7 @@ return function(Simulation, Catalog, Skills)
 		armed(state.fighters[1], -8, 0); passive(state.fighters[2], 0, 50, 0)
 		Simulation.step(state, Simulation.FIXED_DT)
 		check(state.fighters[2].armor == 3 and not state.fighters[2].bumperReady, "Recoil weakened the promised full block")
-		check(close(state.fighters[2].phaseLeft, Simulation.RECOVERY_TIME + 0.7), "Defender did not take visible extra recovery")
+		check(close(state.fighters[2].phaseLeft, Simulation.RECOVERY_TIME + Skills.wild.SpringBumper.recoil), "Defender did not take visible extra recovery")
 		check(close(state.fighters[1].phaseLeft, Simulation.RECOVERY_TIME), "Attacker inherited defender recoil")
 	end)
 
@@ -6179,7 +6206,7 @@ return function(Simulation, Catalog, Skills)
 			passive(fighter, id == 1 and -50 or 50, 50, id == 1 and math.pi or 0)
 			fighter._wakeLeft = 0
 		end
-		for _ = 1, math.ceil(Simulation.WAKE_LIFE / Simulation.FIXED_DT) + 2 do Simulation.step(state, Simulation.FIXED_DT) end
+		for _ = 1, math.ceil(Skills.wild.FizzyFuel.cloudLife / Simulation.FIXED_DT) + 2 do Simulation.step(state, Simulation.FIXED_DT) end
 		check(#state.wakes == 0, "Expired wake persisted")
 	end)
 
@@ -6194,7 +6221,7 @@ return function(Simulation, Catalog, Skills)
 		fighter.phaseLeft = 0
 		for _ = 1, 12 do Simulation.step(state, Simulation.FIXED_DT) end
 		check(fighter.phase == "Recover" and fighter.boostLeft &gt; 0 and state._wakeSerial &gt; 1, "Paired wild cards did not both run")
-		check(close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 44), "Boost speed lost when paired with a wake")
+		check(close(math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2), 56), "Boost speed lost when paired with a wake")
 	end)
 
 	test("spring bumper still blocks once beside another wild card", function()
@@ -6283,16 +6310,53 @@ return function(Simulation, Catalog, Skills)
 		end
 	end)
 
-	test("Pinball arms only on a true rail reflection", function()
+	test("Pinball fires a ball that banks off a wall and never rams", function()
 		local state = Simulation.newRound(1, { offenceId = "Pinball" })
-		local actor = state.fighters[1]
-		passive(actor, -71.8, 50, math.pi); passive(state.fighters[2], 40, 70, 0)
-		actor.phase, actor.phaseLeft, actor._bankX, actor._bankY = "Windup", 1, -150, 50
-		Simulation.step(state, Simulation.FIXED_DT)
-		check(actor.armed and actor.phase == "Attack" and math.abs(actor._attackHeading) &lt; 0.00001, "Rail failed specular reflection")
-		local entry = state.events[#state.events]
-		check(entry.kind == "ricochet" and entry.source == "pinball", "Bounce lacks authoritative cue")
-		check(actor.armor == 3 and state.fighters[2].armor == 3, "Rail dealt damage")
+		local actor, rival = state.fighters[1], state.fighters[2]
+		passive(actor, -40, 50, math.pi); passive(rival, 40, 50, 0)
+		rival.vx, rival.vy, rival._recoverX, rival._recoverY = 0, 0, 40, 50
+		actor.phase, actor.phaseLeft = "Approach", 0.001
+		local launched, bounced, hit
+		for _ = 1, 240 do
+			passive(rival, 40, 50, 0); rival.vx, rival.vy = 0, 0
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(not actor.armed, "Pinball armed the plane's nose")
+			for _, entry in ipairs(state.events) do
+				if entry.kind == "ricochet" then launched = entry end
+				if entry.kind == "bounce" and entry.source == "pinball" then bounced = bounced or entry end
+				if entry.kind == "hit" and entry.source == "pinball" then hit = entry end
+			end
+			if hit then break end
+		end
+		check(launched and launched.actor == 1 and launched.skillId == "Pinball", "Launch lacks its authoritative cue")
+		check(bounced and close(bounced.x, Simulation.ARENA.left), "The ball did not bank off the nearest wall")
+		check(hit and bounced.serial &lt; hit.serial and rival.armor == 2, "The banked ball did not land after its bounce")
+		check(#state.projectiles == 0, "A ball that hit kept flying")
+	end)
+
+	test("a bouncing ball reflects a set number of times and then leaves", function()
+		local state = Simulation.newRound(1)
+		passive(state.fighters[1], -50, 20, 0); passive(state.fighters[2], 50, 20, 0)
+		local ball = projectile(1, 1, 0, 80, 0, 300)
+		ball.bounces, ball.life, ball.source = 2, 10, "pinball"
+		state.projectiles = { ball }
+		local bounces, missed = 0, false
+		local serial = state.eventSerial
+		for _ = 1, 120 do
+			passive(state.fighters[1], -50, 20, 0); passive(state.fighters[2], 50, 20, 0)
+			Simulation.step(state, Simulation.FIXED_DT)
+			for _, entry in ipairs(state.events) do
+				if entry.serial &gt; serial then
+					serial = entry.serial
+					if entry.kind == "bounce" then bounces = bounces + 1 end
+					if entry.kind == "miss" then missed = true end
+				end
+			end
+			for _, live in ipairs(state.projectiles) do
+				check(live.y &lt;= state.bounds.top + 0.001 and live.y &gt;= state.bounds.bottom - 0.001 or live.bounces == 0, "A live bounce left the arena")
+			end
+		end
+		check(bounces == 2 and missed and #state.projectiles == 0, "Bounce count was not honoured")
 	end)
 
 	test("Second Wind triggers once at one armor without healing including simultaneous hits", function()
@@ -6309,20 +6373,41 @@ return function(Simulation, Catalog, Skills)
 		check(triggers == 2, "Second Wind trigger duplicated or missing")
 	end)
 
-	test("Magnet pulls symmetrically once and recovery can escape at full pressure", function()
-		local function pulled(both)
-			local state = Simulation.newRound(1, { wildIds = { "Magnet" } }, { wildIds = both and { "Magnet" } or {} })
-			state.elapsed = 34
-			passive(state.fighters[1], -25, 50, math.pi); passive(state.fighters[2], 25, 50, 0)
-			state.fighters[1].magnetLeft = 1
-			if both then state.fighters[2].magnetLeft = 1 end
-			Simulation.step(state, Simulation.FIXED_DT)
-			check(state.fighters[1].x &lt; -25 and state.fighters[2].x &gt; 25, "Pull pinned escaping automatic pilots")
-			return state
-		end
-		local one, two = pulled(false), pulled(true)
-		check(close(one.fighters[1].vx, two.fighters[1].vx) and close(one.fighters[2].vx, two.fighters[2].vx), "Two magnets stacked")
-		check(close(math.abs(one.fighters[1].vx), 30 - Simulation.MAGNET_SPEED), "Pull overcame thrust or was asymmetric")
+	test("Magnet yanks only the rival toward its owner", function()
+		local state = Simulation.newRound(1, { wildIds = { "Magnet" } }, {})
+		passive(state.fighters[1], -25, 50, math.pi); passive(state.fighters[2], 25, 50, 0)
+		state.fighters[1].magnetLeft = 0.5
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(close(state.fighters[1].vx, -30), "The magnet moved its own plane")
+		check(close(state.fighters[2].vx, 30 - Simulation.MAGNET_SPEED), "The rival was not yanked toward the magnet")
+		check(Simulation.MAGNET_SPEED &gt;= 25, "The yank is too gentle to see")
+		local both = Simulation.newRound(1, { wildIds = { "Magnet" } }, { wildIds = { "Magnet" } })
+		passive(both.fighters[1], -25, 50, math.pi); passive(both.fighters[2], 25, 50, 0)
+		both.fighters[1].magnetLeft, both.fighters[2].magnetLeft = 0.5, 0.5
+		Simulation.step(both, Simulation.FIXED_DT)
+		check(close(both.fighters[1].vx, -both.fighters[2].vx), "Two magnets did not pull evenly")
+		local attack = Simulation.newRound(1, { offenceId = "Firework", wildIds = { "Magnet" } })
+		passive(attack.fighters[1], -40, 50, 0); passive(attack.fighters[2], 40, 80, 0)
+		attack.fighters[1].phase, attack.fighters[1].phaseLeft = "Windup", 0
+		Simulation.step(attack, Simulation.FIXED_DT)
+		check(close(attack.fighters[1].magnetLeft, Skills.wild.Magnet.duration), "The yank did not start with the attack")
+	end)
+
+	test("Afterburner shortens only the trip after its owner's own attack", function()
+		local state = Simulation.newRound(1, { offenceId = "Firework", wildIds = { "Afterburner" } }, { offenceId = "Firework" })
+		local actor, rival = state.fighters[1], state.fighters[2]
+		passive(actor, -40, 50, 0); passive(rival, 40, 80, 0)
+		actor.phase, actor.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		actor.phaseLeft = 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(actor.phase == "Recover" and actor.tempo == Skills.wild.Afterburner.tempo, "Attacking did not start the rush")
+		check(close(actor.phaseLeft, Simulation.RECOVERY_TIME * actor.tempo), "The rush did not shorten the bank away")
+		check(rival.tempo == nil, "The rival was hurried too")
+		actor.phase, actor.phaseLeft = "Approach", 0
+		passive(rival, 40, 80, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(actor.phase == "Windup" and actor.tempo == nil, "The rush outlived one trip")
 	end)
 
 	test("final total speed caps knockback plus Second Wind and Afterburner", function()
@@ -8110,7 +8195,7 @@ return function(Audio)
         assert(calls[6].name=="jump" and calls[6].finishPitch&gt;calls[6].pitch)
         local wake=event(5,"skill",1); wake.skillId="FizzyFuel"
         mix:update(snapshot("Fight",1,{wake}))
-        assert(#calls==6,"wake emission sounded like an armor hit")
+        assert(#calls==7 and calls[7].name=="land" and calls[7].volume&lt;calls[4].volume,"Laying fizz sounded like an armor hit")
     end)
     test("Meteor charge and committed dive differ from Firework arming and ignition",function()
         local mix,calls=fixture()
@@ -8261,6 +8346,12 @@ return function(Audio)
         mix:update(snapshot("Fight",0.4,{magnet}));assert(attributes.LastEvent=="magnet")
         local wind=event(5,"skill",0.5);wind.skillId="SecondWind"
         mix:update(snapshot("Fight",0.5,{wind}));assert(attributes.LastEvent=="secondwind")
+        local fizz=event(6,"skill",0.6);fizz.skillId="FizzyFuel"
+        mix:update(snapshot("Fight",0.6,{fizz}));assert(attributes.LastEvent=="fizz","Fizzy Fuel has no sound of its own")
+        local wall=event(7,"bounce",0.7);wall.source="pinball"
+        mix:update(snapshot("Fight",0.7,{wall}));assert(attributes.LastEvent=="pinball_bounce","A Pinball bounce was silent")
+        local other=event(8,"bounce",0.8)
+        mix:update(snapshot("Fight",0.8,{other}));assert(attributes.LastEvent=="pinball_bounce","An unowned bounce made a Pinball sound")
     end)
     test("RoundOver and MatchOver use result crash eligibility and reset on next Pick",function()
         local mix,calls=fixture()
@@ -8538,6 +8629,26 @@ return function(View, World, Simulation)
         f.phase,f.phaseLeft="Windup",1;advance(s,0.1);assert(lit()==10,"Gauge went dark during the windup")
         f.phase,f.phaseLeft="Recover",2;advance(s,0.1)
         assert(lit()==0 and view.fighters[1].model:GetAttribute("AttackLoaded")==false,"Gauge stayed lit while banking away")
+    end)
+    test("each power shows its own equipment: ball, beam, jet and aura",function(view,cues,advance,snapshot)
+        local s=snapshot(440,"Fight",3,3);local sim=s.simulation;local f=sim.fighters[1]
+        f.vx=20;f.phase,f.phaseLeft="Recover",2
+        sim.projectiles={{id=1,owner=1,x=0,y=50,vx=60,vy=0,life=2,radius=3.2,source="pinball",bounces=3}}
+        advance(s,0.1)
+        local ball;for _,rocket in pairs(view.rockets) do ball=rocket end
+        assert(ball and ball.ball.Transparency&lt;0.5 and ball.body.Transparency==1 and ball.nose.Transparency==1,"Pinball's ball looked like a rocket")
+        sim.projectiles={{id=2,owner=1,x=0,y=50,vx=60,vy=0,life=2,radius=3.5}}
+        advance(s,0.1)
+        local rocket;for _,item in pairs(view.rockets) do rocket=item end
+        assert(rocket.ball.Transparency==1 and rocket.body.Transparency==0,"A rocket looked like Pinball's ball")
+        local me=view.fighters[1]
+        assert(me.magnetBeam.Transparency==1 and me.burnerFlames[1].Transparency==1 and me.windAura.Transparency==1,"A power effect showed with no power active")
+        f.magnetLeft=0.5;advance(s,0.1)
+        assert(me.magnetBeam.Transparency&lt;0.5 and me.magnetBeam.Size.X&gt;20,"Magnet drew no beam to the rival")
+        f.magnetLeft=0;f.boostLeft=0.8;advance(s,0.1)
+        assert(me.magnetBeam.Transparency==1 and me.burnerFlames[1].Transparency&lt;0.5 and me.burnerFlames[1].Size.X&gt;15,"Afterburner drew no jet")
+        f.boostLeft=0;f.secondWind=true;advance(s,0.1)
+        assert(me.burnerFlames[1].Transparency==1 and me.windAura.Transparency&lt;0.6,"Second Wind drew no aura")
     end)
     return string.format("BattleView: %d native presentation tests passed",passed)
 end
@@ -13713,6 +13824,12 @@ local COLORS = {
 	storm = Color3.fromRGB(86, 64, 150),
 }
 -- Same order as the hangar's paint swatch, so a pilot's paint carries over.
+-- Each power owns one colour, so a glance says which one just fired.
+local POWER = {
+	pinball = Color3.fromRGB(80, 215, 255), fizz = Color3.fromRGB(96, 255, 190),
+	magnet = Color3.fromRGB(255, 96, 200), wind = Color3.fromRGB(150, 255, 120),
+	burner = Color3.fromRGB(120, 200, 255), bumper = Color3.fromRGB(215, 255, 80),
+}
 local PLANE_COLORS = { COLORS.coral, COLORS.cyan, COLORS.yellow, COLORS.purple }
 local PLAYER_COLORS = { COLORS.coral, COLORS.cyan }
 local FAN_COLORS = { COLORS.coral, COLORS.cyan, COLORS.yellow, COLORS.cream, COLORS.purple }
@@ -13985,8 +14102,11 @@ local function makeRocket(parent)
 	local crossFin = part(model, "CrossFins", Vector3.new(1.6, 0.3, 3.2), CFrame.new(-1.65, 0, 0), COLORS.coral)
 	local exhaust = ellipsoid(model, "Exhaust", Vector3.new(3.5, 1.1, 1.1), CFrame.new(-4, 0, 0), COLORS.fire, Enum.Material.Neon)
 	local core = ellipsoid(model, "ExhaustCore", Vector3.new(2.6, 0.55, 0.55), CFrame.new(-3.5, 0, 0), COLORS.cream, Enum.Material.Neon)
+	-- The same pooled projectile can be a rocket, a tracer or Pinball's ball.
+	local ball = part(model, "PinballBall", Vector3.one * 6.4, CFrame.identity, POWER.pinball, Enum.Material.Neon, Enum.PartType.Ball)
+	local ballCore = part(model, "PinballCore", Vector3.one * 3.4, CFrame.new(0, 0, 0.4), COLORS.cream, Enum.Material.Neon, Enum.PartType.Ball)
 	local stripes = {}
-	local pieces = { body, nose, fin, crossFin, exhaust, core }
+	local pieces = { body, nose, fin, crossFin, exhaust, core, ball, ballCore }
 	for _, x in ipairs({ -0.8, 0.65 }) do
 		local stripe = part(model, "CandyStripe", Vector3.new(0.45, 1.72, 1.72), CFrame.new(x, 0, 0), COLORS.coral, nil, Enum.PartType.Cylinder)
 		table.insert(stripes, stripe)
@@ -14015,7 +14135,7 @@ local function makeRocket(parent)
 		Lifetime = NumberRange.new(0.35, 0.7), Speed = NumberRange.new(2, 9), Size = fade(1.5, 0),
 		LightEmission = 1, Color = ColorSequence.new(COLORS.yellow, COLORS.fire), ZOffset = 1,
 	})
-	return { fizz = fizz, model = model, body = body, nose = nose, fin = fin, crossFin = crossFin, trail = trail, pieces = pieces,
+	return { ball = ball, ballCore = ballCore, fizz = fizz, model = model, body = body, nose = nose, fin = fin, crossFin = crossFin, trail = trail, pieces = pieces,
 		stripes = stripes, sparks = sparks, exhaust = exhaust, core = core }
 end
 
@@ -14093,6 +14213,9 @@ function BattleView:_resetRound(roundId)
 		hide(fighter.magnetRing)
 		hide(fighter.windRing)
 		hide(fighter.loadRing)
+		hide(fighter.burnerFlames)
+		hide(fighter.magnetGrip)
+		fighter.magnetBeam.Transparency, fighter.windAura.Transparency = 1, 1
 		fighter.approachSpan = nil
 		hide(fighter.cometFlames)
 		hide(fighter.signatureSparks)
@@ -14262,6 +14385,16 @@ function BattleView:_fighter(id, index)
 			index == 1 and COLORS.fire or (index == 2 and COLORS.yellow or COLORS.cream), Enum.Material.Neon)
 		cometFlames[index].Transparency = 1
 	end
+	local burnerFlames = {}
+	for index = 1, 3 do
+		burnerFlames[index] = ellipsoid(fx, "AfterburnerFlame" .. index, Vector3.one, CFrame.identity,
+			index == 1 and POWER.burner or (index == 2 and COLORS.boost or COLORS.cream), Enum.Material.Neon)
+		burnerFlames[index].Transparency = 1
+	end
+	local magnetBeam = part(fx, "MagnetBeam", Vector3.one, CFrame.identity, POWER.magnet, Enum.Material.Neon)
+	magnetBeam.Transparency = 1
+	local windAura = ellipsoid(fx, "SecondWindAura", Vector3.one, CFrame.identity, POWER.wind, Enum.Material.ForceField)
+	windAura.Transparency = 1
 	local muzzleFlashes = {}
 	for index = 1, 2 do
 		muzzleFlashes[index] = ellipsoid(fx, "LauncherFlash" .. index, Vector3.one, CFrame.identity, COLORS.yellow, Enum.Material.Neon)
@@ -14315,6 +14448,8 @@ function BattleView:_fighter(id, index)
 		magnetRing = makeRing(fx, "MagnetPull", 10, Color3.fromRGB(255, 120, 190)),
 		windRing = makeRing(fx, "SecondWind", 10, Color3.fromRGB(130, 255, 190)),
 		loadRing = makeRing(fx, "AttackLoad", 10, color),
+		burnerFlames = burnerFlames, magnetBeam = magnetBeam, magnetGrip = makeRing(fx, "MagnetGrip", 8, POWER.magnet),
+		windAura = windAura,
 		scuff = scuff, debris = debris, crashLanded = false, index = index,
 	}
 	-- Smoke is positioned in world space and must never enlarge aircraft
@@ -14544,20 +14679,35 @@ function BattleView:_hit(fighter, x, y, source, actorColor)
 		if self.clock - fighter.lastHitBurst &lt; 0.12 then return end
 		fighter.lastHitBurst = self.clock
 	end
-	local color = source == "meteor" and COLORS.yellow or (source == "rocket" and actorColor and actorColor:Lerp(COLORS.cream, 0.55) or COLORS.cream)
+	local color = source == "meteor" and COLORS.yellow or (source == "pinball" and POWER.pinball or (source == "wake" and POWER.fizz
+		or (source == "rocket" and actorColor and actorColor:Lerp(COLORS.cream, 0.55) or COLORS.cream)))
 	self:_burst(x, y, color, true, source)
 	x, y = numeric(x, 0), numeric(y, CENTER_Y)
 	if source == "meteor" then
-		self:_particles(x, y, COLORS.fire, 46, 12, 16, 70)
-		self:_jolt(3.4, 1, 0.1, 0.55, 0.7)
+		-- A slam: fire, black smoke and the longest freeze in the game.
+		self:_particles(x, y, COLORS.fire, 70, 22, 28, 85)
+		self:_jolt(5, 1, 0.15, 0.75, 0.8)
 	elseif source == "rocket" then
 		-- A firework is supposed to burst: a big ball of the shooter's colour.
-		self:_particles(x, y, actorColor or COLORS.yellow, 70, 8, 8, 95)
-		self:_particles(x, y, COLORS.yellow, 30, 0, 0, 55)
-		self:_jolt(2.6, 0.85, 0.08, 0.45, 0.7)
+		self:_particles(x, y, actorColor or COLORS.yellow, 90, 8, 10, 110)
+		self:_particles(x, y, COLORS.yellow, 40, 0, 0, 60)
+		self:_jolt(3.6, 0.9, 0.1, 0.6, 0.75)
+	elseif source == "pinball" then
+		-- An arcade smack: a clean electric-blue star, no smoke.
+		self:_particles(x, y, POWER.pinball, 80, 0, 0, 120)
+		self:_particles(x, y, COLORS.cream, 30, 0, 0, 50)
+		self:_jolt(3.8, 0.95, 0.12, 0.6, 0.75)
+	elseif source == "machinegun" then
+		-- The burst chews through: hot sparks and shrapnel smoke.
+		self:_particles(x, y, COLORS.yellow, 60, 14, 6, 90)
+		self:_jolt(3.2, 0.8, 0.08, 0.45, 0.65)
+	elseif source == "wake" then
+		-- The cloud pops in a green splash.
+		self:_particles(x, y, POWER.fizz, 70, 10, 0, 70)
+		self:_jolt(3, 0.8, 0.08, 0.45, 0.6)
 	else
-		self:_particles(x, y, color, 34, 8, 8, 60)
-		self:_jolt(2.2, 0.7, 0.07, 0.35, 0.5)
+		self:_particles(x, y, color, 44, 10, 10, 70)
+		self:_jolt(3, 0.8, 0.08, 0.45, 0.6)
 	end
 end
 
@@ -14597,12 +14747,29 @@ function BattleView:_events(simulation)
 					self:_particles(x, y, COLORS.yellow, 5, 0, 0, 16)
 				elseif kind == "ricochet" then
 					if actor then actor.shotTime = self.clock end
-					self:_burst(x, y, Color3.fromRGB(110, 220, 255), false, "dive", numeric(event.heading, 0))
-					self:_jolt(0.5, 0.15, 0, 0, 0.1)
+					self:_burst(x, y, POWER.pinball, false, "dive", numeric(event.heading, 0))
+					self:_particles(x, y, POWER.pinball, 24, 0, 0, 55)
+					self:_jolt(1, 0.3, 0, 0.1, 0.15)
+				elseif kind == "bounce" and event.source == "pinball" then
+					-- Every wall the ball touches lights up, so the path can be followed.
+					self:_burst(x, y, POWER.pinball, true)
+					self:_particles(x, y, POWER.pinball, 36, 0, 0, 75)
+					self:_jolt(1.6, 0.4, 0, 0.12, 0.2)
 				elseif kind == "skill" and event.skillId == "Magnet" and actor then
 					actor.magnetTime = self.clock
+					self:_burst(x, y, POWER.magnet, false)
+					self:_jolt(1.2, 0.35, 0, 0.1, 0.2)
 				elseif kind == "skill" and event.skillId == "SecondWind" and actor then
 					actor.secondWindTime = self.clock
+					self:_burst(x, y, POWER.wind, true)
+					self:_particles(x, y, POWER.wind, 60, 0, 0, 80)
+					self:_jolt(2.4, 0.6, 0.08, 0.3, 0.6)
+				elseif kind == "skill" and event.skillId == "Afterburner" then
+					-- The burner lights with a bang right behind the plane.
+					self:_particles(x, y, POWER.burner, 40, 6, 24, 70)
+					self:_jolt(1.4, 0.4, 0, 0.12, 0.25)
+				elseif kind == "skill" and event.skillId == "FizzyFuel" then
+					self:_particles(x, y, POWER.fizz, 30, 0, 0, 45)
 				elseif kind == "miss" and actor and actor.offenceId == "Meteor" then
 					self:_particles(x, y, COLORS.fire, 7, 3, 0, 14)
 				elseif kind == "miss" and actor and actor.offenceId == "Firework" then
@@ -14610,9 +14777,10 @@ function BattleView:_events(simulation)
 					self:_particles(x, y, actor.color, 26, 6, 0, 45)
 				elseif kind == "blocked" then
 					if actor then actor.blockTime = self.clock end
-					self:_burst(x, y, COLORS.yellow, false)
-					self:_particles(x, y, COLORS.yellow, 30, 0, 0, 65)
-					self:_jolt(1.6, 0.5, 0.05, 0.15, 0.4)
+					-- The spring fires both planes apart in a ring of lime sparks.
+					self:_burst(x, y, POWER.bumper, true)
+					self:_particles(x, y, POWER.bumper, 70, 0, 0, 110)
+					self:_jolt(3.2, 0.8, 0.1, 0.4, 0.6)
 				elseif kind == "bounce" or kind == "wall" or kind == "bump" then
 					self:_burst(x, y, COLORS.steel, false)
 					self:_particles(x, y, COLORS.cream, 12, 3, 0, 40)
@@ -14647,12 +14815,19 @@ function BattleView:_signatureEffects(fighter, state, simulation, moving, pose)
 		piece.Transparency = (windup or armed or shooting) and (0.05 + (1 - charge) * 0.15) or 0.62
 		if not meteor and windup then piece.Transparency = 0.15 + (math.sin(self.clock * 24 + index * math.pi) + 1) * 0.2 end
 	end
-	if (meteor or fighter.offenceId == "Pinball") and (windup or armed) then
+	if meteor and (windup or armed) then
 		local shellCharge = armed and 1 or charge
 		fighter.chargeShell.Size = Vector3.new(8 + shellCharge * 3.5, 3.6 + shellCharge * 2.6, 3.4 + shellCharge * 2.2) * SCALE * fighter.visualScale
 		fighter.chargeShell.CFrame = pose * mount(fighter, "Centre")
-		fighter.chargeShell.Color = fighter.offenceId == "Pinball" and Color3.fromRGB(110, 220, 255) or (armed and COLORS.yellow or COLORS.fire)
+		fighter.chargeShell.Color = armed and COLORS.yellow or COLORS.fire
 		fighter.chargeShell.Transparency = armed and 0.62 or (0.92 - charge * 0.35)
+	elseif fighter.offenceId == "Pinball" and windup then
+		-- The ball swells on the nose until it is ready to fly.
+		local size = (1.2 + charge * 5.2) * (self.reducedMotion and 1 or 1 + math.sin(self.clock * 26) * 0.06)
+		fighter.chargeShell.Size = Vector3.one * size
+		fighter.chargeShell.CFrame = pose * mount(fighter, "Nose") * CFrame.new(size * 0.45, 0, 0)
+		fighter.chargeShell.Color = POWER.pinball
+		fighter.chargeShell.Transparency = 0.25
 	else
 		fighter.chargeShell.Transparency = 1
 	end
@@ -14735,21 +14910,54 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 		if boosted then
 			local side = index == 1 and -1 or 1
 			local length = 6 + math.sin(self.clock * 28 + index) * 2
-			streak.Size = Vector3.new(length, 0.36, 0.25)
-			streak.CFrame = displayPose * mount(fighter, "Tail") * CFrame.new(-length * 0.2, side * 3.1, 3)
-			streak.Color, streak.Transparency = COLORS.boost, 0.18
+			streak.Size = Vector3.new(length * 2.2, 0.5, 0.25)
+			streak.CFrame = displayPose * mount(fighter, "Tail") * CFrame.new(-length * 0.6, side * 3.1, 3)
+			streak.Color, streak.Transparency = COLORS.boost, 0.1
 		else
 			streak.Transparency = 1
 		end
 	end
+	-- Afterburner: a long blue-white jet out of the tail for as long as it burns.
+	for index, flame in ipairs(fighter.burnerFlames) do
+		if boosted then
+			local flicker = self.reducedMotion and 1 or 1 + math.sin(self.clock * 40 + index * 2) * 0.15
+			local length = (30 - index * 7) * flicker
+			local width = 5.2 - index * 1.3
+			flame.Size = Vector3.new(length, width, width * 0.8)
+			flame.CFrame = displayPose * mount(fighter, "Tail") * CFrame.new(-length * 0.42, 0, index * 0.2)
+			flame.Transparency = 0.3 - index * 0.08
+		else flame.Transparency = 1 end
+	end
+	-- Magnet: a hot-pink beam from the owner clamps a ring onto the rival.
 	local magnet = moving and numeric(state.magnetLeft, 0) &gt; self.sampleAge
 	local secondWindAge = self.clock - fighter.secondWindTime
+	local rival = self.fighters[state.id == 1 and 2 or 1]
 	if magnet then
-		ring(fighter.magnetRing, center, 9 + math.sin(self.clock * 6) * 1.2, Color3.fromRGB(255, 120, 190), 0.4, -self.clock * 0.8, 0.32)
-	else hide(fighter.magnetRing) end
+		ring(fighter.magnetRing, center, 9 + math.sin(self.clock * 6) * 1.2, POWER.magnet, 0.25, -self.clock * 0.8, 0.5)
+		if rival and rival.position then
+			local from, to = center, rival.position + Vector3.new(0, 0, 9)
+			local span = to - from
+			local wobble = self.reducedMotion and 1 or 1 + math.sin(self.clock * 50) * 0.3
+			fighter.magnetBeam.Size = Vector3.new(span.Magnitude, 1.5 * wobble, 0.3)
+			fighter.magnetBeam.CFrame = CFrame.new((from + to) / 2) * CFrame.Angles(0, 0, math.atan2(span.Y, span.X))
+			fighter.magnetBeam.Transparency = 0.2
+			ring(fighter.magnetGrip, to, 7.5 - (self.clock * 14 % 3), POWER.magnet, 0.1, self.clock * 3, 0.6)
+		end
+	else
+		hide(fighter.magnetRing); hide(fighter.magnetGrip)
+		fighter.magnetBeam.Transparency = 1
+	end
+	-- Second Wind: the whole plane burns green from the moment it wakes up.
 	if moving and state.secondWind == true then
-		ring(fighter.windRing, center, 8.4, Color3.fromRGB(130, 255, 190), 0.45, self.reducedMotion and 0 or self.clock * 0.6, 0.24)
-	else hide(fighter.windRing) end
+		local beat = self.reducedMotion and 0 or math.sin(self.clock * 9)
+		ring(fighter.windRing, center, 8.4 + beat * 0.6, POWER.wind, 0.3, self.reducedMotion and 0 or self.clock * 1.4, 0.4)
+		fighter.windAura.Size = Vector3.new(15, 9.5, 9) * (1 + beat * 0.06) * SCALE * fighter.visualScale
+		fighter.windAura.CFrame = displayPose * mount(fighter, "Centre")
+		fighter.windAura.Transparency = 0.35
+	else
+		hide(fighter.windRing)
+		fighter.windAura.Transparency = 1
+	end
 	-- The load gauge rides on the plane: it fills piece by piece while the
 	-- plane circles with nothing to fire, then snaps full and bright the moment
 	-- the attack is loaded. An empty ring means a pass is only a pass.
@@ -14775,9 +14983,10 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 	elseif blockAge &lt; 0.45 then tell = "BOING!"
 	elseif secondWindAge &lt; 0.85 then tell = "SECOND WIND!"
 	elseif magnet then tell = "PULL!"
+	elseif boosted then tell = "ZOOM!"
 	elseif windup then tell = offence and offence.windupTell or "LOCKED ON"
 	elseif moving and state.phase == "Attack" then tell = offence and offence.attackTell or "FIRE!"
-	elseif boosted then tell = "BOOST!" end
+	end
 	fighter.gui.Enabled = tell ~= nil
 	if tell and tell ~= fighter.label.Text then fighter.tellTime = self.realClock end
 	fighter.label.Text = tell or ""
@@ -14822,10 +15031,11 @@ function BattleView:_wakes(simulation, moving)
 		local edgeColor = owner and owner.color or COLORS.fire
 		-- Keep the authoritative collision footprint fixed as it fades. These
 		-- bright discs are hazardous, unlike the thin cosmetic contrails.
-		wake.disc.Size = Vector3.new(0.16, radius * 2, radius * 2)
+		local bubble = self.reducedMotion and 1 or 1 + math.sin(self.clock * 7 + numeric(tonumber(entry.id), 0) * 1.7) * 0.07
+		wake.disc.Size = Vector3.new(0.16, radius * 2 * bubble, radius * 2 * bubble)
 		wake.disc.CFrame = CFrame.new(center) * CFrame.Angles(0, math.pi / 2, 0)
-		wake.disc.Color = arming and COLORS.yellow or COLORS.fire
-		wake.disc.Transparency = life &lt;= 0 and 1 or (arming and 0.8 or (0.5 + (1 - fraction) * 0.25))
+		wake.disc.Color = arming and COLORS.cream or POWER.fizz
+		wake.disc.Transparency = life &lt;= 0 and 1 or (arming and 0.8 or (0.3 + (1 - fraction) * 0.4))
 		ring(wake.edge, center + Vector3.new(0, 0, 0.2), radius, edgeColor,
 			life &lt;= 0 and 1 or (arming and 0.5 or (0.12 + (1 - fraction) * 0.35)), self.clock * 0.5, 0.36)
 	end
@@ -15121,6 +15331,12 @@ function BattleView:update(snapshot, dt, viewportRect)
 		local owner = self.fighters[state.owner or state.actor]
 		local color = owner and owner.color or PLAYER_COLORS[tonumber(state.owner) or 1] or COLORS.yellow
 		local tracer = state.source == "machinegun"
+		local ball = state.source == "pinball"
+		local squash = (ball and not self.reducedMotion) and 1 + 0.12 * math.sin(self.clock * 30) or 1
+		rocket.ball.Size = Vector3.new(6.4 * squash, 6.4 / squash, 6.4)
+		rocket.ball.Transparency, rocket.ballCore.Transparency = ball and 0.15 or 1, ball and 0 or 1
+		rocket.body.Transparency = ball and 1 or 0
+		if ball then tracer = true end
 		rocket.body.Size = tracer and Vector3.new(3.4, 0.36, 0.36) or Vector3.new(5, 1.65, 1.65)
 		rocket.body.Material = tracer and Enum.Material.Neon or Enum.Material.SmoothPlastic
 		rocket.body.Color = tracer and COLORS.yellow or COLORS.cream
@@ -15149,9 +15365,9 @@ function BattleView:update(snapshot, dt, viewportRect)
 			spark.Transparency = moving and not tracer and not self.reducedMotion and progress or 1
 		end
 		rocket.trail.Enabled = moving
-		rocket.trail.Color = ColorSequence.new(color, COLORS.cream)
-		rocket.trail.Lifetime = tracer and 0.12 or 0.55
-		rocket.trail.WidthScale = NumberSequence.new(tracer and 0.25 or 1, 0)
+		rocket.trail.Color = ColorSequence.new(ball and POWER.pinball or color, COLORS.cream)
+		rocket.trail.Lifetime = ball and 0.9 or (tracer and 0.12 or 0.55)
+		rocket.trail.WidthScale = NumberSequence.new(ball and 4 or (tracer and 0.25 or 1), 0)
 		rocket.fizz.Rate = moving and not tracer and not self.reducedMotion and 55 or 0
 		rocket.fizz.Color = ColorSequence.new(COLORS.cream, color)
 	end
@@ -15333,13 +15549,16 @@ local KINDS = {
     launch=true, windup=true, dive=true, rocket=true, hit=true, bump=true,
     bumper_block=true, wake_hit=true, afterburner=true, finish=true, knockout=true,
     burst=true, tracer_hit=true, ricochet=true, magnet=true, secondwind=true,
+    fizz=true, pinball_bounce=true,
 }
 local function finite(value)
     return type(value)=="number" and value==value and value&gt;-math.huge and value&lt;math.huge
 end
 local function audibleKind(event)
     if event.kind=="skill" then
-        return ({Afterburner="afterburner",Magnet="magnet",SecondWind="secondwind"})[event.skillId]
+        return ({Afterburner="afterburner",Magnet="magnet",SecondWind="secondwind",FizzyFuel="fizz"})[event.skillId]
+    elseif event.kind=="bounce" then
+        return event.source=="pinball" and "pinball_bounce" or nil
     elseif event.kind=="blocked" then
         return event.skillId=="SpringBumper" and "bumper_block" or nil
     end
@@ -15588,16 +15807,32 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
         -- Connections are light ticks; only the threshold event breaks armor.
         voice("chime",0.065,2.1,0.08)
     elseif kind=="ricochet" then
-        voice("jump",0.22,0.8,0.24,1.9); shot("comic",0.4,1.4)
+        -- Pinball is the arcade power: a flipper thwack and a rising bleep.
+        voice("jump",0.24,0.8,0.24,2.2); voice("chime",0.16,1.2,0.2,2.4)
+        shot("comic",0.5,1.5); shot("click",0.4,0.8)
+    elseif kind=="pinball_bounce" then
+        -- Each wall is a bumper: a bright ping that climbs with every bounce.
+        voice("chime",0.2,1.9,0.16,2.6); voice("land",0.1,2.2,0.08)
+        shot("beep",0.35,2.2); shot("comic",0.3,1.8)
     elseif kind=="magnet" then
-        voice("jump",0.13,1.6,0.35,0.7); voice("chime",0.1,0.8,0.3)
+        -- A heavy electric hum that drops as the rival is dragged in.
+        voice("jump",0.22,1.9,0.6,0.45); voice("chime",0.14,0.6,0.5,0.4)
+        shot("sub",0.5,1.3); shot("rise",0.35,0.7)
     elseif kind=="secondwind" then
-        voice("chime",0.18,0.9,0.5,1.7); shot("whoosh",0.22,1.2)
+        -- The comeback: thunder, a rising rush and the crowd on its feet.
+        voice("chime",0.22,0.9,0.6,1.9)
+        shot("thunder",0.7,1.1); shot("rise",0.45,1.3); shot("cheer",0.4,1.1)
+    elseif kind=="fizz" then
+        -- A shaken can: a hiss and a pop.
+        voice("land",0.1,2.6,0.25,1.6)
+        shot("ignite",0.3,1.9); shot("click",0.3,1.3)
     elseif kind=="hit" then
         if event.source=="machinegun" then
             voice("land",0.2,1.4,0.16); shot("punch",0.55,1.35); shot("thump",0.35,1.3)
         elseif event.source=="pinball" then
-            voice("jump",0.2,1.3,0.25,0.7); shot("comic",0.5,0.85); shot("thump",0.6,1.2)
+            -- Jackpot: the smack, then a falling arcade trill.
+            voice("jump",0.26,2.0,0.3,0.6); voice("chime",0.2,2.4,0.3,1.2)
+            shot("comic",0.65,0.85); shot("thump",0.7,1.2); shot("beep",0.3,1.6)
         elseif event.source=="meteor" then
             voice("boom",0.30,0.8,0.46,0.55)
             voice("land",0.30,0.55,0.18)
@@ -15609,18 +15844,23 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
             -- A rocket: the bang first, then the same body blow underneath.
             shot("blast",0.7,1.1); shot("thump",0.55,1.1); shot("punch",0.4,1.15)
         end
-        -- Every damaging hit breaks one armor pip and the crowd feels it.
-        shot("shatter",0.34,1.1); shot("gasp",0.3,1)
+        -- Every damaging hit breaks one armor pip: glass, a deep body blow
+        -- under it, and the crowd feels it.
+        shot("shatter",0.42,1.1); shot("sub",0.55,1.15); shot("gasp",0.34,1)
     elseif kind=="bumper_block" then
-        voice("jump",0.27,0.85,0.4,1.9)
-        voice("chime",0.12,1.6,0.28)
-        shot("comic",0.6,1)
+        -- A giant spring: the boing, then a metal clang as both planes fly apart.
+        voice("jump",0.32,0.7,0.5,2.3)
+        voice("chime",0.16,1.6,0.3)
+        shot("comic",0.75,0.8); shot("crunch",0.45,1.4)
     elseif kind=="wake_hit" then
-        voice("land",0.23,1.25,0.2)
-        voice("boom",0.17,1.8,0.3,1.1)
-        shot("punch",0.4,1.3); shot("shatter",0.26,1.3)
+        -- The cloud bursts: a wet pop and a hiss, then the armor cracks.
+        voice("land",0.26,1.6,0.2)
+        voice("boom",0.2,2.2,0.3,1.2)
+        shot("ignite",0.45,1.7); shot("punch",0.45,1.3); shot("shatter",0.34,1.3); shot("sub",0.4,1.3)
     elseif kind=="afterburner" then
-        voice("jump",0.17,0.65,0.32,1.8)
+        -- A jet lighting: ignition roar and a long fly-by.
+        voice("jump",0.24,0.5,0.5,2.0)
+        shot("ignite",0.7,0.75); shot("whoosh",0.6,1.3)
     elseif kind=="bump" then
         -- A normal collision pushes without armor loss: never use the hit mix.
         voice("land",0.065,1.55,0.11)

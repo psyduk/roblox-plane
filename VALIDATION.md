@@ -1,3 +1,26 @@
+# Distinct, stronger powers — October 10, 2026 (not published)
+
+Playtest feedback was that the powers do not feel powerful or different. Measured before this change: Pinball and Meteor were both "back off, then ram at speed 65", and three of five wild cards had no visible moment (single-card lift: Afterburner 0, Fizzy Fuel +2.5, Magnet +5.5, Second Wind +9.5, Spring Bumper +15 points).
+
+**Rules**
+- **Pinball** no longer rams. The plane swells a ball on its nose, aims at the rival's reflection in the nearest wall and fires. The ball bounces off the arena edges up to three times and removes one armor on contact.
+- **Afterburner (rush):** after its owner attacks, the plane jets away at 56 (was 44) and its trip back to the next attack is 5% shorter. Larger hurry values made it the automatic pick (+22 points at 10%).
+- **Spring Bumper (block):** unchanged block; the recoil that delays the next attack is 1.4 s (was 0.7 s).
+- **Fizzy Fuel (trap):** each attack lays a wall of up to six clouds, radius 3.6 (was 2.5), that hang for 2.2 s (was 0.9 s).
+- **Magnet (pull):** yanks only the rival toward the owner at 30 studs/s for 0.8 s. Before, both planes drifted together at 7.
+- **Second Wind (comeback):** rule unchanged.
+- **Every hit** throws the target at 36 (was 22). Machine Gun `earliest` 1.0 → 0.95, Pinball 1.7 → 1.15 with default approach and recovery times.
+
+**Look and sound.** Each power has its own colour, effect and sound: Pinball's electric-blue ball with a wide trail, a flash and ping on every wall, and an arcade smack on a hit; Afterburner's long blue jet and ignition roar; Spring Bumper's lime ring, boing and clang; Fizzy Fuel's bubbling green clouds, hiss and wet pop; Magnet's pink beam with a ring clamped on the rival and a falling hum; Second Wind's green aura, thunder and crowd. Hits have more sparks, shake, freeze and a sub-bass thump, and each attack's hit looks different.
+
+**Numbers** (standard sampler, 30 seeds, 8,640 bare rounds): Meteor 48.9%, Firework 50.6%, Machine Gun 51.5%, Pinball 49.0%. Single-card lift (10 seeds, one angle): Afterburner +13.3, Spring Bumper +13.0, Second Wind +10.0, Fizzy Fuel +8.3, Magnet +7.2 points.
+
+- **Checks:** 46 simulation tests (4 new or rewritten for the ball, bounces, the yank and the rush), 5 catalog, 35 match, 12 client, 48 server scenarios. In local Studio: 46 simulation, 14 view (1 new: ball, beam, jet and aura each show only when active) and 24 audio tests pass natively. One three-round bot match was played with Pinball, Magnet and Fizzy Fuel, with no script errors. [Ball after a wall bounce](previews/distinct-powers-1-pinball-ball.jpg), [aiming](previews/distinct-powers-2-pinball-aiming.jpg).
+- **Known problems:** Magnet makes Pinball worse (about −10 points), because the yank drags the rival off the banked shot. Several two-card builds exceed 65% against bare planes in the quick sample. Balance remains timing-sensitive: a 0.05–0.15 s change to one attack's `earliest` moves its field score by 5–15 points.
+- **Not checked:** how any of it sounds (no audio was heard), the Magnet beam, cloud wall, jet and aura on screen in a live fight (stills did not catch them; the native view test covers them), a phone, two human clients.
+
+---
+
 # Version 12 publication — circle, then strike, October 10, 2026
 
 **Skybound Test version 12 is published**, place `86507299893768`, universe `10770074500`, at **2026-10-11T02:47:04Z** (October 10, 19:47:04 PDT). Source commit: **`70cc5d22f3a2d1c0d9e4d3037a0a853cfe0df5a8`**, containing implementation `a4f2546`. Studio confirmed publication and Playtester availability. Access settings were unchanged. [Publication proof](docs/validation/qa-2026-10-10/published-version-12.jpg), [current manifest](docs/validation/sky-battle-build.json).
