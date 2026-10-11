@@ -488,9 +488,15 @@ BattleSkills.wild.Thief = {
 		for _, id in ipairs(fighter.wildIds) do mine[#mine + 1] = id end
 		table.sort(mine)
 		target.wildIds, fighter.wildIds = kept, mine
-		-- The card stops working for its old owner and starts fresh for the thief.
-		target.bumperReady, target.chickenReady, target.secondWind, target.wrapShots = false, false, false, false
-		target.magnetLeft, target._boostPending, target._wakeLeft = 0, false, 0
+		-- Stop only the stolen card; the rival's other card keeps its state.
+		-- Existing shots/clouds and an already-ejected pilot keep their form.
+		if taken == "Afterburner" then target._boostPending, target.boostLeft, target.tempo = false, 0, nil
+		elseif taken == "SpringBumper" then target.bumperReady = false
+		elseif taken == "Chicken" then target.chickenReady = false
+		elseif taken == "SecondWind" then target.secondWind = false
+		elseif taken == "Wrap" then target.wrapShots = false
+		elseif taken == "Magnet" then target.magnetLeft = 0
+		elseif taken == "FizzyFuel" then target._wakeLeft, target._wakeNext = 0, 0 end
 		if BattleSkills.wild[taken].start then BattleSkills.wild[taken].start(api, state, fighter) end
 		api.event(state, "skill", fighter.x, fighter.y, fighter.id, target.id, "thief", "Thief").stolen = taken
 	end,

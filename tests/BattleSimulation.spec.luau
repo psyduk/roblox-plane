@@ -1117,6 +1117,31 @@ return function(Simulation, Catalog, Skills)
 		check(#nothing.fighters[2].wildIds == 1 and nothing.fighters[1].thiefReady, "A plane-shaping card was stolen")
 	end)
 
+	test("Thief stops only the stolen power and the retained power still works", function()
+		for _, cards in ipairs({ { "Afterburner", "Chicken" }, { "Chicken", "Wrap" } }) do
+			local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Thief" } }, { offenceId = "Firework", wildIds = cards })
+			local a, b = state.fighters[1], state.fighters[2]
+			passive(a, -40, 80, 0); passive(b, 30, 50, 0)
+			if cards[1] == "Afterburner" then b._boostPending, b.boostLeft, b.tempo = true, 0.6, Skills.wild.Afterburner.tempo end
+			shoot(state, 30, 50)
+			check(said(state, "skill", "Thief").stolen == cards[1] and #b.wildIds == 1 and b.wildIds[1] == cards[2], "The wrong card changed hands")
+			if cards[2] == "Chicken" then
+				check(b.chickenReady, "Stealing Afterburner disabled the retained Chicken")
+				check(not b._boostPending and b.boostLeft == 0 and b.tempo == nil, "The stolen Afterburner kept rushing")
+				passive(a, -40, 80, 0); passive(b, 30, 50, 0)
+				state.projectiles = { projectile(999, 2, -36, 80, -60, 0) }
+				Simulation.step(state, Simulation.FIXED_DT)
+				check(a.chickenLeft == Skills.wild.Chicken.duration and not b.chickenReady, "The retained Chicken could not trigger")
+			else
+				check(not b.chickenReady and b.wrapShots, "Stealing Chicken disabled the retained Wrap")
+				passive(a, -40, 80, 0); passive(b, 30, 50, 0)
+				state.projectiles = {}; b.phase, b.phaseLeft = "Windup", 0
+				Simulation.step(state, Simulation.FIXED_DT)
+				check(state.projectiles[1] and state.projectiles[1].owner == 2 and state.projectiles[1].wraps == 2, "The retained Wrap could not mark its next shot")
+			end
+		end
+	end)
+
 	test("Boomerang flies out, turns back to its thrower and is caught", function()
 		local state = Simulation.newRound(4, { offenceId = "Boomerang" }, { offenceId = "Firework" })
 		local a, b = state.fighters[1], state.fighters[2]
