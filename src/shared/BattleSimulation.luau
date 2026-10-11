@@ -123,6 +123,15 @@ local function bodies(fighter, x, y, heading)
 	return list
 end
 
+-- Where a fighter's decoy flies: level with the plane and off to one side.
+-- Returns nothing while the decoy is popped or was never brought.
+local function decoyAt(state, fighter, x, y, heading)
+	if not fighter.decoyUp or fighter.armor <= 0 then return nil end
+	local side = fighter.decoySide or 1
+	return clamp(x - math.sin(heading) * 14 * side, state.bounds.left, state.bounds.right),
+		clamp(y + math.cos(heading) * 14 * side, state.bounds.bottom, state.bounds.top)
+end
+
 local function event(state, kind, x, y, actor, target, source, skillId)
 	state.eventSerial = state.eventSerial + 1
 	local entry = {
@@ -170,6 +179,7 @@ function api.launch(state, fighter, projectile)
 		state._projectileSerial = state._projectileSerial + 1
 		shot.id, shot.owner = state._projectileSerial, fighter.id
 		shot.x, shot.y = leaderX + body.x, leaderY + body.y
+		if fighter.wrapShots then shot.wraps, shot.life = 2, shot.life + 1 end
 		state.projectiles[#state.projectiles + 1] = shot
 	end
 	return projectile
@@ -316,7 +326,7 @@ local function beginAttack(state, fighter, opponent)
 	fighter.phaseLeft = offence.attackTime
 	fighter.armed = offence.ram ~= nil
 	fighter.attacks = fighter.attacks + 1
-	fighter._attackHit = false
+	fighter._attackHit, fighter._wrapped = false, false
 	wild(fighter, "attack", state, fighter, opponent)
 	-- The direction is locked for the whole attack; no homing after launch.
 	fighter._attackHeading = fighter.heading
@@ -439,6 +449,16 @@ local function damage(state, actorId, targetId, x, y, dirX, dirY, source, skillI
 	actor.hits = actor.hits + 1
 	actor._attackHit = true
 	event(state, source == "wake" and "wake_hit" or "hit", x, y, actorId, targetId, source, skillId).amount = amount
+	-- A hot potato always jumps to whoever was hit last.
+	for _, potato in ipairs(state.potatoes or {}) do
+		if potato.holder ~= targetId and targetId == potato.owner and potato.grace > 0 then
+			-- The first hit on the bomb's owner does not hand it over.
+			potato.grace = potato.grace - 1
+		elseif potato.holder ~= targetId then
+			potato.holder = targetId
+			event(state, "potato_pass", target.x, target.y, actorId, targetId, "potato", "HotPotato")
+		end
+	end
 	wild(target, "damaged", state, target, actor)
 	wild(actor, "landed", state, actor, target)
 	return true
@@ -454,7 +474,14 @@ local function tick(state)
 		previous[id] = { id = id, x = fighter.x, y = fighter.y, vx = fighter.vx, vy = fighter.vy, heading = fighter.heading }
 	end
 	-- Both plans read the same pre-tick snapshot, avoiding first-player bias.
-	for id, fighter in ipairs(state.fighters) do prepare(state, fighter, previous[3 - id], dt) end
+	-- A plane goes for whichever is nearer: its rival or its rival's decoy.
+	local function quarry(viewer, id)
+		local real = previous[id]
+		local x, y = decoyAt(state, state.fighters[id], real.x, real.y, real.heading)
+		if not x or (x - viewer.x) ^ 2 + (y - viewer.y) ^ 2 >= (real.x - viewer.x) ^ 2 + (real.y - viewer.y) ^ 2 then return real end
+		return { id = id, x = x, y = y, vx = real.vx, vy = real.vy, heading = real.heading }
+	end
+	for id, fighter in ipairs(state.fighters) do prepare(state, fighter, quarry(previous[id], 3 - id), dt) end
 	-- A live magnet yanks the rival toward its owner's attack: the nearest shot
 	-- the owner has in the air, or the owner's plane if there is none. The owner
 	-- is not moved, and projectiles and wakes are never touched. Cap final
@@ -485,7 +512,20 @@ local function tick(state)
 		fighter.x = clamp(x, state.bounds.left, state.bounds.right)
 		fighter.y = clamp(y, state.bounds.bottom, state.bounds.top)
 		edgeHit[id] = x ~= fighter.x or y ~= fighter.y
+		if fighter.wrapShots and fighter.phase == "Attack" and offenceOf(fighter).ram and not fighter._wrapped
+			and (x < state.bounds.left or x > state.bounds.right) then
+			-- A wrapping dive leaves one side of the arena and carries on from the other.
+			event(state, "wrap", fighter.x, fighter.y, id, 0, "plane", "Wrap")
+			fighter.x = x < state.bounds.left and state.bounds.right or state.bounds.left
+			fighter._wrapped, edgeHit[id] = true, false
+			local rival = state.fighters[3 - id]
+			fighter._attackHeading = atan2(rival.y - fighter.y, rival.x - fighter.x)
+			fighter.heading = fighter._attackHeading
+			previous[id].x, previous[id].y = fighter.x, fighter.y
+			event(state, "wrap", fighter.x, fighter.y, id, 0, "plane", "Wrap")
+		end
 		wild(fighter, "moved", state, fighter, dt)
+		fighter.decoyX, fighter.decoyY = decoyAt(state, fighter, fighter.x, fighter.y, fighter.heading)
 	end
 
 	local a, b = state.fighters[1], state.fighters[2]
@@ -543,15 +583,57 @@ local function tick(state)
 		end
 	end
 
+	-- An armed nose that reaches a decoy pops it and wastes the dive.
+	local function pop(target, x, y, actorId)
+		target.decoyUp, target.decoyLeft = false, Skills.wild.Decoy.cooldown
+		target.decoyX, target.decoyY = nil, nil
+		event(state, "decoy_pop", x, y, actorId, target.id, "decoy", "Decoy")
+	end
+	for id, fighter in ipairs(state.fighters) do
+		local opponent, otherOld = state.fighters[3 - id], previous[3 - id]
+		local x, y = decoyAt(state, opponent, opponent.x, opponent.y, opponent.heading)
+		if x and fighter.armed and not fighter._attackHit and not resolved[id] then
+			local oldX, oldY = decoyAt(state, opponent, otherOld.x, otherOld.y, otherOld.heading)
+			if sweep(previous[id].x, previous[id].y, fighter.x, fighter.y, oldX, oldY, x, y, fighter.radius + opponent.radius) then
+				pop(opponent, x, y, id)
+				fighter._attackHit = true
+			end
+		end
+	end
+
 	local surviving = {}
 	for _, projectile in ipairs(state.projectiles) do
+		if projectile.returnAfter then
+			-- A boomerang flies out, then curves back to wherever its thrower is now.
+			projectile.age = (projectile.age or 0) + dt
+			if projectile.age >= projectile.returnAfter then
+				local owner = state.fighters[projectile.owner]
+				local nx, ny = direction(owner.x - projectile.x, owner.y - projectile.y)
+				local blend = math.min(1, 5 * dt)
+				projectile.vx = projectile.vx + (nx * projectile.returnSpeed - projectile.vx) * blend
+				projectile.vy = projectile.vy + (ny * projectile.returnSpeed - projectile.vy) * blend
+				projectile.returning = true
+			end
+		end
 		local oldX, oldY = projectile.x, projectile.y
 		projectile.x, projectile.y = oldX + projectile.vx * dt, oldY + projectile.vy * dt
 		projectile.life = projectile.life - dt
 		local targetId = 3 - projectile.owner
 		local target, old = state.fighters[targetId], previous[targetId]
 		local hit = strike(oldX, oldY, projectile.x, projectile.y, targetId, projectile.radius or 3.5)
-		if hit then
+		local decoyX, decoyY = decoyAt(state, target, target.x, target.y, target.heading)
+		local fooled
+		if decoyX then
+			local wasX, wasY = decoyAt(state, target, old.x, old.y, old.heading)
+			fooled = sweep(oldX, oldY, projectile.x, projectile.y, wasX, wasY, decoyX, decoyY, target.radius + (projectile.radius or 3.5))
+		end
+		local thrower = state.fighters[projectile.owner]
+		if fooled and (not hit or fooled < hit) then
+			-- The shot is spent on the decoy.
+			pop(target, decoyX, decoyY, projectile.owner)
+		elseif projectile.returning and not hit and (projectile.x - thrower.x) ^ 2 + (projectile.y - thrower.y) ^ 2 < (thrower.radius + 4) ^ 2 then
+			event(state, "catch", projectile.x, projectile.y, projectile.owner, 0, projectile.source)
+		elseif hit then
 			local nx, ny = direction(projectile.vx, projectile.vy)
 			local successful, absorbed = false, false
 			local actor = state.fighters[projectile.owner]
@@ -583,6 +665,20 @@ local function tick(state)
 			-- Impact protection absorbs subsequent projectiles visibly at contact;
 			-- they never wait inside a protected plane to deal delayed damage.
 			if not successful and not absorbed then event(state, "miss", projectile.x, projectile.y, projectile.owner, targetId) end
+		elseif projectile.life > 0 and (projectile.wraps or 0) > 0 and (projectile.bounces or 0) <= 0 and (projectile.x < state.bounds.left or projectile.x > state.bounds.right
+			or projectile.y < state.bounds.bottom or projectile.y > state.bounds.top) then
+			-- A wrapping shot leaves one edge and comes back in the opposite one.
+			local b = state.bounds
+			event(state, "wrap", clamp(projectile.x, b.left, b.right), clamp(projectile.y, b.bottom, b.top), projectile.owner, 0, projectile.source, "Wrap")
+			if projectile.x < b.left then projectile.x = b.right elseif projectile.x > b.right then projectile.x = b.left end
+			if projectile.y < b.bottom then projectile.y = b.top elseif projectile.y > b.top then projectile.y = b.bottom end
+			projectile.wraps = projectile.wraps - 1
+			-- Coming back in, the shot turns once toward where the rival is now.
+			local speed = math.sqrt(projectile.vx ^ 2 + projectile.vy ^ 2)
+			local nx, ny = direction(target.x - projectile.x, target.y - projectile.y)
+			projectile.vx, projectile.vy = nx * speed, ny * speed
+			event(state, "wrap", projectile.x, projectile.y, projectile.owner, 0, projectile.source, "Wrap")
+			surviving[#surviving + 1] = projectile
 		elseif projectile.life > 0 and (projectile.bounces or 0) > 0 and (projectile.x < state.bounds.left or projectile.x > state.bounds.right
 			or projectile.y < state.bounds.bottom or projectile.y > state.bounds.top) then
 			-- A bouncing shot reflects off the visible arena edge and flies on.
@@ -628,6 +724,21 @@ local function tick(state)
 				event(state, "miss", fighter.x, fighter.y, id, 3 - id)
 			end
 			recover(state, fighter, state.fighters[3 - id])
+		end
+	end
+	-- A hot potato goes off in the hands of whoever holds it. Nothing blocks it.
+	for index = #(state.potatoes or {}), 1, -1 do
+		local potato = state.potatoes[index]
+		potato.left = potato.left - dt
+		if potato.left <= 0 then
+			local holder = state.fighters[potato.holder]
+			table.remove(state.potatoes, index)
+			if holder.armor > 0 then
+				holder.armor = holder.armor - 1
+				holder.invulnerable = BattleSimulation.IMPACT_PROTECTION
+				event(state, "potato", holder.x, holder.y, 3 - potato.holder, potato.holder, "potato", "HotPotato")
+				wild(holder, "damaged", state, holder, state.fighters[3 - potato.holder])
+			end
 		end
 	end
 	if a.armor <= 0 or b.armor <= 0 then

@@ -1,4 +1,42 @@
-# Second batch: Bug, Snowball, Swap, Gambler and the Sniper attack — October 10, 2026 (not committed, not published)
+# Third batch: Wrap, Hot Potato, Decoy, Thief and the Boomerang attack — October 10, 2026 (not committed, not published)
+
+Continues Linear AND-233. Fifteen of the nineteen planned powers now exist.
+
+**Rules**
+- **Wrap:** a shot that leaves the arena comes back in the opposite edge, up to twice, and turns once toward the rival as it re-enters. A diving plane wraps once the same way. A Pinball uses its bounces first.
+- **Hot Potato:** a bomb with a 10 s fuse starts on the rival and jumps to whoever is hit, except that the first hit on its owner does not count. When it goes off the holder loses 1 armor; Spring Bumper does not block it.
+- **Decoy:** a see-through copy flies 14 units to one side. A rival nearer the copy than the plane steers and aims at the copy. A shot or dive that reaches it is wasted and pops it; it returns after 6 s.
+- **Thief:** the first hit landed takes one wild card from the rival for the round. Cards that reshape a plane (Giant, Bug, Squadron, Snowball, Gambler, Vampire, Swap, Hot Potato, Decoy, Thief) cannot be taken.
+- **Boomerang (attack):** a blade flies out for 0.62 s, then curves back to wherever its thrower is and is caught. It hits the rival once, going or coming. It never hurts its thrower (the pitch said it could).
+- A pick now deals 5 attacks as well as 5 wild cards, from a roster of 6 attacks and 18 wild cards.
+- The server's per-player view now mirrors a decoy's position and a bomb's holder like every other position and seat.
+
+**Measured (24 seeds, both seats, against all six attacks with no wild card)**
+
+Attacks alone: Meteor 50%, Firework 55%, Machine Gun 54%, Pinball 46%, Sniper 43%, Boomerang 52%.
+
+| Card | Score |
+|---|---|
+| Decoy | 61% |
+| Hot Potato | 58% |
+| Wrap | 54% |
+| Thief, against a rival holding Spring Bumper | 43%, up from 37% with no card |
+
+First drafts that were changed: Wrap without the re-aim did nothing (46%) and broke Pinball's bank shot (19%); Hot Potato without the free first hit was a coin flip (50%).
+
+**Checks run**
+- 62 simulation tests (5 new) and 5 catalog tests; 33 match, 11 client and 48 server scenarios; native Studio 62 simulation, 14 view, 24 audio. All pass.
+- One staged fight watched in local Studio at desktop size: the see-through decoy beside the plane and the bomb with its countdown over the holder (`previews/planes-decoy-bomb.jpg`).
+
+**Not verified**
+- The card scores above were measured before the last small Boomerang and Sniper retune; the attack scores are current.
+- Not seen on screen: a shot wrapping, the bomb going off, a decoy popping, a card being stolen, the boomerang's curve. Tests cover the rules only.
+- After a theft the HUD chips still show each pilot's original cards.
+- Nothing was heard. No full match through the real draft, no phone-sized check, no human opponent.
+- Thief does nothing against a rival with no stealable card, which is every rival in round one.
+- Attack balance moves several points whenever a timing value changes; treat every number here as provisional until real play.
+
+# Second batch: Bug, Snowball, Swap, Gambler and the Sniper attack — October 10, 2026 (committed as `087a31b`, not published)
 
 Continues Linear AND-233. Ten of the nineteen planned powers now exist.
 

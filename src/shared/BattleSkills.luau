@@ -165,6 +165,7 @@ BattleSkills.offence.Pinball = {
 
 -- Rush: after you attack, the trip back to your next attack is much shorter.
 BattleSkills.wild.Afterburner = {
+	steal = true,
 	duration = 0.9, tempo = 0.95,
 	start = function(_, _, fighter)
 		fighter._boostPending = false
@@ -183,6 +184,7 @@ BattleSkills.wild.Afterburner = {
 
 -- Block: the first hit bounces off, at the cost of a slow turn back.
 BattleSkills.wild.SpringBumper = {
+	steal = true,
 	recoil = 1.4,
 	start = function(_, _, fighter)
 		fighter.bumperReady = true
@@ -203,6 +205,7 @@ BattleSkills.wild.SpringBumper = {
 
 -- Trap: every attack leaves a wall of fizz that hangs in the air.
 BattleSkills.wild.FizzyFuel = {
+	steal = true,
 	spill = 1.0, every = 0.18, cloudLife = 2.2, cloudRadius = 3.6,
 	start = function(_, _, fighter)
 		fighter._wakeLeft, fighter._wakeNext = 0, 0
@@ -227,6 +230,7 @@ BattleSkills.wild.FizzyFuel = {
 
 -- Pull: one hard yank drags the rival toward you as you strike.
 BattleSkills.wild.Magnet = {
+	steal = true,
 	duration = 0.8,
 	start = function(_, _, fighter) fighter.magnetLeft = 0 end,
 	attack = function(api, state, fighter)
@@ -237,6 +241,7 @@ BattleSkills.wild.Magnet = {
 
 -- Comeback: on the last armor the plane flies faster and attacks sooner.
 BattleSkills.wild.SecondWind = {
+	steal = true,
 	start = function(_, _, fighter) fighter.secondWind = false end,
 	damaged = function(api, state, fighter)
 		if fighter.armor ~= 1 or fighter.secondWind then return end
@@ -284,6 +289,7 @@ BattleSkills.wild.Vampire = {
 
 -- Curse: your first hit turns the rival into a chicken that cannot attack.
 BattleSkills.wild.Chicken = {
+	steal = true,
 	duration = 3,
 	start = function(_, _, fighter) fighter.chickenReady = true end,
 	landed = function(api, state, fighter, target)
@@ -297,6 +303,7 @@ BattleSkills.wild.Chicken = {
 -- Last chance: when the plane is shot down, the pilot bails out on a parachute
 -- with a pea-shooter and one more life.
 BattleSkills.wild.Eject = {
+	steal = true,
 	size = 0.6, hitbox = 5.5, speed = 0.5, protection = 1,
 	start = function(_, _, fighter) fighter.ejected = false end,
 	damaged = function(api, state, fighter)
@@ -402,7 +409,7 @@ BattleSkills.offence.Sniper = {
 	windup = 1.35, lockTime = 0.3, attackTime = 0.35, attackSpeed = 8,
 	earliest = 1.6, leadSpeed = 220, leadFactor = 1,
 	approachTime = 3.3, recoveryTime = 2.8,
-	bulletSpeed = 220, bulletLife = 1, bulletRadius = 2, power = 2,
+	bulletSpeed = 220, bulletLife = 1, bulletRadius = 2.3, power = 2,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy > 40 * 40 end,
 	approach = function(api, state, fighter, opponent, dx, dy)
 		-- A sniper wants room: back away from a rival that gets close.
@@ -427,9 +434,101 @@ BattleSkills.offence.Sniper = {
 	end,
 }
 
+-- Portal: your shots, and a diving plane, leave one side of the arena and
+-- come back in the other.
+BattleSkills.wild.Wrap = {
+	steal = true,
+	start = function(_, _, fighter) fighter.wrapShots = true end,
+}
+
+-- Bomb: a ticking potato starts on the rival and jumps to whoever was hit
+-- last, except that the first hit on its owner does not count. When the fuse
+-- runs out, the holder loses an armor.
+BattleSkills.wild.HotPotato = {
+	fuse = 10,
+	start = function(_, state, fighter)
+		state.potatoes = state.potatoes or {}
+		state.potatoes[#state.potatoes + 1] = { holder = 3 - fighter.id, left = BattleSkills.wild.HotPotato.fuse, owner = fighter.id, grace = 1 }
+	end,
+}
+
+-- Fake: a balloon copy flies beside you. A rival that is nearer to it goes
+-- for it, and a shot or dive that reaches it is wasted. It comes back later.
+BattleSkills.wild.Decoy = {
+	cooldown = 6,
+	start = function(_, state, fighter)
+		fighter.decoyUp, fighter.decoyLeft = true, 0
+		fighter.decoySide = (state.seed + fighter.id) % 2 == 0 and 1 or -1
+	end,
+	moved = function(api, state, fighter, dt)
+		if fighter.decoyUp then return end
+		fighter.decoyLeft = fighter.decoyLeft - dt
+		if fighter.decoyLeft > 0 then return end
+		fighter.decoyUp = true
+		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "decoy", "Decoy")
+	end,
+}
+
+-- Pickpocket: your first hit takes one of the rival's wild cards for the rest
+-- of the round. Cards that reshape a plane cannot be taken.
+BattleSkills.wild.Thief = {
+	start = function(_, _, fighter) fighter.thiefReady = true end,
+	landed = function(api, state, fighter, target)
+		if not fighter.thiefReady or fighter.ejected then return end
+		local taken
+		for _, id in ipairs(target.wildIds) do
+			local held = false
+			for _, own in ipairs(fighter.wildIds) do held = held or own == id end
+			if not taken and not held and BattleSkills.wild[id].steal then taken = id end
+		end
+		if not taken then return end
+		fighter.thiefReady = false
+		local kept, mine = {}, { taken }
+		for _, id in ipairs(target.wildIds) do if id ~= taken then kept[#kept + 1] = id end end
+		for _, id in ipairs(fighter.wildIds) do mine[#mine + 1] = id end
+		table.sort(mine)
+		target.wildIds, fighter.wildIds = kept, mine
+		-- The card stops working for its old owner and starts fresh for the thief.
+		target.bumperReady, target.chickenReady, target.secondWind, target.wrapShots = false, false, false, false
+		target.magnetLeft, target._boostPending, target._wakeLeft = 0, false, 0
+		if BattleSkills.wild[taken].start then BattleSkills.wild[taken].start(api, state, fighter) end
+		api.event(state, "skill", fighter.x, fighter.y, fighter.id, target.id, "thief", "Thief").stolen = taken
+	end,
+}
+
+-- A spinning blade that flies out and curves back to its thrower. It can hit
+-- once, on the way out or on the way home.
+BattleSkills.offence.Boomerang = {
+	windup = 0.9, attackTime = 0.45, attackSpeed = 24,
+	earliest = 1.2, leadSpeed = 80, leadFactor = 0.5,
+	approachTime = 3, recoveryTime = 2.45,
+	bladeSpeed = 82, bladeLife = 3, bladeRadius = 3, outTime = 0.62, returnSpeed = 74,
+	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 62 * 62 end,
+	attack = function(api, state, fighter, opponent)
+		local self = BattleSkills.offence.Boomerang
+		local dx, dy = math.cos(fighter.heading), math.sin(fighter.heading)
+		api.launch(state, fighter, { x = fighter.x + dx * 7, y = fighter.y + dy * 7,
+			vx = dx * self.bladeSpeed, vy = dy * self.bladeSpeed, life = self.bladeLife, radius = self.bladeRadius,
+			source = "boomerang", returnAfter = self.outTime, returnSpeed = self.returnSpeed })
+		api.event(state, "rocket", fighter.x + dx * 7, fighter.y + dy * 7, fighter.id, opponent.id, "boomerang", "Boomerang")
+	end,
+}
+
 -- Builds worth a shout. The first pair a plane matches names it for the round.
 BattleSkills.combos = {
 	{ "Squadron", "Vampire", "VAMPIRE SWARM!" },
+	{ "Meteor", "Wrap", "PORTAL DIVE!" },
+	{ "Pinball", "Wrap", "PINBALL WIZARD!" },
+	{ "Squadron", "Wrap", "FROM EVERYWHERE!" },
+	{ "Decoy", "Squadron", "WHICH ONE IS REAL?" },
+	{ "Bug", "Decoy", "HIDE AND SEEK!" },
+	{ "Chicken", "HotPotato", "ROAST CHICKEN!" },
+	{ "HotPotato", "Swap", "PASS THE PARCEL!" },
+	{ "HotPotato", "SpringBumper", "NOT IT!" },
+	{ "Thief", "Vampire", "SMASH AND GRAB!" },
+	{ "Boomerang", "Wrap", "ROUND THE WORLD!" },
+	{ "Boomerang", "Squadron", "TRIPLE THROW!" },
+	{ "Boomerang", "Giant", "FRISBEE OF DOOM!" },
 	{ "Bug", "Giant", "GIANT BUG!" },
 	{ "Bug", "Swap", "BODY SWAP!" },
 	{ "Bug", "Vampire", "MOSQUITO!" },

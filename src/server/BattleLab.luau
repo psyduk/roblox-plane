@@ -20,11 +20,11 @@ BattleLab.MAX_ROUNDS = 5
 BattleLab.GUIDE_INTRO_SECONDS = 5
 BattleLab.GUIDE_PICK_SECONDS = 40
 local GUIDE = {offences={"Meteor","Firework"},wilds={"SpringBumper","Afterburner","FizzyFuel","Magnet"},hand={[2]=2,[3]=3}}
-local PUBLIC = {offences={"Meteor","Firework","MachineGun","Pinball","Sniper"},
+local PUBLIC = {offences={"Meteor","Firework","MachineGun","Pinball","Sniper","Boomerang"},
     wilds={"Afterburner","SpringBumper","FizzyFuel","Magnet","SecondWind","Squadron","Giant","Eject","Vampire","Chicken",
-        "Bug","Snowball","Swap","Gambler"}}
--- A pick shows this many wild cards: the ones already on the plane, then a
--- fresh random deal from the rest of the roster.
+        "Bug","Snowball","Swap","Gambler","Wrap","HotPotato","Decoy","Thief"}}
+-- A pick shows this many attacks and this many wild cards: the ones already
+-- on the plane, then a fresh random deal from the rest of the roster.
 local HAND = 5
 local function finite(value)
     return type(value)=="number" and value==value and value>-math.huge and value<math.huge
@@ -52,8 +52,8 @@ local function perspective(value,side)
         if type(item)~="table" then return end
         for key,v in pairs(item) do
             if type(v)=="table" then visit(v)
-            elseif key=="actor" or key=="target" or key=="owner" or key=="winner" then item[key]=seat(v,side)
-            elseif key=="x" or key=="vx" or key=="lockX" or key=="_knockX" or key=="_chargeX" or key=="_recoverX" then
+            elseif key=="actor" or key=="target" or key=="owner" or key=="holder" or key=="winner" then item[key]=seat(v,side)
+            elseif key=="x" or key=="vx" or key=="decoyX" or key=="lockX" or key=="_knockX" or key=="_chargeX" or key=="_recoverX" then
                 if type(v)=="number" then item[key]=-v end
             elseif key=="heading" or key=="_attackHeading" then
                 if type(v)=="number" then item[key]=(math.pi-v+math.pi)%(2*math.pi)-math.pi end
@@ -143,17 +143,20 @@ function BattleLab:fillDraft(m,side,random)
         draft.wildIds[#draft.wildIds+1]=free[random and self:random(#free) or 1]
     end
 end
-function BattleLab:hand(m,side)
-    local pool=copy(m.roster.wilds)
+function BattleLab:hand(m,side,kind)
+    local pool=copy(m.roster[kind])
     if #pool<=HAND then return pool end
     local held,hand={},{}
-    for _,id in ipairs(m.settings[side].wildIds) do held[id]=true end
+    local build=m.settings[side] or {}
+    for _,id in ipairs(kind=="wilds" and (build.wildIds or {}) or {build.offenceId}) do
+        if contains(pool,id) then held[id]=true end
+    end
     for index=#pool,1,-1 do if held[pool[index]] then table.remove(pool,index) end end
     local dealt=0
     for _ in pairs(held) do dealt=dealt+1 end
     while dealt<HAND and #pool>0 do held[table.remove(pool,self:random(#pool))]=true; dealt=dealt+1 end
     -- Shown in roster order, so a card keeps its place between picks.
-    for _,id in ipairs(m.roster.wilds) do if held[id] then hand[#hand+1]=id end end
+    for _,id in ipairs(m.roster[kind]) do if held[id] then hand[#hand+1]=id end end
     return hand
 end
 function BattleLab:changePhase(m,phase,endsAt)
@@ -167,7 +170,7 @@ function BattleLab:startPick(m)
     self:changePhase(m,"Pick",self.deps.now()+(m.guided and self.GUIDE_PICK_SECONDS or self.PICK_SECONDS))
     m.locked={false,false}; m.offers={}; m.drafts={}; m.offerRevision={1,1}
     for side,participant in ipairs(m.participants) do
-        local offer={offences=copy(m.roster.offences),wilds=self:hand(m,side)}
+        local offer={offences=self:hand(m,side,"offences"),wilds=self:hand(m,side,"wilds")}
         if m.guided then
             -- The first cards a pilot ever reads: the plainest ones, in a fixed order.
             offer.offences=copy(GUIDE.offences); offer.wilds={}

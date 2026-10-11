@@ -12,8 +12,9 @@ SkillCatalog.CONTRACT_VERSION = "sky-battle-combat-v1"
 
 -- Order is display order. `starter` skills are owned from the first fight.
 -- Rarity says how strange a skill is, never how strong.
-local order = { "Meteor", "Firework", "MachineGun", "Pinball", "Sniper", "Afterburner", "SpringBumper", "FizzyFuel", "Magnet", "SecondWind",
-	"Squadron", "Giant", "Eject", "Vampire", "Chicken", "Bug", "Snowball", "Swap", "Gambler" }
+local order = { "Meteor", "Firework", "MachineGun", "Pinball", "Sniper", "Boomerang", "Afterburner", "SpringBumper", "FizzyFuel", "Magnet", "SecondWind",
+	"Squadron", "Giant", "Eject", "Vampire", "Chicken", "Bug", "Snowball", "Swap", "Gambler",
+	"Wrap", "HotPotato", "Decoy", "Thief" }
 local skills = {
 	Meteor = { id = "Meteor", kind = "offence", name = "Meteor", icon = "☄️", word = "BOOOM!",
 		promise = "Climb high, then dive-bomb your rival.",
@@ -35,6 +36,10 @@ local skills = {
 		promise = "One careful shot from far away. A hit breaks 2 armor.",
 		windupTell = "TAKING AIM...", attackTell = "BANG!",
 		color = { r = 255, g = 70, b = 70 }, starter = true, rarity = "rare" },
+	Boomerang = { id = "Boomerang", kind = "offence", name = "Boomerang", icon = "🪃", word = "WHIRR!",
+		promise = "Throw a blade that curves back to you. It can hit going or coming.",
+		windupTell = "WINDING UP...", attackTell = "THROW!",
+		color = { r = 255, g = 170, b = 60 }, starter = true, rarity = "rare" },
 	Afterburner = { id = "Afterburner", kind = "wild", name = "Afterburner", icon = "🔥", word = "ZOOM!",
 		when = "AFTER YOU ATTACK", promise = "Jet away and attack again sooner.",
 		color = { r = 255, g = 168, b = 66 }, starter = true, rarity = "common" },
@@ -77,6 +82,18 @@ local skills = {
 	Gambler = { id = "Gambler", kind = "wild", name = "Gambler", icon = "🎲", word = "ROLL!",
 		when = "AS THE ROUND STARTS", promise = "Roll a die. 1 costs an armor, 4 or 5 adds one, 6 is a jackpot.",
 		color = { r = 255, g = 215, b = 80 }, starter = true, rarity = "rare" },
+	Wrap = { id = "Wrap", kind = "wild", name = "Wrap", icon = "🌀", word = "WARP!",
+		when = "ALL ROUND", promise = "Shots that miss come back in the other side of the arena, aimed again.",
+		color = { r = 110, g = 150, b = 255 }, starter = true, rarity = "rare" },
+	HotPotato = { id = "HotPotato", kind = "wild", name = "Hot Potato", icon = "💣", word = "KABOOM!",
+		when = "10 SECONDS IN", promise = "A bomb starts on your rival and jumps to whoever is hit. The first hit on you is free.",
+		color = { r = 255, g = 110, b = 60 }, starter = true, rarity = "rare" },
+	Decoy = { id = "Decoy", kind = "wild", name = "Decoy", icon = "🎈", word = "POP!",
+		when = "ALL ROUND", promise = "A fake you flies alongside. Attacks that hit it are wasted.",
+		color = { r = 255, g = 150, b = 200 }, starter = true, rarity = "rare" },
+	Thief = { id = "Thief", kind = "wild", name = "Thief", icon = "🦝", word = "YOINK!",
+		when = "YOUR FIRST HIT", promise = "Steal one of your rival's wild cards for the round.",
+		color = { r = 150, g = 150, b = 170 }, starter = true, rarity = "rare" },
 }
 
 function SkillCatalog.valid(id, kind)

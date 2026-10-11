@@ -59,6 +59,7 @@ local KINDS = {
     burst=true, tracer_hit=true, ricochet=true, magnet=true, secondwind=true,
     fizz=true, pinball_bounce=true, vampire=true, chicken=true, eject=true, combo=true,
     snowball=true, swap=true, gambler=true, sniper=true,
+    wrap=true, potato=true, potato_pass=true, decoy_pop=true, thief=true, boomerang=true, catch=true,
 }
 local function finite(value)
     return type(value)=="number" and value==value and value>-math.huge and value<math.huge
@@ -66,7 +67,9 @@ end
 local function audibleKind(event)
     if event.kind=="skill" then
         return ({Afterburner="afterburner",Magnet="magnet",SecondWind="secondwind",FizzyFuel="fizz",
-            Vampire="vampire",Chicken="chicken",Eject="eject",Snowball="snowball",Swap="swap",Gambler="gambler"})[event.skillId]
+            Vampire="vampire",Chicken="chicken",Eject="eject",Snowball="snowball",Swap="swap",Gambler="gambler",Thief="thief"})[event.skillId]
+    elseif event.kind=="rocket" and event.source=="boomerang" then
+        return "boomerang"
     elseif event.kind=="rocket" and event.source=="sniper" then
         return "sniper"
     elseif event.kind=="combo" then
@@ -348,6 +351,26 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
         -- The plane goes up, the seat goes out, the parachute snaps open.
         voice("jump",0.26,0.7,0.5,2.4)
         shot("bigBlast",0.6,1.2); shot("rise",0.5,1.6); shot("whoosh",0.4,0.7)
+    elseif kind=="wrap" then
+        -- A quick sci-fi blip, up then down.
+        voice("chime",0.14,2.4,0.14,0.9); shot("beep",0.25,2.6)
+    elseif kind=="potato" then
+        -- The biggest bang in the game.
+        voice("boom",0.4,0.7,0.5,0.4); shot("bigBlast",0.8,0.9); shot("sub",0.6,1); shot("gasp",0.4,1)
+    elseif kind=="potato_pass" then
+        -- A hot-hands yelp.
+        voice("jump",0.2,1.8,0.12,2.6); shot("click",0.4,1.2); shot("beep",0.25,1.1)
+    elseif kind=="decoy_pop" then
+        -- A balloon.
+        voice("land",0.2,2.8,0.06); shot("comic",0.5,2.4); shot("click",0.4,2.4)
+    elseif kind=="thief" then
+        -- A sneaky slide and a cash-register ping.
+        voice("jump",0.18,1.2,0.25,2); voice("chime",0.2,2.4,0.2,2.6); shot("whoosh",0.3,1.8)
+    elseif kind=="boomerang" then
+        -- A low whirr that rises as the blade spins away.
+        voice("jump",0.2,0.9,0.5,1.6); shot("whoosh",0.5,0.8); shot("rise",0.25,1.1)
+    elseif kind=="catch" then
+        voice("land",0.16,1.6,0.08); shot("click",0.35,1.5)
     elseif kind=="snowball" then
         -- A soft crunch that drops in pitch as the plane swells.
         voice("land",0.2,1.4,0.3,0.7); shot("crunch",0.4,1.5); shot("thump",0.4,1.3)

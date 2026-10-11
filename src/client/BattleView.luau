@@ -33,6 +33,8 @@ local POWER = {
 	magnet = Color3.fromRGB(255, 96, 200), wind = Color3.fromRGB(150, 255, 120),
 	burner = Color3.fromRGB(120, 200, 255), bumper = Color3.fromRGB(215, 255, 80),
 	vampire = Color3.fromRGB(230, 40, 90), feather = Color3.fromRGB(255, 250, 235),
+	wrap = Color3.fromRGB(110, 150, 255), blade = Color3.fromRGB(255, 170, 60), decoy = Color3.fromRGB(255, 150, 200),
+	bomb = Color3.fromRGB(255, 110, 60),
 	sniper = Color3.fromRGB(255, 50, 50), snow = Color3.fromRGB(215, 240, 255), swap = Color3.fromRGB(190, 120, 255),
 }
 -- Where a squadron's wingmen fly, matching BattleSimulation's formation.
@@ -687,25 +689,46 @@ function BattleView:_fighter(id, index)
 	return fighter
 end
 
+-- A plain copy of a fighter's skin, with no pilot, trail or emitters.
+local function skinCopy(fighter, name, transparency)
+	local copy = Instance.new("Model"); copy.Name = name; copy.Parent = fighter.fx
+	for _, original in ipairs(fighter.model:GetChildren()) do
+		if original:IsA("BasePart") and original.Transparency < 0.5 then
+			local piece = original:Clone()
+			for _, child in ipairs(piece:GetChildren()) do if not child:IsA("DataModelMesh") then child:Destroy() end end
+			piece.Anchored, piece.CanCollide, piece.CanTouch, piece.CanQuery = true, false, false, false
+			piece.Transparency, piece.LocalTransparencyModifier = transparency, 0
+			piece.Parent = copy
+		end
+	end
+	copy.WorldPivot = fighter.model:GetPivot()
+	copy:PivotTo(PARKED)
+	return copy
+end
+
+-- A decoy is a see-through copy of the skin flying beside the real plane.
+function BattleView:_decoy(fighter, x, y, pose)
+	if x and (not fighter.decoy or fighter.decoyScale ~= fighter.shownScale) then
+		if fighter.decoy then fighter.decoy:Destroy() end
+		fighter.decoy, fighter.decoyScale = skinCopy(fighter, "Decoy", 0.45), fighter.shownScale
+	end
+	if not fighter.decoy then return end
+	if x then
+		local wobble = self.reducedMotion and 0 or math.sin(self.clock * 5) * 0.8
+		fighter.decoy:PivotTo(pose.Rotation + (ORIGIN + Vector3.new(x, y + wobble, 0)))
+	else
+		fighter.decoy:PivotTo(PARKED)
+	end
+end
+
 -- A squadron's extra planes: plain copies of the leader's skin that fly in
--- formation. They carry no pilots, trails or emitters of their own.
+-- formation.
 function BattleView:_wingmen(fighter, count, pose, heading)
 	if count > 0 and (#fighter.wingmen == 0 or fighter.wingScale ~= fighter.shownScale) then
 		for _, wingman in ipairs(fighter.wingmen) do wingman.model:Destroy() end
 		fighter.wingmen = {}
 		for number = 1, #WING do
-			local copy = Instance.new("Model"); copy.Name = "Wingman" .. number; copy.Parent = fighter.fx
-			for _, original in ipairs(fighter.model:GetChildren()) do
-				if original:IsA("BasePart") and original.Transparency < 0.5 then
-					local piece = original:Clone()
-					for _, child in ipairs(piece:GetChildren()) do if not child:IsA("DataModelMesh") then child:Destroy() end end
-					piece.Anchored, piece.CanCollide, piece.CanTouch, piece.CanQuery = true, false, false, false
-					piece.Transparency, piece.LocalTransparencyModifier = 0, 0
-					piece.Parent = copy
-				end
-			end
-			copy.WorldPivot = fighter.model:GetPivot()
-			copy:PivotTo(PARKED)
+			local copy = skinCopy(fighter, "Wingman" .. number, 0)
 			fighter.wingmen[number] = { model = copy, parked = true }
 		end
 		fighter.wingScale = fighter.shownScale
@@ -1059,6 +1082,27 @@ function BattleView:_events(simulation)
 					end
 					self:_burst(x, y, POWER.vampire, true)
 					self:_jolt(1.8, 0.5, 0.06, 0.25, 0.4)
+				elseif kind == "wrap" then
+					-- A portal opens where the shot leaves and where it comes back.
+					self:_burst(x, y, POWER.wrap, true)
+					self:_particles(x, y, POWER.wrap, 40, 0, 0, 70)
+				elseif kind == "decoy_pop" then
+					self:_burst(x, y, POWER.decoy, true)
+					self:_particles(x, y, POWER.decoy, 60, 4, 0, 90)
+					self:_jolt(1.6, 0.4, 0.04, 0.15, 0.3)
+				elseif kind == "potato" then
+					self:_particles(x, y, POWER.bomb, 110, 30, 34, 120)
+					self:_particles(x, y, COLORS.yellow, 50, 0, 0, 80)
+					self:_burst(x, y, POWER.bomb, true)
+					self:_jolt(5.2, 1, 0.16, 0.8, 0.9)
+				elseif kind == "potato_pass" then
+					self:_burst(x, y, POWER.bomb, false)
+					self:_particles(x, y, POWER.bomb, 24, 0, 0, 50)
+				elseif kind == "catch" then
+					self:_particles(x, y, POWER.blade, 16, 0, 0, 30)
+				elseif kind == "skill" and event.skillId == "Thief" then
+					self:_particles(x, y, COLORS.cream, 50, 6, 0, 70)
+					self:_jolt(1.4, 0.4, 0.04, 0.15, 0.3)
 				elseif kind == "skill" and event.skillId == "Snowball" and actor then
 					actor.snowTime = self.clock
 					self:_particles(x, y, POWER.snow, 70, 0, 0, 80)
@@ -1569,6 +1613,8 @@ function BattleView:update(snapshot, dt, viewportRect)
 		local target = ORIGIN + Vector3.new(
 			math.clamp(numeric(state.x, index == 1 and -45 or 45) + vx * extrapolate, bounds.left, bounds.right),
 			math.clamp(numeric(state.y, CENTER_Y) + vy * extrapolate, bounds.bottom, bounds.top), 0)
+		-- A plane that wraps round the arena jumps; it must not streak across it.
+		if fighter.position and (target - fighter.position).Magnitude > 60 then fighter.position = nil end
 		fighter.position = fighter.position and fighter.position:Lerp(target, smoothing) or target
 		local desiredPose = poseForVelocity(fighter.position, vx, vy, fighter.facing, 0.20 + math.sin(self.clock * 3 + index) * 0.05)
 		fighter.pose = fighter.pose and fighter.pose:Lerp(desiredPose, smoothing) or desiredPose
@@ -1604,6 +1650,28 @@ function BattleView:update(snapshot, dt, viewportRect)
 			fighter.laser.Size = Vector3.new(170, locked and 0.7 or 0.28, 0.3)
 			fighter.laser.CFrame = CFrame.new(fighter.position + along * 92) * CFrame.Angles(0, 0, angle)
 			fighter.laser.Transparency = aiming and (locked and 0.05 or 0.45 + math.sin(self.clock * 30) * 0.2) or 1
+		end
+		self:_decoy(fighter, not knockedOut and tonumber(state.decoyX) or nil, numeric(state.decoyY, 0), displayPose)
+		-- A hot potato rides above whoever holds it, counting down.
+		local fuse
+		for _, potato in ipairs(simulation.potatoes or {}) do
+			if potato.holder == state.id then fuse = math.min(fuse or math.huge, numeric(potato.left, 0)) end
+		end
+		if fuse and not fighter.bombGui then
+			local gui = Instance.new("BillboardGui"); gui.Name = "Bomb"; gui.LightInfluence = 0
+			gui.Size, gui.StudsOffset = UDim2.fromScale(13, 7), Vector3.new(0, 11, 0)
+			gui.Adornee, gui.Parent = fighter.model.PrimaryPart, fighter.model.PrimaryPart
+			local label = Instance.new("TextLabel"); label.BackgroundTransparency = 1; label.Size = UDim2.fromScale(1, 1)
+			label.TextScaled, label.Font, label.TextColor3 = true, Enum.Font.FredokaOne, COLORS.cream
+			label.TextStrokeTransparency, label.TextStrokeColor3, label.Parent = 0, COLORS.ink, gui
+			fighter.bombGui, fighter.bombLabel = gui, label
+		end
+		if fighter.bombGui then
+			fighter.bombGui.Enabled = fuse ~= nil and moving
+			if fuse then
+				fighter.bombLabel.Text = "💣 " .. math.max(1, math.ceil(fuse))
+				fighter.bombLabel.TextColor3 = fuse <= 3 and POWER.sniper or COLORS.cream
+			end
 		end
 		local chicken = numeric(state.chickenLeft, 0) > 0 and not knockedOut
 		self:_morph(fighter, chicken and "🐔" or (state.ejected == true and armor > 0 and "🪂") or nil,
@@ -1705,12 +1773,14 @@ function BattleView:update(snapshot, dt, viewportRect)
 		local color = owner and owner.color or PLAYER_COLORS[tonumber(state.owner) or 1] or COLORS.yellow
 		local sniper = state.source == "sniper"
 		local tracer = state.source == "machinegun" or state.source == "pea" or sniper
-		local ball = state.source == "pinball"
+		local blade = state.source == "boomerang"
+		local ball = state.source == "pinball" or blade
 		-- A Giant's shots are as oversized as it is.
 		local big = numeric(((simulation.fighters or {})[state.owner] or {}).shotScale, 1)
 		rocket.owner = state.owner
 		local squash = (ball and not self.reducedMotion) and 1 + 0.12 * math.sin(self.clock * 30) or 1
-		rocket.ball.Size = Vector3.new(6.4 * squash, 6.4 / squash, 6.4) * big
+		rocket.ball.Size = (blade and Vector3.new(9, 2.2, 2.2) or Vector3.new(6.4 * squash, 6.4 / squash, 6.4)) * big
+		rocket.ball.Color = blade and POWER.blade or POWER.pinball
 		rocket.ball.Transparency, rocket.ballCore.Transparency = ball and 0.15 or 1, ball and 0 or 1
 		rocket.body.Transparency = ball and 1 or 0
 		if ball then tracer = true end
@@ -1725,8 +1795,13 @@ function BattleView:update(snapshot, dt, viewportRect)
 		for _, stripe in ipairs(rocket.stripes) do stripe.Color = color end
 		local vx, vy = numeric(state.vx, 0), numeric(state.vy, 0)
 		local target = ORIGIN + Vector3.new(numeric(state.x, 0) + vx * extrapolate, numeric(state.y, CENTER_Y) + vy * extrapolate, 2)
+		if rocket.position and (target - rocket.position).Magnitude > 45 then
+			-- A wrapped shot reappears on the far side with a clean trail.
+			rocket.position = nil
+			rocket.trail:Clear()
+		end
 		rocket.position = rocket.position and rocket.position:Lerp(target, smoothing) or target
-		local rocketPose = CFrame.new(rocket.position) * CFrame.Angles(0, 0, math.atan2(vy, vx))
+		local rocketPose = CFrame.new(rocket.position) * CFrame.Angles(0, 0, blade and self.clock * 22 or math.atan2(vy, vx))
 		rocket.model:PivotTo(rocketPose)
 		local sputter = 1 + math.sin(self.clock * 49 + numeric(tonumber(id), 0)) * 0.23
 		rocket.exhaust.Size = Vector3.new(3.6 * sputter, 1.25, 1.25)
@@ -1742,7 +1817,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 			spark.Transparency = moving and not tracer and not self.reducedMotion and progress or 1
 		end
 		rocket.trail.Enabled = moving
-		rocket.trail.Color = ColorSequence.new(ball and POWER.pinball or color, COLORS.cream)
+		rocket.trail.Color = ColorSequence.new(blade and POWER.blade or (ball and POWER.pinball or color), COLORS.cream)
 		rocket.trail.Lifetime = ball and 0.9 or (tracer and 0.12 or 0.55)
 		rocket.trail.WidthScale = NumberSequence.new(ball and 4 or (tracer and 0.25 or 1), 0)
 		rocket.fizz.Rate = moving and not tracer and not self.reducedMotion and 55 or 0

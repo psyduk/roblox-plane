@@ -701,6 +701,15 @@ local function bodies(fighter, x, y, heading)
 	return list
 end
 
+-- Where a fighter's decoy flies: level with the plane and off to one side.
+-- Returns nothing while the decoy is popped or was never brought.
+local function decoyAt(state, fighter, x, y, heading)
+	if not fighter.decoyUp or fighter.armor &lt;= 0 then return nil end
+	local side = fighter.decoySide or 1
+	return clamp(x - math.sin(heading) * 14 * side, state.bounds.left, state.bounds.right),
+		clamp(y + math.cos(heading) * 14 * side, state.bounds.bottom, state.bounds.top)
+end
+
 local function event(state, kind, x, y, actor, target, source, skillId)
 	state.eventSerial = state.eventSerial + 1
 	local entry = {
@@ -748,6 +757,7 @@ function api.launch(state, fighter, projectile)
 		state._projectileSerial = state._projectileSerial + 1
 		shot.id, shot.owner = state._projectileSerial, fighter.id
 		shot.x, shot.y = leaderX + body.x, leaderY + body.y
+		if fighter.wrapShots then shot.wraps, shot.life = 2, shot.life + 1 end
 		state.projectiles[#state.projectiles + 1] = shot
 	end
 	return projectile
@@ -894,7 +904,7 @@ local function beginAttack(state, fighter, opponent)
 	fighter.phaseLeft = offence.attackTime
 	fighter.armed = offence.ram ~= nil
 	fighter.attacks = fighter.attacks + 1
-	fighter._attackHit = false
+	fighter._attackHit, fighter._wrapped = false, false
 	wild(fighter, "attack", state, fighter, opponent)
 	-- The direction is locked for the whole attack; no homing after launch.
 	fighter._attackHeading = fighter.heading
@@ -1017,6 +1027,16 @@ local function damage(state, actorId, targetId, x, y, dirX, dirY, source, skillI
 	actor.hits = actor.hits + 1
 	actor._attackHit = true
 	event(state, source == "wake" and "wake_hit" or "hit", x, y, actorId, targetId, source, skillId).amount = amount
+	-- A hot potato always jumps to whoever was hit last.
+	for _, potato in ipairs(state.potatoes or {}) do
+		if potato.holder ~= targetId and targetId == potato.owner and potato.grace &gt; 0 then
+			-- The first hit on the bomb's owner does not hand it over.
+			potato.grace = potato.grace - 1
+		elseif potato.holder ~= targetId then
+			potato.holder = targetId
+			event(state, "potato_pass", target.x, target.y, actorId, targetId, "potato", "HotPotato")
+		end
+	end
 	wild(target, "damaged", state, target, actor)
 	wild(actor, "landed", state, actor, target)
 	return true
@@ -1032,7 +1052,14 @@ local function tick(state)
 		previous[id] = { id = id, x = fighter.x, y = fighter.y, vx = fighter.vx, vy = fighter.vy, heading = fighter.heading }
 	end
 	-- Both plans read the same pre-tick snapshot, avoiding first-player bias.
-	for id, fighter in ipairs(state.fighters) do prepare(state, fighter, previous[3 - id], dt) end
+	-- A plane goes for whichever is nearer: its rival or its rival's decoy.
+	local function quarry(viewer, id)
+		local real = previous[id]
+		local x, y = decoyAt(state, state.fighters[id], real.x, real.y, real.heading)
+		if not x or (x - viewer.x) ^ 2 + (y - viewer.y) ^ 2 &gt;= (real.x - viewer.x) ^ 2 + (real.y - viewer.y) ^ 2 then return real end
+		return { id = id, x = x, y = y, vx = real.vx, vy = real.vy, heading = real.heading }
+	end
+	for id, fighter in ipairs(state.fighters) do prepare(state, fighter, quarry(previous[id], 3 - id), dt) end
 	-- A live magnet yanks the rival toward its owner's attack: the nearest shot
 	-- the owner has in the air, or the owner's plane if there is none. The owner
 	-- is not moved, and projectiles and wakes are never touched. Cap final
@@ -1063,7 +1090,20 @@ local function tick(state)
 		fighter.x = clamp(x, state.bounds.left, state.bounds.right)
 		fighter.y = clamp(y, state.bounds.bottom, state.bounds.top)
 		edgeHit[id] = x ~= fighter.x or y ~= fighter.y
+		if fighter.wrapShots and fighter.phase == "Attack" and offenceOf(fighter).ram and not fighter._wrapped
+			and (x &lt; state.bounds.left or x &gt; state.bounds.right) then
+			-- A wrapping dive leaves one side of the arena and carries on from the other.
+			event(state, "wrap", fighter.x, fighter.y, id, 0, "plane", "Wrap")
+			fighter.x = x &lt; state.bounds.left and state.bounds.right or state.bounds.left
+			fighter._wrapped, edgeHit[id] = true, false
+			local rival = state.fighters[3 - id]
+			fighter._attackHeading = atan2(rival.y - fighter.y, rival.x - fighter.x)
+			fighter.heading = fighter._attackHeading
+			previous[id].x, previous[id].y = fighter.x, fighter.y
+			event(state, "wrap", fighter.x, fighter.y, id, 0, "plane", "Wrap")
+		end
 		wild(fighter, "moved", state, fighter, dt)
+		fighter.decoyX, fighter.decoyY = decoyAt(state, fighter, fighter.x, fighter.y, fighter.heading)
 	end
 
 	local a, b = state.fighters[1], state.fighters[2]
@@ -1121,15 +1161,57 @@ local function tick(state)
 		end
 	end
 
+	-- An armed nose that reaches a decoy pops it and wastes the dive.
+	local function pop(target, x, y, actorId)
+		target.decoyUp, target.decoyLeft = false, Skills.wild.Decoy.cooldown
+		target.decoyX, target.decoyY = nil, nil
+		event(state, "decoy_pop", x, y, actorId, target.id, "decoy", "Decoy")
+	end
+	for id, fighter in ipairs(state.fighters) do
+		local opponent, otherOld = state.fighters[3 - id], previous[3 - id]
+		local x, y = decoyAt(state, opponent, opponent.x, opponent.y, opponent.heading)
+		if x and fighter.armed and not fighter._attackHit and not resolved[id] then
+			local oldX, oldY = decoyAt(state, opponent, otherOld.x, otherOld.y, otherOld.heading)
+			if sweep(previous[id].x, previous[id].y, fighter.x, fighter.y, oldX, oldY, x, y, fighter.radius + opponent.radius) then
+				pop(opponent, x, y, id)
+				fighter._attackHit = true
+			end
+		end
+	end
+
 	local surviving = {}
 	for _, projectile in ipairs(state.projectiles) do
+		if projectile.returnAfter then
+			-- A boomerang flies out, then curves back to wherever its thrower is now.
+			projectile.age = (projectile.age or 0) + dt
+			if projectile.age &gt;= projectile.returnAfter then
+				local owner = state.fighters[projectile.owner]
+				local nx, ny = direction(owner.x - projectile.x, owner.y - projectile.y)
+				local blend = math.min(1, 5 * dt)
+				projectile.vx = projectile.vx + (nx * projectile.returnSpeed - projectile.vx) * blend
+				projectile.vy = projectile.vy + (ny * projectile.returnSpeed - projectile.vy) * blend
+				projectile.returning = true
+			end
+		end
 		local oldX, oldY = projectile.x, projectile.y
 		projectile.x, projectile.y = oldX + projectile.vx * dt, oldY + projectile.vy * dt
 		projectile.life = projectile.life - dt
 		local targetId = 3 - projectile.owner
 		local target, old = state.fighters[targetId], previous[targetId]
 		local hit = strike(oldX, oldY, projectile.x, projectile.y, targetId, projectile.radius or 3.5)
-		if hit then
+		local decoyX, decoyY = decoyAt(state, target, target.x, target.y, target.heading)
+		local fooled
+		if decoyX then
+			local wasX, wasY = decoyAt(state, target, old.x, old.y, old.heading)
+			fooled = sweep(oldX, oldY, projectile.x, projectile.y, wasX, wasY, decoyX, decoyY, target.radius + (projectile.radius or 3.5))
+		end
+		local thrower = state.fighters[projectile.owner]
+		if fooled and (not hit or fooled &lt; hit) then
+			-- The shot is spent on the decoy.
+			pop(target, decoyX, decoyY, projectile.owner)
+		elseif projectile.returning and not hit and (projectile.x - thrower.x) ^ 2 + (projectile.y - thrower.y) ^ 2 &lt; (thrower.radius + 4) ^ 2 then
+			event(state, "catch", projectile.x, projectile.y, projectile.owner, 0, projectile.source)
+		elseif hit then
 			local nx, ny = direction(projectile.vx, projectile.vy)
 			local successful, absorbed = false, false
 			local actor = state.fighters[projectile.owner]
@@ -1161,6 +1243,20 @@ local function tick(state)
 			-- Impact protection absorbs subsequent projectiles visibly at contact;
 			-- they never wait inside a protected plane to deal delayed damage.
 			if not successful and not absorbed then event(state, "miss", projectile.x, projectile.y, projectile.owner, targetId) end
+		elseif projectile.life &gt; 0 and (projectile.wraps or 0) &gt; 0 and (projectile.bounces or 0) &lt;= 0 and (projectile.x &lt; state.bounds.left or projectile.x &gt; state.bounds.right
+			or projectile.y &lt; state.bounds.bottom or projectile.y &gt; state.bounds.top) then
+			-- A wrapping shot leaves one edge and comes back in the opposite one.
+			local b = state.bounds
+			event(state, "wrap", clamp(projectile.x, b.left, b.right), clamp(projectile.y, b.bottom, b.top), projectile.owner, 0, projectile.source, "Wrap")
+			if projectile.x &lt; b.left then projectile.x = b.right elseif projectile.x &gt; b.right then projectile.x = b.left end
+			if projectile.y &lt; b.bottom then projectile.y = b.top elseif projectile.y &gt; b.top then projectile.y = b.bottom end
+			projectile.wraps = projectile.wraps - 1
+			-- Coming back in, the shot turns once toward where the rival is now.
+			local speed = math.sqrt(projectile.vx ^ 2 + projectile.vy ^ 2)
+			local nx, ny = direction(target.x - projectile.x, target.y - projectile.y)
+			projectile.vx, projectile.vy = nx * speed, ny * speed
+			event(state, "wrap", projectile.x, projectile.y, projectile.owner, 0, projectile.source, "Wrap")
+			surviving[#surviving + 1] = projectile
 		elseif projectile.life &gt; 0 and (projectile.bounces or 0) &gt; 0 and (projectile.x &lt; state.bounds.left or projectile.x &gt; state.bounds.right
 			or projectile.y &lt; state.bounds.bottom or projectile.y &gt; state.bounds.top) then
 			-- A bouncing shot reflects off the visible arena edge and flies on.
@@ -1206,6 +1302,21 @@ local function tick(state)
 				event(state, "miss", fighter.x, fighter.y, id, 3 - id)
 			end
 			recover(state, fighter, state.fighters[3 - id])
+		end
+	end
+	-- A hot potato goes off in the hands of whoever holds it. Nothing blocks it.
+	for index = #(state.potatoes or {}), 1, -1 do
+		local potato = state.potatoes[index]
+		potato.left = potato.left - dt
+		if potato.left &lt;= 0 then
+			local holder = state.fighters[potato.holder]
+			table.remove(state.potatoes, index)
+			if holder.armor &gt; 0 then
+				holder.armor = holder.armor - 1
+				holder.invulnerable = BattleSimulation.IMPACT_PROTECTION
+				event(state, "potato", holder.x, holder.y, 3 - potato.holder, potato.holder, "potato", "HotPotato")
+				wild(holder, "damaged", state, holder, state.fighters[3 - potato.holder])
+			end
 		end
 	end
 	if a.armor &lt;= 0 or b.armor &lt;= 0 then
@@ -1409,6 +1520,7 @@ BattleSkills.offence.Pinball = {
 
 -- Rush: after you attack, the trip back to your next attack is much shorter.
 BattleSkills.wild.Afterburner = {
+	steal = true,
 	duration = 0.9, tempo = 0.95,
 	start = function(_, _, fighter)
 		fighter._boostPending = false
@@ -1427,6 +1539,7 @@ BattleSkills.wild.Afterburner = {
 
 -- Block: the first hit bounces off, at the cost of a slow turn back.
 BattleSkills.wild.SpringBumper = {
+	steal = true,
 	recoil = 1.4,
 	start = function(_, _, fighter)
 		fighter.bumperReady = true
@@ -1447,6 +1560,7 @@ BattleSkills.wild.SpringBumper = {
 
 -- Trap: every attack leaves a wall of fizz that hangs in the air.
 BattleSkills.wild.FizzyFuel = {
+	steal = true,
 	spill = 1.0, every = 0.18, cloudLife = 2.2, cloudRadius = 3.6,
 	start = function(_, _, fighter)
 		fighter._wakeLeft, fighter._wakeNext = 0, 0
@@ -1471,6 +1585,7 @@ BattleSkills.wild.FizzyFuel = {
 
 -- Pull: one hard yank drags the rival toward you as you strike.
 BattleSkills.wild.Magnet = {
+	steal = true,
 	duration = 0.8,
 	start = function(_, _, fighter) fighter.magnetLeft = 0 end,
 	attack = function(api, state, fighter)
@@ -1481,6 +1596,7 @@ BattleSkills.wild.Magnet = {
 
 -- Comeback: on the last armor the plane flies faster and attacks sooner.
 BattleSkills.wild.SecondWind = {
+	steal = true,
 	start = function(_, _, fighter) fighter.secondWind = false end,
 	damaged = function(api, state, fighter)
 		if fighter.armor ~= 1 or fighter.secondWind then return end
@@ -1528,6 +1644,7 @@ BattleSkills.wild.Vampire = {
 
 -- Curse: your first hit turns the rival into a chicken that cannot attack.
 BattleSkills.wild.Chicken = {
+	steal = true,
 	duration = 3,
 	start = function(_, _, fighter) fighter.chickenReady = true end,
 	landed = function(api, state, fighter, target)
@@ -1541,6 +1658,7 @@ BattleSkills.wild.Chicken = {
 -- Last chance: when the plane is shot down, the pilot bails out on a parachute
 -- with a pea-shooter and one more life.
 BattleSkills.wild.Eject = {
+	steal = true,
 	size = 0.6, hitbox = 5.5, speed = 0.5, protection = 1,
 	start = function(_, _, fighter) fighter.ejected = false end,
 	damaged = function(api, state, fighter)
@@ -1646,7 +1764,7 @@ BattleSkills.offence.Sniper = {
 	windup = 1.35, lockTime = 0.3, attackTime = 0.35, attackSpeed = 8,
 	earliest = 1.6, leadSpeed = 220, leadFactor = 1,
 	approachTime = 3.3, recoveryTime = 2.8,
-	bulletSpeed = 220, bulletLife = 1, bulletRadius = 2, power = 2,
+	bulletSpeed = 220, bulletLife = 1, bulletRadius = 2.3, power = 2,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy &gt; 40 * 40 end,
 	approach = function(api, state, fighter, opponent, dx, dy)
 		-- A sniper wants room: back away from a rival that gets close.
@@ -1671,9 +1789,101 @@ BattleSkills.offence.Sniper = {
 	end,
 }
 
+-- Portal: your shots, and a diving plane, leave one side of the arena and
+-- come back in the other.
+BattleSkills.wild.Wrap = {
+	steal = true,
+	start = function(_, _, fighter) fighter.wrapShots = true end,
+}
+
+-- Bomb: a ticking potato starts on the rival and jumps to whoever was hit
+-- last, except that the first hit on its owner does not count. When the fuse
+-- runs out, the holder loses an armor.
+BattleSkills.wild.HotPotato = {
+	fuse = 10,
+	start = function(_, state, fighter)
+		state.potatoes = state.potatoes or {}
+		state.potatoes[#state.potatoes + 1] = { holder = 3 - fighter.id, left = BattleSkills.wild.HotPotato.fuse, owner = fighter.id, grace = 1 }
+	end,
+}
+
+-- Fake: a balloon copy flies beside you. A rival that is nearer to it goes
+-- for it, and a shot or dive that reaches it is wasted. It comes back later.
+BattleSkills.wild.Decoy = {
+	cooldown = 6,
+	start = function(_, state, fighter)
+		fighter.decoyUp, fighter.decoyLeft = true, 0
+		fighter.decoySide = (state.seed + fighter.id) % 2 == 0 and 1 or -1
+	end,
+	moved = function(api, state, fighter, dt)
+		if fighter.decoyUp then return end
+		fighter.decoyLeft = fighter.decoyLeft - dt
+		if fighter.decoyLeft &gt; 0 then return end
+		fighter.decoyUp = true
+		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "decoy", "Decoy")
+	end,
+}
+
+-- Pickpocket: your first hit takes one of the rival's wild cards for the rest
+-- of the round. Cards that reshape a plane cannot be taken.
+BattleSkills.wild.Thief = {
+	start = function(_, _, fighter) fighter.thiefReady = true end,
+	landed = function(api, state, fighter, target)
+		if not fighter.thiefReady or fighter.ejected then return end
+		local taken
+		for _, id in ipairs(target.wildIds) do
+			local held = false
+			for _, own in ipairs(fighter.wildIds) do held = held or own == id end
+			if not taken and not held and BattleSkills.wild[id].steal then taken = id end
+		end
+		if not taken then return end
+		fighter.thiefReady = false
+		local kept, mine = {}, { taken }
+		for _, id in ipairs(target.wildIds) do if id ~= taken then kept[#kept + 1] = id end end
+		for _, id in ipairs(fighter.wildIds) do mine[#mine + 1] = id end
+		table.sort(mine)
+		target.wildIds, fighter.wildIds = kept, mine
+		-- The card stops working for its old owner and starts fresh for the thief.
+		target.bumperReady, target.chickenReady, target.secondWind, target.wrapShots = false, false, false, false
+		target.magnetLeft, target._boostPending, target._wakeLeft = 0, false, 0
+		if BattleSkills.wild[taken].start then BattleSkills.wild[taken].start(api, state, fighter) end
+		api.event(state, "skill", fighter.x, fighter.y, fighter.id, target.id, "thief", "Thief").stolen = taken
+	end,
+}
+
+-- A spinning blade that flies out and curves back to its thrower. It can hit
+-- once, on the way out or on the way home.
+BattleSkills.offence.Boomerang = {
+	windup = 0.9, attackTime = 0.45, attackSpeed = 24,
+	earliest = 1.2, leadSpeed = 80, leadFactor = 0.5,
+	approachTime = 3, recoveryTime = 2.45,
+	bladeSpeed = 82, bladeLife = 3, bladeRadius = 3, outTime = 0.62, returnSpeed = 74,
+	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy &lt; 62 * 62 end,
+	attack = function(api, state, fighter, opponent)
+		local self = BattleSkills.offence.Boomerang
+		local dx, dy = math.cos(fighter.heading), math.sin(fighter.heading)
+		api.launch(state, fighter, { x = fighter.x + dx * 7, y = fighter.y + dy * 7,
+			vx = dx * self.bladeSpeed, vy = dy * self.bladeSpeed, life = self.bladeLife, radius = self.bladeRadius,
+			source = "boomerang", returnAfter = self.outTime, returnSpeed = self.returnSpeed })
+		api.event(state, "rocket", fighter.x + dx * 7, fighter.y + dy * 7, fighter.id, opponent.id, "boomerang", "Boomerang")
+	end,
+}
+
 -- Builds worth a shout. The first pair a plane matches names it for the round.
 BattleSkills.combos = {
 	{ "Squadron", "Vampire", "VAMPIRE SWARM!" },
+	{ "Meteor", "Wrap", "PORTAL DIVE!" },
+	{ "Pinball", "Wrap", "PINBALL WIZARD!" },
+	{ "Squadron", "Wrap", "FROM EVERYWHERE!" },
+	{ "Decoy", "Squadron", "WHICH ONE IS REAL?" },
+	{ "Bug", "Decoy", "HIDE AND SEEK!" },
+	{ "Chicken", "HotPotato", "ROAST CHICKEN!" },
+	{ "HotPotato", "Swap", "PASS THE PARCEL!" },
+	{ "HotPotato", "SpringBumper", "NOT IT!" },
+	{ "Thief", "Vampire", "SMASH AND GRAB!" },
+	{ "Boomerang", "Wrap", "ROUND THE WORLD!" },
+	{ "Boomerang", "Squadron", "TRIPLE THROW!" },
+	{ "Boomerang", "Giant", "FRISBEE OF DOOM!" },
 	{ "Bug", "Giant", "GIANT BUG!" },
 	{ "Bug", "Swap", "BODY SWAP!" },
 	{ "Bug", "Vampire", "MOSQUITO!" },
@@ -1722,8 +1932,9 @@ SkillCatalog.CONTRACT_VERSION = "sky-battle-combat-v1"
 
 -- Order is display order. `starter` skills are owned from the first fight.
 -- Rarity says how strange a skill is, never how strong.
-local order = { "Meteor", "Firework", "MachineGun", "Pinball", "Sniper", "Afterburner", "SpringBumper", "FizzyFuel", "Magnet", "SecondWind",
-	"Squadron", "Giant", "Eject", "Vampire", "Chicken", "Bug", "Snowball", "Swap", "Gambler" }
+local order = { "Meteor", "Firework", "MachineGun", "Pinball", "Sniper", "Boomerang", "Afterburner", "SpringBumper", "FizzyFuel", "Magnet", "SecondWind",
+	"Squadron", "Giant", "Eject", "Vampire", "Chicken", "Bug", "Snowball", "Swap", "Gambler",
+	"Wrap", "HotPotato", "Decoy", "Thief" }
 local skills = {
 	Meteor = { id = "Meteor", kind = "offence", name = "Meteor", icon = "☄️", word = "BOOOM!",
 		promise = "Climb high, then dive-bomb your rival.",
@@ -1745,6 +1956,10 @@ local skills = {
 		promise = "One careful shot from far away. A hit breaks 2 armor.",
 		windupTell = "TAKING AIM...", attackTell = "BANG!",
 		color = { r = 255, g = 70, b = 70 }, starter = true, rarity = "rare" },
+	Boomerang = { id = "Boomerang", kind = "offence", name = "Boomerang", icon = "🪃", word = "WHIRR!",
+		promise = "Throw a blade that curves back to you. It can hit going or coming.",
+		windupTell = "WINDING UP...", attackTell = "THROW!",
+		color = { r = 255, g = 170, b = 60 }, starter = true, rarity = "rare" },
 	Afterburner = { id = "Afterburner", kind = "wild", name = "Afterburner", icon = "🔥", word = "ZOOM!",
 		when = "AFTER YOU ATTACK", promise = "Jet away and attack again sooner.",
 		color = { r = 255, g = 168, b = 66 }, starter = true, rarity = "common" },
@@ -1787,6 +2002,18 @@ local skills = {
 	Gambler = { id = "Gambler", kind = "wild", name = "Gambler", icon = "🎲", word = "ROLL!",
 		when = "AS THE ROUND STARTS", promise = "Roll a die. 1 costs an armor, 4 or 5 adds one, 6 is a jackpot.",
 		color = { r = 255, g = 215, b = 80 }, starter = true, rarity = "rare" },
+	Wrap = { id = "Wrap", kind = "wild", name = "Wrap", icon = "🌀", word = "WARP!",
+		when = "ALL ROUND", promise = "Shots that miss come back in the other side of the arena, aimed again.",
+		color = { r = 110, g = 150, b = 255 }, starter = true, rarity = "rare" },
+	HotPotato = { id = "HotPotato", kind = "wild", name = "Hot Potato", icon = "💣", word = "KABOOM!",
+		when = "10 SECONDS IN", promise = "A bomb starts on your rival and jumps to whoever is hit. The first hit on you is free.",
+		color = { r = 255, g = 110, b = 60 }, starter = true, rarity = "rare" },
+	Decoy = { id = "Decoy", kind = "wild", name = "Decoy", icon = "🎈", word = "POP!",
+		when = "ALL ROUND", promise = "A fake you flies alongside. Attacks that hit it are wasted.",
+		color = { r = 255, g = 150, b = 200 }, starter = true, rarity = "rare" },
+	Thief = { id = "Thief", kind = "wild", name = "Thief", icon = "🦝", word = "YOINK!",
+		when = "YOUR FIRST HIT", promise = "Steal one of your rival's wild cards for the round.",
+		color = { r = 150, g = 150, b = 170 }, starter = true, rarity = "rare" },
 }
 
 function SkillCatalog.valid(id, kind)
@@ -4843,11 +5070,11 @@ BattleLab.MAX_ROUNDS = 5
 BattleLab.GUIDE_INTRO_SECONDS = 5
 BattleLab.GUIDE_PICK_SECONDS = 40
 local GUIDE = {offences={"Meteor","Firework"},wilds={"SpringBumper","Afterburner","FizzyFuel","Magnet"},hand={[2]=2,[3]=3}}
-local PUBLIC = {offences={"Meteor","Firework","MachineGun","Pinball","Sniper"},
+local PUBLIC = {offences={"Meteor","Firework","MachineGun","Pinball","Sniper","Boomerang"},
     wilds={"Afterburner","SpringBumper","FizzyFuel","Magnet","SecondWind","Squadron","Giant","Eject","Vampire","Chicken",
-        "Bug","Snowball","Swap","Gambler"}}
--- A pick shows this many wild cards: the ones already on the plane, then a
--- fresh random deal from the rest of the roster.
+        "Bug","Snowball","Swap","Gambler","Wrap","HotPotato","Decoy","Thief"}}
+-- A pick shows this many attacks and this many wild cards: the ones already
+-- on the plane, then a fresh random deal from the rest of the roster.
 local HAND = 5
 local function finite(value)
     return type(value)=="number" and value==value and value&gt;-math.huge and value&lt;math.huge
@@ -4875,8 +5102,8 @@ local function perspective(value,side)
         if type(item)~="table" then return end
         for key,v in pairs(item) do
             if type(v)=="table" then visit(v)
-            elseif key=="actor" or key=="target" or key=="owner" or key=="winner" then item[key]=seat(v,side)
-            elseif key=="x" or key=="vx" or key=="lockX" or key=="_knockX" or key=="_chargeX" or key=="_recoverX" then
+            elseif key=="actor" or key=="target" or key=="owner" or key=="holder" or key=="winner" then item[key]=seat(v,side)
+            elseif key=="x" or key=="vx" or key=="decoyX" or key=="lockX" or key=="_knockX" or key=="_chargeX" or key=="_recoverX" then
                 if type(v)=="number" then item[key]=-v end
             elseif key=="heading" or key=="_attackHeading" then
                 if type(v)=="number" then item[key]=(math.pi-v+math.pi)%(2*math.pi)-math.pi end
@@ -4966,17 +5193,20 @@ function BattleLab:fillDraft(m,side,random)
         draft.wildIds[#draft.wildIds+1]=free[random and self:random(#free) or 1]
     end
 end
-function BattleLab:hand(m,side)
-    local pool=copy(m.roster.wilds)
+function BattleLab:hand(m,side,kind)
+    local pool=copy(m.roster[kind])
     if #pool&lt;=HAND then return pool end
     local held,hand={},{}
-    for _,id in ipairs(m.settings[side].wildIds) do held[id]=true end
+    local build=m.settings[side] or {}
+    for _,id in ipairs(kind=="wilds" and (build.wildIds or {}) or {build.offenceId}) do
+        if contains(pool,id) then held[id]=true end
+    end
     for index=#pool,1,-1 do if held[pool[index]] then table.remove(pool,index) end end
     local dealt=0
     for _ in pairs(held) do dealt=dealt+1 end
     while dealt&lt;HAND and #pool&gt;0 do held[table.remove(pool,self:random(#pool))]=true; dealt=dealt+1 end
     -- Shown in roster order, so a card keeps its place between picks.
-    for _,id in ipairs(m.roster.wilds) do if held[id] then hand[#hand+1]=id end end
+    for _,id in ipairs(m.roster[kind]) do if held[id] then hand[#hand+1]=id end end
     return hand
 end
 function BattleLab:changePhase(m,phase,endsAt)
@@ -4990,7 +5220,7 @@ function BattleLab:startPick(m)
     self:changePhase(m,"Pick",self.deps.now()+(m.guided and self.GUIDE_PICK_SECONDS or self.PICK_SECONDS))
     m.locked={false,false}; m.offers={}; m.drafts={}; m.offerRevision={1,1}
     for side,participant in ipairs(m.participants) do
-        local offer={offences=copy(m.roster.offences),wilds=self:hand(m,side)}
+        local offer={offences=self:hand(m,side,"offences"),wilds=self:hand(m,side,"wilds")}
         if m.guided then
             -- The first cards a pilot ever reads: the plainest ones, in a fixed order.
             offer.offences=copy(GUIDE.offences); offer.wilds={}
@@ -7052,6 +7282,126 @@ return function(Simulation, Catalog, Skills)
 		end
 	end)
 
+	test("Wrap sends a missed shot back in the far side, aimed at the rival", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Wrap" } }, { offenceId = "Firework" })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, 40, 50, 0); passive(b, -30, 30, 0)
+		a.phase, a.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		local shot = state.projectiles[1]
+		check(shot and shot.wraps == 2, "The shot was not marked to wrap")
+		for _ = 1, 60 do
+			passive(a, 40, 50, 0); passive(b, -30, 30, 0)
+			Simulation.step(state, Simulation.FIXED_DT)
+			if shot.wraps &lt; 2 then break end
+		end
+		check(shot.wraps == 1 and shot.x &lt; 0 and said(state, "wrap"), "The shot did not come back in the other side")
+		check(shot.vx &gt; 0 and shot.vy &lt; 0, "The returning shot did not turn toward the rival")
+		local plain = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework" })
+		passive(plain.fighters[1], 40, 50, 0); plain.fighters[1].phase, plain.fighters[1].phaseLeft = "Windup", 0
+		Simulation.step(plain, Simulation.FIXED_DT)
+		check(plain.projectiles[1].wraps == nil, "A plain shot wrapped")
+	end)
+
+	test("Hot Potato starts on the rival, spares its owner once, follows hits and goes off on time", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "HotPotato" } }, { offenceId = "Firework", wildIds = { "SpringBumper" } })
+		local a, b = state.fighters[1], state.fighters[2]
+		local potato = state.potatoes[1]
+		check(potato.holder == 2 and potato.owner == 1 and potato.left == Skills.wild.HotPotato.fuse, "The bomb did not start on the rival")
+		local function strikeOwner()
+			passive(a, -30, 50, math.pi); passive(b, 40, 80, 0); a.invulnerable = 0
+			state.projectiles = { { id = 950, owner = 2, x = -26, y = 50, vx = -60, vy = 0, life = 1, radius = 3.5 } }
+			Simulation.step(state, Simulation.FIXED_DT)
+		end
+		strikeOwner()
+		check(a.armor == 2 and potato.holder == 2, "The first hit on the owner handed the bomb over")
+		strikeOwner()
+		check(a.armor == 1 and potato.holder == 1 and said(state, "potato_pass"), "The second hit did not pass the bomb")
+		passive(a, -40, 80, 0); passive(b, 30, 50, 0); b.bumperReady = false; state.projectiles = {}
+		shoot(state, 30, 50)
+		check(potato.holder == 2, "A hit on the rival did not send the bomb back")
+		passive(a, -40, 80, 0); passive(b, 30, 30, 0); b.invulnerable, b.bumperReady = 0, true
+		state.projectiles = {}
+		potato.left = Simulation.FIXED_DT / 2
+		local armor = b.armor
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(b.armor == armor - 1 and b.bumperReady and #state.potatoes == 0 and said(state, "potato"), "The bomb did not go off through the bumper")
+	end)
+
+	test("Decoy draws a nearer rival, eats one shot and comes back after its cooldown", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework", wildIds = { "Decoy" } })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -40, 80, 0); passive(b, 30, 50, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(b.decoyUp and b.decoyX and math.abs(math.abs(b.decoyY - b.y) - 14) &lt; 0.5, "The decoy was not flying beside its plane")
+		local dx, dy = b.decoyX, b.decoyY
+		state.projectiles = { { id = 960, owner = 1, x = dx - 4, y = dy, vx = 60, vy = 0, life = 1, radius = 3.5 } }
+		passive(b, 30, 50, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(b.armor == 3 and not b.decoyUp and #state.projectiles == 0 and said(state, "decoy_pop"), "The decoy did not eat the shot")
+		check(b.decoyX == nil, "A popped decoy still had a position")
+		for _ = 1, math.ceil(Skills.wild.Decoy.cooldown / Simulation.FIXED_DT) + 2 do
+			passive(a, -40, 80, 0); passive(b, 30, 50, 0)
+			Simulation.step(state, Simulation.FIXED_DT)
+		end
+		check(b.decoyUp, "The decoy never came back")
+		-- A circling rival that is nearer the decoy steers by it, not by the plane.
+		local lured = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework", wildIds = { "Decoy" } })
+		local plain = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework" })
+		for _, round in ipairs({ lured, plain }) do
+			passive(round.fighters[2], 30, 50, 0)
+			local f = round.fighters[1]
+			f.x, f.y, f.heading = 30, 50 + 30 * (lured.fighters[2].decoySide or 1), 0
+			f.phase, f.phaseLeft = "Windup", 0.5
+			Simulation.step(round, Simulation.FIXED_DT)
+		end
+		check(math.abs(lured.fighters[1].lockY - plain.fighters[1].lockY) &gt; 5, "The decoy did not draw the rival's aim")
+	end)
+
+	test("Thief takes one stealable card with its first hit and leaves plane-shaping cards alone", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Thief" } }, { offenceId = "Firework", wildIds = { "Giant", "SpringBumper" } })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -40, 80, 0); passive(b, 30, 50, 0)
+		b.bumperReady = false
+		shoot(state, 30, 50)
+		local stolen = said(state, "skill", "Thief")
+		check(stolen and stolen.stolen == "SpringBumper", "The thief took the wrong card")
+		check(#b.wildIds == 1 and b.wildIds[1] == "Giant" and b.scale &gt; 1.5, "The victim's plane changed shape")
+		check(#a.wildIds == 2 and a.wildIds[1] == "SpringBumper" and a.bumperReady == true and b.bumperReady == false, "The card did not change hands")
+		passive(b, 30, 50, 0); b.invulnerable = 0; state.projectiles = {}
+		shoot(state, 30, 50)
+		check(#a.wildIds == 2 and #b.wildIds == 1, "The thief stole twice")
+		local nothing = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Thief" } }, { offenceId = "Firework", wildIds = { "Bug" } })
+		passive(nothing.fighters[1], -40, 80, 0); passive(nothing.fighters[2], 30, 50, 0)
+		shoot(nothing, 30, 50)
+		check(#nothing.fighters[2].wildIds == 1 and nothing.fighters[1].thiefReady, "A plane-shaping card was stolen")
+	end)
+
+	test("Boomerang flies out, turns back to its thrower and is caught", function()
+		local state = Simulation.newRound(4, { offenceId = "Boomerang" }, { offenceId = "Firework" })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -40, 50, 0); passive(b, 60, 90, 0)
+		a.phase, a.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		local blade = state.projectiles[1]
+		check(blade and blade.source == "boomerang", "No blade was thrown")
+		local farthest, caught = blade.x, false
+		for _ = 1, 240 do
+			passive(a, -40, 50, 0); passive(b, 60, 90, 0)
+			Simulation.step(state, Simulation.FIXED_DT)
+			farthest = math.max(farthest, blade.x)
+			if #state.projectiles == 0 then caught = true; break end
+		end
+		check(farthest &gt; 0 and blade.returning and caught and said(state, "catch") and b.armor == 3, "The blade did not come home")
+		for seed = 1, 5 do
+			for _, rival in ipairs({ "Meteor", "Pinball", "Boomerang" }) do
+				local first = run(seed, { offenceId = "Boomerang", wildIds = { "Wrap", "Decoy" } }, { offenceId = rival, wildIds = { "HotPotato", "Thief" } })
+				local again = run(seed, { offenceId = "Boomerang", wildIds = { "Wrap", "Decoy" } }, { offenceId = rival, wildIds = { "HotPotato", "Thief" } })
+				check(first.elapsed &lt;= Simulation.MAX_TIME and equal(first, again), "Boomerang against " .. rival .. " was not deterministic")
+			end
+		end
+	end)
+
 	return string.format("BattleSimulation: %d tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes, plane-changing cards)", passed)
 end
 </ProtectedString>
@@ -7174,7 +7524,7 @@ return function(BattleLab, Skills)
     end)
     test("the public draft shows the whole roster in order before every round",function()
         local t=harness({publicDraft=true});local a,b,m=t.pair();local s=t.lab:snapshot(a)
-        assert(table.concat(s.offer.offences,",")=="Meteor,Firework,MachineGun,Pinball,Sniper" and #s.offer.wilds==5 and s.slots==0)
+        assert(#s.offer.offences==5 and #s.offer.wilds==5 and s.slots==0)
         t.advance(19.9);assert(m.phase=="Pick");t.advance(.2);assert(m.phase~="Pick","The 20-second deadline did not lock")
         t.advance(2.5);assert(m.phase=="Fight");t.finish(m,1);t.advance(3.6);s=t.lab:snapshot(a)
         assert(s.phase=="Pick" and s.slots==1 and #s.offer.wilds==5,"Wild pick did not deal a full hand")
@@ -7330,7 +7680,7 @@ return function(BattleLab, Skills)
     end)
     test("public ignores experimental requests; authorized pools freeze and never mix",function()
         local roster={version="experiment",offences={"Meteor","Firework"},wilds={"Afterburner","SpringBumper"}}
-        local t=harness({resolveRoster=function()return roster end});local a,b,m=t.pair();assert(m.roster.mode=="public" and #m.roster.offences==5)
+        local t=harness({resolveRoster=function()return roster end});local a,b,m=t.pair();assert(m.roster.mode=="public" and #m.roster.offences==6)
         local x=harness({allowExperimental=true,resolveRoster=function(p)if p.UserId==1 then return roster end end})
         local c,d=x.player(1),x.player(2);x.send(c,"enter");x.send(d,"enter");assert(x.lab:snapshot(c).phase=="Searching")
         x.advance(8.1);local old=x.lab.sessions[1].match;roster.offences={"Pinball"}
@@ -7518,8 +7868,9 @@ return function(Catalog)
 		local wanted = { Meteor = true, Firework = true, MachineGun = true, Pinball = true,
 			Afterburner = true, SpringBumper = true, FizzyFuel = true, Magnet = true, SecondWind = true,
 			Squadron = true, Giant = true, Eject = true, Vampire = true, Chicken = true,
-			Sniper = true, Bug = true, Snowball = true, Swap = true, Gambler = true }
-		check(#Catalog.all("offence") == 5 and #Catalog.all("wild") == 14, "Approved roster changed")
+			Sniper = true, Bug = true, Snowball = true, Swap = true, Gambler = true,
+			Boomerang = true, Wrap = true, HotPotato = true, Decoy = true, Thief = true }
+		check(#Catalog.all("offence") == 6 and #Catalog.all("wild") == 18, "Approved roster changed")
 		for _, entry in ipairs(Catalog.all()) do
 			check(wanted[entry.id] and entry.starter, "Skill is gated or outside agreed roster")
 		end
@@ -13962,6 +14313,14 @@ function BattleLab:feedback(data)
                 else self:call("YOUR "..name.." HIT!"..extra,"good",3,1.3) end
                 self.hitTimes[event.target]=os.clock()
                 if event.source=="wake" then self.wildTimes[event.target==1 and 2 or 1].FizzyFuel=os.clock() end
+            elseif event.kind=="potato" then
+                self:call(event.target==1 and "💣 KABOOM! THE BOMB GOT YOU" or "💣 KABOOM! THE BOMB GOT "..rival,event.target==1 and "bad" or "good",4,1.8)
+                self.hitTimes[event.target]=os.clock()
+            elseif event.kind=="potato_pass" then
+                self:call(event.target==1 and "💣 THE BOMB IS ON YOU!" or "💣 THE BOMB IS ON "..rival.."!",event.target==1 and "bad" or "good",3,1.4)
+            elseif event.kind=="decoy_pop" then
+                self:call(event.target==1 and "YOUR DECOY TOOK THE HIT!" or "YOU HIT "..rival.."'S DECOY",event.target==1 and "good" or "bad",3,1.3)
+                self.wildTimes[event.target==1 and 1 or 2].Decoy=os.clock()
             elseif event.kind=="blocked" then
                 self:call(mine and "YOUR BUMPER BLOCKED IT!" or rival.."'S BUMPER BLOCKED YOUR HIT","good",3,1.3)
                 self.wildTimes[mine and 1 or 2].SpringBumper=os.clock()
@@ -13972,6 +14331,11 @@ function BattleLab:feedback(data)
                     local outcome=roll==1 and "LOSE 1 ARMOR" or (roll==6 and "JACKPOT! +1 ARMOR, DOUBLE HITS" or (roll&gt;=4 and "+1 ARMOR" or "NOTHING"))
                     self:call((mine and "YOU ROLLED " or rival.." ROLLED ")..tostring(roll)..": "..outcome,mine and "you" or "rival",2,2.2)
                     self.wildTimes[mine and 1 or 2].Gambler=os.clock()
+                elseif skill and skill.id=="Thief" then
+                    local loot=self.skills.get(event.stolen or "")
+                    local name=string.upper(loot and loot.name or "A CARD")
+                    self:call(mine and "YOINK! YOU STOLE "..name or rival.." STOLE YOUR "..name.."!",mine and "good" or "bad",3,2)
+                    self.wildTimes[mine and 1 or 2].Thief=os.clock()
                 elseif skill and skill.id=="Swap" then
                     self:call("SWAP! YOU TRADED ARMOR","good",3,1.6)
                     self.wildTimes[mine and 1 or 2].Swap=os.clock()
@@ -14175,7 +14539,15 @@ function BattleLab:update(dt)
             local left=((fighters[index] or {}).swapAt or -1)-(sim.elapsed or 0)
             if not sim.swapped and left&gt;0 and left&lt;=3 then swapIn=math.ceil(left) end
         end
-        if swapIn then
+        local fuse,holder
+        for _,potato in ipairs(sim.potatoes or {}) do
+            if (potato.left or 99)&lt;=3 and (not fuse or potato.left&lt;fuse) then fuse,holder=potato.left,potato.holder end
+        end
+        if fuse then
+            self.status.Text="💣 BOMB ON "..(holder==1 and "YOU" or rivalName)..": "..tostring(math.max(1,math.ceil(fuse))).."…"
+            self.status.TextColor3=holder==1 and RED or GOLD
+            self.statusEdge.Color=holder==1 and RED or GOLD; self.statusEdge.Transparency=0.1
+        elseif swapIn then
             self.status.Text="ARMOR SWAP IN "..tostring(swapIn).."…"; self.status.TextColor3=GOLD
             self.statusEdge.Color=GOLD; self.statusEdge.Transparency=0.1
         elseif suddenDeath and not (line and side==1) then
@@ -14483,6 +14855,8 @@ local POWER = {
 	magnet = Color3.fromRGB(255, 96, 200), wind = Color3.fromRGB(150, 255, 120),
 	burner = Color3.fromRGB(120, 200, 255), bumper = Color3.fromRGB(215, 255, 80),
 	vampire = Color3.fromRGB(230, 40, 90), feather = Color3.fromRGB(255, 250, 235),
+	wrap = Color3.fromRGB(110, 150, 255), blade = Color3.fromRGB(255, 170, 60), decoy = Color3.fromRGB(255, 150, 200),
+	bomb = Color3.fromRGB(255, 110, 60),
 	sniper = Color3.fromRGB(255, 50, 50), snow = Color3.fromRGB(215, 240, 255), swap = Color3.fromRGB(190, 120, 255),
 }
 -- Where a squadron's wingmen fly, matching BattleSimulation's formation.
@@ -15137,25 +15511,46 @@ function BattleView:_fighter(id, index)
 	return fighter
 end
 
+-- A plain copy of a fighter's skin, with no pilot, trail or emitters.
+local function skinCopy(fighter, name, transparency)
+	local copy = Instance.new("Model"); copy.Name = name; copy.Parent = fighter.fx
+	for _, original in ipairs(fighter.model:GetChildren()) do
+		if original:IsA("BasePart") and original.Transparency &lt; 0.5 then
+			local piece = original:Clone()
+			for _, child in ipairs(piece:GetChildren()) do if not child:IsA("DataModelMesh") then child:Destroy() end end
+			piece.Anchored, piece.CanCollide, piece.CanTouch, piece.CanQuery = true, false, false, false
+			piece.Transparency, piece.LocalTransparencyModifier = transparency, 0
+			piece.Parent = copy
+		end
+	end
+	copy.WorldPivot = fighter.model:GetPivot()
+	copy:PivotTo(PARKED)
+	return copy
+end
+
+-- A decoy is a see-through copy of the skin flying beside the real plane.
+function BattleView:_decoy(fighter, x, y, pose)
+	if x and (not fighter.decoy or fighter.decoyScale ~= fighter.shownScale) then
+		if fighter.decoy then fighter.decoy:Destroy() end
+		fighter.decoy, fighter.decoyScale = skinCopy(fighter, "Decoy", 0.45), fighter.shownScale
+	end
+	if not fighter.decoy then return end
+	if x then
+		local wobble = self.reducedMotion and 0 or math.sin(self.clock * 5) * 0.8
+		fighter.decoy:PivotTo(pose.Rotation + (ORIGIN + Vector3.new(x, y + wobble, 0)))
+	else
+		fighter.decoy:PivotTo(PARKED)
+	end
+end
+
 -- A squadron's extra planes: plain copies of the leader's skin that fly in
--- formation. They carry no pilots, trails or emitters of their own.
+-- formation.
 function BattleView:_wingmen(fighter, count, pose, heading)
 	if count &gt; 0 and (#fighter.wingmen == 0 or fighter.wingScale ~= fighter.shownScale) then
 		for _, wingman in ipairs(fighter.wingmen) do wingman.model:Destroy() end
 		fighter.wingmen = {}
 		for number = 1, #WING do
-			local copy = Instance.new("Model"); copy.Name = "Wingman" .. number; copy.Parent = fighter.fx
-			for _, original in ipairs(fighter.model:GetChildren()) do
-				if original:IsA("BasePart") and original.Transparency &lt; 0.5 then
-					local piece = original:Clone()
-					for _, child in ipairs(piece:GetChildren()) do if not child:IsA("DataModelMesh") then child:Destroy() end end
-					piece.Anchored, piece.CanCollide, piece.CanTouch, piece.CanQuery = true, false, false, false
-					piece.Transparency, piece.LocalTransparencyModifier = 0, 0
-					piece.Parent = copy
-				end
-			end
-			copy.WorldPivot = fighter.model:GetPivot()
-			copy:PivotTo(PARKED)
+			local copy = skinCopy(fighter, "Wingman" .. number, 0)
 			fighter.wingmen[number] = { model = copy, parked = true }
 		end
 		fighter.wingScale = fighter.shownScale
@@ -15509,6 +15904,27 @@ function BattleView:_events(simulation)
 					end
 					self:_burst(x, y, POWER.vampire, true)
 					self:_jolt(1.8, 0.5, 0.06, 0.25, 0.4)
+				elseif kind == "wrap" then
+					-- A portal opens where the shot leaves and where it comes back.
+					self:_burst(x, y, POWER.wrap, true)
+					self:_particles(x, y, POWER.wrap, 40, 0, 0, 70)
+				elseif kind == "decoy_pop" then
+					self:_burst(x, y, POWER.decoy, true)
+					self:_particles(x, y, POWER.decoy, 60, 4, 0, 90)
+					self:_jolt(1.6, 0.4, 0.04, 0.15, 0.3)
+				elseif kind == "potato" then
+					self:_particles(x, y, POWER.bomb, 110, 30, 34, 120)
+					self:_particles(x, y, COLORS.yellow, 50, 0, 0, 80)
+					self:_burst(x, y, POWER.bomb, true)
+					self:_jolt(5.2, 1, 0.16, 0.8, 0.9)
+				elseif kind == "potato_pass" then
+					self:_burst(x, y, POWER.bomb, false)
+					self:_particles(x, y, POWER.bomb, 24, 0, 0, 50)
+				elseif kind == "catch" then
+					self:_particles(x, y, POWER.blade, 16, 0, 0, 30)
+				elseif kind == "skill" and event.skillId == "Thief" then
+					self:_particles(x, y, COLORS.cream, 50, 6, 0, 70)
+					self:_jolt(1.4, 0.4, 0.04, 0.15, 0.3)
 				elseif kind == "skill" and event.skillId == "Snowball" and actor then
 					actor.snowTime = self.clock
 					self:_particles(x, y, POWER.snow, 70, 0, 0, 80)
@@ -16019,6 +16435,8 @@ function BattleView:update(snapshot, dt, viewportRect)
 		local target = ORIGIN + Vector3.new(
 			math.clamp(numeric(state.x, index == 1 and -45 or 45) + vx * extrapolate, bounds.left, bounds.right),
 			math.clamp(numeric(state.y, CENTER_Y) + vy * extrapolate, bounds.bottom, bounds.top), 0)
+		-- A plane that wraps round the arena jumps; it must not streak across it.
+		if fighter.position and (target - fighter.position).Magnitude &gt; 60 then fighter.position = nil end
 		fighter.position = fighter.position and fighter.position:Lerp(target, smoothing) or target
 		local desiredPose = poseForVelocity(fighter.position, vx, vy, fighter.facing, 0.20 + math.sin(self.clock * 3 + index) * 0.05)
 		fighter.pose = fighter.pose and fighter.pose:Lerp(desiredPose, smoothing) or desiredPose
@@ -16054,6 +16472,28 @@ function BattleView:update(snapshot, dt, viewportRect)
 			fighter.laser.Size = Vector3.new(170, locked and 0.7 or 0.28, 0.3)
 			fighter.laser.CFrame = CFrame.new(fighter.position + along * 92) * CFrame.Angles(0, 0, angle)
 			fighter.laser.Transparency = aiming and (locked and 0.05 or 0.45 + math.sin(self.clock * 30) * 0.2) or 1
+		end
+		self:_decoy(fighter, not knockedOut and tonumber(state.decoyX) or nil, numeric(state.decoyY, 0), displayPose)
+		-- A hot potato rides above whoever holds it, counting down.
+		local fuse
+		for _, potato in ipairs(simulation.potatoes or {}) do
+			if potato.holder == state.id then fuse = math.min(fuse or math.huge, numeric(potato.left, 0)) end
+		end
+		if fuse and not fighter.bombGui then
+			local gui = Instance.new("BillboardGui"); gui.Name = "Bomb"; gui.LightInfluence = 0
+			gui.Size, gui.StudsOffset = UDim2.fromScale(13, 7), Vector3.new(0, 11, 0)
+			gui.Adornee, gui.Parent = fighter.model.PrimaryPart, fighter.model.PrimaryPart
+			local label = Instance.new("TextLabel"); label.BackgroundTransparency = 1; label.Size = UDim2.fromScale(1, 1)
+			label.TextScaled, label.Font, label.TextColor3 = true, Enum.Font.FredokaOne, COLORS.cream
+			label.TextStrokeTransparency, label.TextStrokeColor3, label.Parent = 0, COLORS.ink, gui
+			fighter.bombGui, fighter.bombLabel = gui, label
+		end
+		if fighter.bombGui then
+			fighter.bombGui.Enabled = fuse ~= nil and moving
+			if fuse then
+				fighter.bombLabel.Text = "💣 " .. math.max(1, math.ceil(fuse))
+				fighter.bombLabel.TextColor3 = fuse &lt;= 3 and POWER.sniper or COLORS.cream
+			end
 		end
 		local chicken = numeric(state.chickenLeft, 0) &gt; 0 and not knockedOut
 		self:_morph(fighter, chicken and "🐔" or (state.ejected == true and armor &gt; 0 and "🪂") or nil,
@@ -16155,12 +16595,14 @@ function BattleView:update(snapshot, dt, viewportRect)
 		local color = owner and owner.color or PLAYER_COLORS[tonumber(state.owner) or 1] or COLORS.yellow
 		local sniper = state.source == "sniper"
 		local tracer = state.source == "machinegun" or state.source == "pea" or sniper
-		local ball = state.source == "pinball"
+		local blade = state.source == "boomerang"
+		local ball = state.source == "pinball" or blade
 		-- A Giant's shots are as oversized as it is.
 		local big = numeric(((simulation.fighters or {})[state.owner] or {}).shotScale, 1)
 		rocket.owner = state.owner
 		local squash = (ball and not self.reducedMotion) and 1 + 0.12 * math.sin(self.clock * 30) or 1
-		rocket.ball.Size = Vector3.new(6.4 * squash, 6.4 / squash, 6.4) * big
+		rocket.ball.Size = (blade and Vector3.new(9, 2.2, 2.2) or Vector3.new(6.4 * squash, 6.4 / squash, 6.4)) * big
+		rocket.ball.Color = blade and POWER.blade or POWER.pinball
 		rocket.ball.Transparency, rocket.ballCore.Transparency = ball and 0.15 or 1, ball and 0 or 1
 		rocket.body.Transparency = ball and 1 or 0
 		if ball then tracer = true end
@@ -16175,8 +16617,13 @@ function BattleView:update(snapshot, dt, viewportRect)
 		for _, stripe in ipairs(rocket.stripes) do stripe.Color = color end
 		local vx, vy = numeric(state.vx, 0), numeric(state.vy, 0)
 		local target = ORIGIN + Vector3.new(numeric(state.x, 0) + vx * extrapolate, numeric(state.y, CENTER_Y) + vy * extrapolate, 2)
+		if rocket.position and (target - rocket.position).Magnitude &gt; 45 then
+			-- A wrapped shot reappears on the far side with a clean trail.
+			rocket.position = nil
+			rocket.trail:Clear()
+		end
 		rocket.position = rocket.position and rocket.position:Lerp(target, smoothing) or target
-		local rocketPose = CFrame.new(rocket.position) * CFrame.Angles(0, 0, math.atan2(vy, vx))
+		local rocketPose = CFrame.new(rocket.position) * CFrame.Angles(0, 0, blade and self.clock * 22 or math.atan2(vy, vx))
 		rocket.model:PivotTo(rocketPose)
 		local sputter = 1 + math.sin(self.clock * 49 + numeric(tonumber(id), 0)) * 0.23
 		rocket.exhaust.Size = Vector3.new(3.6 * sputter, 1.25, 1.25)
@@ -16192,7 +16639,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 			spark.Transparency = moving and not tracer and not self.reducedMotion and progress or 1
 		end
 		rocket.trail.Enabled = moving
-		rocket.trail.Color = ColorSequence.new(ball and POWER.pinball or color, COLORS.cream)
+		rocket.trail.Color = ColorSequence.new(blade and POWER.blade or (ball and POWER.pinball or color), COLORS.cream)
 		rocket.trail.Lifetime = ball and 0.9 or (tracer and 0.12 or 0.55)
 		rocket.trail.WidthScale = NumberSequence.new(ball and 4 or (tracer and 0.25 or 1), 0)
 		rocket.fizz.Rate = moving and not tracer and not self.reducedMotion and 55 or 0
@@ -16378,6 +16825,7 @@ local KINDS = {
     burst=true, tracer_hit=true, ricochet=true, magnet=true, secondwind=true,
     fizz=true, pinball_bounce=true, vampire=true, chicken=true, eject=true, combo=true,
     snowball=true, swap=true, gambler=true, sniper=true,
+    wrap=true, potato=true, potato_pass=true, decoy_pop=true, thief=true, boomerang=true, catch=true,
 }
 local function finite(value)
     return type(value)=="number" and value==value and value&gt;-math.huge and value&lt;math.huge
@@ -16385,7 +16833,9 @@ end
 local function audibleKind(event)
     if event.kind=="skill" then
         return ({Afterburner="afterburner",Magnet="magnet",SecondWind="secondwind",FizzyFuel="fizz",
-            Vampire="vampire",Chicken="chicken",Eject="eject",Snowball="snowball",Swap="swap",Gambler="gambler"})[event.skillId]
+            Vampire="vampire",Chicken="chicken",Eject="eject",Snowball="snowball",Swap="swap",Gambler="gambler",Thief="thief"})[event.skillId]
+    elseif event.kind=="rocket" and event.source=="boomerang" then
+        return "boomerang"
     elseif event.kind=="rocket" and event.source=="sniper" then
         return "sniper"
     elseif event.kind=="combo" then
@@ -16667,6 +17117,26 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
         -- The plane goes up, the seat goes out, the parachute snaps open.
         voice("jump",0.26,0.7,0.5,2.4)
         shot("bigBlast",0.6,1.2); shot("rise",0.5,1.6); shot("whoosh",0.4,0.7)
+    elseif kind=="wrap" then
+        -- A quick sci-fi blip, up then down.
+        voice("chime",0.14,2.4,0.14,0.9); shot("beep",0.25,2.6)
+    elseif kind=="potato" then
+        -- The biggest bang in the game.
+        voice("boom",0.4,0.7,0.5,0.4); shot("bigBlast",0.8,0.9); shot("sub",0.6,1); shot("gasp",0.4,1)
+    elseif kind=="potato_pass" then
+        -- A hot-hands yelp.
+        voice("jump",0.2,1.8,0.12,2.6); shot("click",0.4,1.2); shot("beep",0.25,1.1)
+    elseif kind=="decoy_pop" then
+        -- A balloon.
+        voice("land",0.2,2.8,0.06); shot("comic",0.5,2.4); shot("click",0.4,2.4)
+    elseif kind=="thief" then
+        -- A sneaky slide and a cash-register ping.
+        voice("jump",0.18,1.2,0.25,2); voice("chime",0.2,2.4,0.2,2.6); shot("whoosh",0.3,1.8)
+    elseif kind=="boomerang" then
+        -- A low whirr that rises as the blade spins away.
+        voice("jump",0.2,0.9,0.5,1.6); shot("whoosh",0.5,0.8); shot("rise",0.25,1.1)
+    elseif kind=="catch" then
+        voice("land",0.16,1.6,0.08); shot("click",0.35,1.5)
     elseif kind=="snowball" then
         -- A soft crunch that drops in pitch as the plane swells.
         voice("land",0.2,1.4,0.3,0.7); shot("crunch",0.4,1.5); shot("thump",0.4,1.3)

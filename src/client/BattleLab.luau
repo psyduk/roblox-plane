@@ -701,6 +701,14 @@ function BattleLab:feedback(data)
                 else self:call("YOUR "..name.." HIT!"..extra,"good",3,1.3) end
                 self.hitTimes[event.target]=os.clock()
                 if event.source=="wake" then self.wildTimes[event.target==1 and 2 or 1].FizzyFuel=os.clock() end
+            elseif event.kind=="potato" then
+                self:call(event.target==1 and "💣 KABOOM! THE BOMB GOT YOU" or "💣 KABOOM! THE BOMB GOT "..rival,event.target==1 and "bad" or "good",4,1.8)
+                self.hitTimes[event.target]=os.clock()
+            elseif event.kind=="potato_pass" then
+                self:call(event.target==1 and "💣 THE BOMB IS ON YOU!" or "💣 THE BOMB IS ON "..rival.."!",event.target==1 and "bad" or "good",3,1.4)
+            elseif event.kind=="decoy_pop" then
+                self:call(event.target==1 and "YOUR DECOY TOOK THE HIT!" or "YOU HIT "..rival.."'S DECOY",event.target==1 and "good" or "bad",3,1.3)
+                self.wildTimes[event.target==1 and 1 or 2].Decoy=os.clock()
             elseif event.kind=="blocked" then
                 self:call(mine and "YOUR BUMPER BLOCKED IT!" or rival.."'S BUMPER BLOCKED YOUR HIT","good",3,1.3)
                 self.wildTimes[mine and 1 or 2].SpringBumper=os.clock()
@@ -711,6 +719,11 @@ function BattleLab:feedback(data)
                     local outcome=roll==1 and "LOSE 1 ARMOR" or (roll==6 and "JACKPOT! +1 ARMOR, DOUBLE HITS" or (roll>=4 and "+1 ARMOR" or "NOTHING"))
                     self:call((mine and "YOU ROLLED " or rival.." ROLLED ")..tostring(roll)..": "..outcome,mine and "you" or "rival",2,2.2)
                     self.wildTimes[mine and 1 or 2].Gambler=os.clock()
+                elseif skill and skill.id=="Thief" then
+                    local loot=self.skills.get(event.stolen or "")
+                    local name=string.upper(loot and loot.name or "A CARD")
+                    self:call(mine and "YOINK! YOU STOLE "..name or rival.." STOLE YOUR "..name.."!",mine and "good" or "bad",3,2)
+                    self.wildTimes[mine and 1 or 2].Thief=os.clock()
                 elseif skill and skill.id=="Swap" then
                     self:call("SWAP! YOU TRADED ARMOR","good",3,1.6)
                     self.wildTimes[mine and 1 or 2].Swap=os.clock()
@@ -914,7 +927,15 @@ function BattleLab:update(dt)
             local left=((fighters[index] or {}).swapAt or -1)-(sim.elapsed or 0)
             if not sim.swapped and left>0 and left<=3 then swapIn=math.ceil(left) end
         end
-        if swapIn then
+        local fuse,holder
+        for _,potato in ipairs(sim.potatoes or {}) do
+            if (potato.left or 99)<=3 and (not fuse or potato.left<fuse) then fuse,holder=potato.left,potato.holder end
+        end
+        if fuse then
+            self.status.Text="💣 BOMB ON "..(holder==1 and "YOU" or rivalName)..": "..tostring(math.max(1,math.ceil(fuse))).."…"
+            self.status.TextColor3=holder==1 and RED or GOLD
+            self.statusEdge.Color=holder==1 and RED or GOLD; self.statusEdge.Transparency=0.1
+        elseif swapIn then
             self.status.Text="ARMOR SWAP IN "..tostring(swapIn).."…"; self.status.TextColor3=GOLD
             self.statusEdge.Color=GOLD; self.statusEdge.Transparency=0.1
         elseif suddenDeath and not (line and side==1) then

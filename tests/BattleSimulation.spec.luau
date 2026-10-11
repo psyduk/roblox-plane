@@ -1022,5 +1022,125 @@ return function(Simulation, Catalog, Skills)
 		end
 	end)
 
+	test("Wrap sends a missed shot back in the far side, aimed at the rival", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Wrap" } }, { offenceId = "Firework" })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, 40, 50, 0); passive(b, -30, 30, 0)
+		a.phase, a.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		local shot = state.projectiles[1]
+		check(shot and shot.wraps == 2, "The shot was not marked to wrap")
+		for _ = 1, 60 do
+			passive(a, 40, 50, 0); passive(b, -30, 30, 0)
+			Simulation.step(state, Simulation.FIXED_DT)
+			if shot.wraps < 2 then break end
+		end
+		check(shot.wraps == 1 and shot.x < 0 and said(state, "wrap"), "The shot did not come back in the other side")
+		check(shot.vx > 0 and shot.vy < 0, "The returning shot did not turn toward the rival")
+		local plain = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework" })
+		passive(plain.fighters[1], 40, 50, 0); plain.fighters[1].phase, plain.fighters[1].phaseLeft = "Windup", 0
+		Simulation.step(plain, Simulation.FIXED_DT)
+		check(plain.projectiles[1].wraps == nil, "A plain shot wrapped")
+	end)
+
+	test("Hot Potato starts on the rival, spares its owner once, follows hits and goes off on time", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "HotPotato" } }, { offenceId = "Firework", wildIds = { "SpringBumper" } })
+		local a, b = state.fighters[1], state.fighters[2]
+		local potato = state.potatoes[1]
+		check(potato.holder == 2 and potato.owner == 1 and potato.left == Skills.wild.HotPotato.fuse, "The bomb did not start on the rival")
+		local function strikeOwner()
+			passive(a, -30, 50, math.pi); passive(b, 40, 80, 0); a.invulnerable = 0
+			state.projectiles = { { id = 950, owner = 2, x = -26, y = 50, vx = -60, vy = 0, life = 1, radius = 3.5 } }
+			Simulation.step(state, Simulation.FIXED_DT)
+		end
+		strikeOwner()
+		check(a.armor == 2 and potato.holder == 2, "The first hit on the owner handed the bomb over")
+		strikeOwner()
+		check(a.armor == 1 and potato.holder == 1 and said(state, "potato_pass"), "The second hit did not pass the bomb")
+		passive(a, -40, 80, 0); passive(b, 30, 50, 0); b.bumperReady = false; state.projectiles = {}
+		shoot(state, 30, 50)
+		check(potato.holder == 2, "A hit on the rival did not send the bomb back")
+		passive(a, -40, 80, 0); passive(b, 30, 30, 0); b.invulnerable, b.bumperReady = 0, true
+		state.projectiles = {}
+		potato.left = Simulation.FIXED_DT / 2
+		local armor = b.armor
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(b.armor == armor - 1 and b.bumperReady and #state.potatoes == 0 and said(state, "potato"), "The bomb did not go off through the bumper")
+	end)
+
+	test("Decoy draws a nearer rival, eats one shot and comes back after its cooldown", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework", wildIds = { "Decoy" } })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -40, 80, 0); passive(b, 30, 50, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(b.decoyUp and b.decoyX and math.abs(math.abs(b.decoyY - b.y) - 14) < 0.5, "The decoy was not flying beside its plane")
+		local dx, dy = b.decoyX, b.decoyY
+		state.projectiles = { { id = 960, owner = 1, x = dx - 4, y = dy, vx = 60, vy = 0, life = 1, radius = 3.5 } }
+		passive(b, 30, 50, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(b.armor == 3 and not b.decoyUp and #state.projectiles == 0 and said(state, "decoy_pop"), "The decoy did not eat the shot")
+		check(b.decoyX == nil, "A popped decoy still had a position")
+		for _ = 1, math.ceil(Skills.wild.Decoy.cooldown / Simulation.FIXED_DT) + 2 do
+			passive(a, -40, 80, 0); passive(b, 30, 50, 0)
+			Simulation.step(state, Simulation.FIXED_DT)
+		end
+		check(b.decoyUp, "The decoy never came back")
+		-- A circling rival that is nearer the decoy steers by it, not by the plane.
+		local lured = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework", wildIds = { "Decoy" } })
+		local plain = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework" })
+		for _, round in ipairs({ lured, plain }) do
+			passive(round.fighters[2], 30, 50, 0)
+			local f = round.fighters[1]
+			f.x, f.y, f.heading = 30, 50 + 30 * (lured.fighters[2].decoySide or 1), 0
+			f.phase, f.phaseLeft = "Windup", 0.5
+			Simulation.step(round, Simulation.FIXED_DT)
+		end
+		check(math.abs(lured.fighters[1].lockY - plain.fighters[1].lockY) > 5, "The decoy did not draw the rival's aim")
+	end)
+
+	test("Thief takes one stealable card with its first hit and leaves plane-shaping cards alone", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Thief" } }, { offenceId = "Firework", wildIds = { "Giant", "SpringBumper" } })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -40, 80, 0); passive(b, 30, 50, 0)
+		b.bumperReady = false
+		shoot(state, 30, 50)
+		local stolen = said(state, "skill", "Thief")
+		check(stolen and stolen.stolen == "SpringBumper", "The thief took the wrong card")
+		check(#b.wildIds == 1 and b.wildIds[1] == "Giant" and b.scale > 1.5, "The victim's plane changed shape")
+		check(#a.wildIds == 2 and a.wildIds[1] == "SpringBumper" and a.bumperReady == true and b.bumperReady == false, "The card did not change hands")
+		passive(b, 30, 50, 0); b.invulnerable = 0; state.projectiles = {}
+		shoot(state, 30, 50)
+		check(#a.wildIds == 2 and #b.wildIds == 1, "The thief stole twice")
+		local nothing = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Thief" } }, { offenceId = "Firework", wildIds = { "Bug" } })
+		passive(nothing.fighters[1], -40, 80, 0); passive(nothing.fighters[2], 30, 50, 0)
+		shoot(nothing, 30, 50)
+		check(#nothing.fighters[2].wildIds == 1 and nothing.fighters[1].thiefReady, "A plane-shaping card was stolen")
+	end)
+
+	test("Boomerang flies out, turns back to its thrower and is caught", function()
+		local state = Simulation.newRound(4, { offenceId = "Boomerang" }, { offenceId = "Firework" })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -40, 50, 0); passive(b, 60, 90, 0)
+		a.phase, a.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		local blade = state.projectiles[1]
+		check(blade and blade.source == "boomerang", "No blade was thrown")
+		local farthest, caught = blade.x, false
+		for _ = 1, 240 do
+			passive(a, -40, 50, 0); passive(b, 60, 90, 0)
+			Simulation.step(state, Simulation.FIXED_DT)
+			farthest = math.max(farthest, blade.x)
+			if #state.projectiles == 0 then caught = true; break end
+		end
+		check(farthest > 0 and blade.returning and caught and said(state, "catch") and b.armor == 3, "The blade did not come home")
+		for seed = 1, 5 do
+			for _, rival in ipairs({ "Meteor", "Pinball", "Boomerang" }) do
+				local first = run(seed, { offenceId = "Boomerang", wildIds = { "Wrap", "Decoy" } }, { offenceId = rival, wildIds = { "HotPotato", "Thief" } })
+				local again = run(seed, { offenceId = "Boomerang", wildIds = { "Wrap", "Decoy" } }, { offenceId = rival, wildIds = { "HotPotato", "Thief" } })
+				check(first.elapsed <= Simulation.MAX_TIME and equal(first, again), "Boomerang against " .. rival .. " was not deterministic")
+			end
+		end
+	end)
+
 	return string.format("BattleSimulation: %d tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes, plane-changing cards)", passed)
 end

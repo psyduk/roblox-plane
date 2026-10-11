@@ -43,8 +43,9 @@ return function(Catalog)
 		local wanted = { Meteor = true, Firework = true, MachineGun = true, Pinball = true,
 			Afterburner = true, SpringBumper = true, FizzyFuel = true, Magnet = true, SecondWind = true,
 			Squadron = true, Giant = true, Eject = true, Vampire = true, Chicken = true,
-			Sniper = true, Bug = true, Snowball = true, Swap = true, Gambler = true }
-		check(#Catalog.all("offence") == 5 and #Catalog.all("wild") == 14, "Approved roster changed")
+			Sniper = true, Bug = true, Snowball = true, Swap = true, Gambler = true,
+			Boomerang = true, Wrap = true, HotPotato = true, Decoy = true, Thief = true }
+		check(#Catalog.all("offence") == 6 and #Catalog.all("wild") == 18, "Approved roster changed")
 		for _, entry in ipairs(Catalog.all()) do
 			check(wanted[entry.id] and entry.starter, "Skill is gated or outside agreed roster")
 		end
