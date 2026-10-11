@@ -1114,7 +1114,11 @@ return function(Simulation, Catalog, Skills)
 		local nothing = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Thief" } }, { offenceId = "Firework", wildIds = { "Bug" } })
 		passive(nothing.fighters[1], -40, 80, 0); passive(nothing.fighters[2], 30, 50, 0)
 		shoot(nothing, 30, 50)
-		check(#nothing.fighters[2].wildIds == 1 and nothing.fighters[1].thiefReady, "A plane-shaping card was stolen")
+		check(#nothing.fighters[2].wildIds == 1 and #nothing.fighters[1].wildIds == 1, "A plane-shaping card was stolen")
+		local pinched = said(nothing, "skill", "Thief")
+		check(pinched and pinched.stolen == nil and not nothing.fighters[1].thiefReady, "A thief with nothing to take did not pinch ammo instead")
+		check(nothing.fighters[2].phase == "Recover" and nothing.fighters[2].phaseLeft > Simulation.RECOVERY_TIME + 1,
+			"Losing ammo did not delay the rival's next attack")
 	end)
 
 	test("Thief stops only the stolen power and the retained power still works", function()
@@ -1163,6 +1167,166 @@ return function(Simulation, Catalog, Skills)
 				local first = run(seed, { offenceId = "Boomerang", wildIds = { "Wrap", "Decoy" } }, { offenceId = rival, wildIds = { "HotPotato", "Thief" } })
 				local again = run(seed, { offenceId = "Boomerang", wildIds = { "Wrap", "Decoy" } }, { offenceId = rival, wildIds = { "HotPotato", "Thief" } })
 				check(first.elapsed <= Simulation.MAX_TIME and equal(first, again), "Boomerang against " .. rival .. " was not deterministic")
+			end
+		end
+	end)
+
+	test("Black Hole drags both planes, bends and swallows shots, and bites the rival once it has armed", function()
+		local state = Simulation.newRound(4, { offenceId = "BlackHole" }, { offenceId = "Firework" })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -40, 50, 0); passive(b, 30, 50, 0)
+		b.vx, b.vy = 0, 0
+		a.phase, a.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		local hole = state.holes and state.holes[1]
+		check(hole and hole.owner == 1 and said(state, "hole") and #state.projectiles == 0, "No hole opened")
+		check(math.abs(hole.x - 30) < 1 and math.abs(hole.y - 50) < 1, "The hole did not open on the rival")
+		for _ = 1, 20 do
+			passive(a, -40, 50, 0); passive(b, 30, 50, 0)
+			Simulation.step(state, Simulation.FIXED_DT)
+		end
+		check(b.armor == 3 and #state.holes == 1, "The hole bit before it had armed")
+		for _ = 1, 20 do
+			passive(a, -40, 50, 0); passive(b, 30, 50, 0)
+			Simulation.step(state, Simulation.FIXED_DT)
+		end
+		check(b.armor == 2 and a.hits == 1 and #state.holes == 0 and said(state, "hole_close"), "The armed core did not take one armor and collapse")
+		local function open(armLeft)
+			state.holes = { { id = 90, owner = 1, skillId = "BlackHole", x = 0, y = 50, life = 5, maxLife = 5, armLeft = armLeft,
+				core = 4.5, reach = 34, pull = 20, bend = 170 } }
+		end
+		open(5)
+		passive(a, -20, 50, math.pi / 2); passive(b, 20, 50, math.pi / 2); b.invulnerable = 0
+		state.projectiles = { projectile(1, 1, -10, 62, 60, 0), projectile(2, 2, 1, 51, -60, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(a.x > -20 and b.x < 20, "The hole did not drag both planes toward it")
+		local bent = state.projectiles[1]
+		check(#state.projectiles == 1 and bent.id == 1 and said(state, "swallow"), "A shot in the core was not swallowed")
+		check(bent.vy < 0 and close(math.sqrt(bent.vx ^ 2 + bent.vy ^ 2), 60), "A passing shot was not bent at constant speed")
+		open(0); state.projectiles = {}
+		passive(a, 0, 50, 0); passive(b, 60, 80, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(a.armor == 3 and #state.holes == 1, "A hole hurt its own maker")
+	end)
+
+	test("UFO Beam grabs a close rival, takes its controls, and a thrown plane loses armor at the wall", function()
+		local function grab(rivalCards, distance)
+			local state = Simulation.newRound(4, { offenceId = "UFOBeam" }, { offenceId = "Firework", wildIds = rivalCards })
+			local a, b = state.fighters[1], state.fighters[2]
+			passive(a, 0, 50, 0); passive(b, distance, 50, 0)
+			b.phase, b.phaseLeft = "Windup", 0.5
+			a.phase, a.phaseLeft = "Windup", 0
+			Simulation.step(state, Simulation.FIXED_DT)
+			return state, a, b
+		end
+		local state, a, b = grab({}, 15)
+		check(b.hold and b.hold.by == 1 and said(state, "beam"), "A rival in range was not grabbed")
+		check(b.phase == "Recover" and #state.projectiles == 0, "The grabbed plane kept its attack")
+		local frozen = b.phaseLeft
+		for _ = 1, 10 do Simulation.step(state, Simulation.FIXED_DT) end
+		check(close(b.phaseLeft, frozen) and math.abs(b.x - b.hold.x) < 3, "A held plane kept its clock running or flew free")
+		for _ = 1, 40 do Simulation.step(state, Simulation.FIXED_DT) end
+		check(b.hold == nil and b.throw and b.throw.vx > 60 and said(state, "throw"), "The beam did not throw the plane it held")
+		for _ = 1, 200 do
+			if not b.throw then break end
+			Simulation.step(state, Simulation.FIXED_DT)
+		end
+		check(b.throw == nil and b.armor == 2 and a.hits == 1 and b.x > state.bounds.right - 2, "The thrown plane did not lose armor at the wall")
+		local missed, _, far = grab({}, 60)
+		check(far.hold == nil and said(missed, "beam_miss") and far.phase == "Windup", "The beam reached across the arena")
+		local shielded, _, safe = grab({}, 15)
+		check(safe.hold, "Fixture did not grab")
+		local protected = Simulation.newRound(4, { offenceId = "UFOBeam" }, { offenceId = "Firework" })
+		passive(protected.fighters[1], 0, 50, 0); passive(protected.fighters[2], 15, 50, 0)
+		protected.fighters[2].invulnerable = 0.5
+		protected.fighters[1].phase, protected.fighters[1].phaseLeft = "Windup", 0
+		Simulation.step(protected, Simulation.FIXED_DT)
+		check(protected.fighters[2].hold == nil, "A protected plane was grabbed")
+		local bumped, _, springy = grab({ "SpringBumper" }, 15)
+		for _ = 1, 260 do
+			Simulation.step(bumped, Simulation.FIXED_DT)
+			if springy.bumperReady == false then break end
+		end
+		check(springy.armor == 3 and springy.bumperReady == false and springy.throw == nil, "Spring Bumper did not soften the wall")
+		check(shielded ~= nil)
+	end)
+
+	test("Mothership stops attacking and its drones carry the attack from where they are", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Mothership" } }, { offenceId = "Firework" })
+		local a, b = state.fighters[1], state.fighters[2]
+		check(a.mothership and a.radius > Simulation.PLANE_RADIUS and a.speedScale < 1, "A mothership is not a big slow plane")
+		passive(a, -40, 50, 0); passive(b, 30, 50, 0)
+		a.phase, a.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(#state.drones == Skills.wild.Mothership.drones and #state.projectiles == 0 and said(state, "drone") and not a.armed,
+			"The mothership fired its own attack instead of launching drones")
+		local first
+		for _ = 1, 400 do
+			passive(a, -40, 50, 0); passive(b, 30, 50, 0)
+			Simulation.step(state, Simulation.FIXED_DT)
+			first = first or state.projectiles[1]
+			if b.armor < 3 then break end
+		end
+		check(first and first.owner == 1, "No drone fired the plane's attack")
+		check(b.armor == 2 and a.hits == 1, "A drone's shot did not count as its owner's hit")
+		check(a.attacks >= 2, "A drone's attack was not counted")
+
+		local dive = Simulation.newRound(4, { offenceId = "Meteor", wildIds = { "Mothership" } }, { offenceId = "Firework" })
+		local c, d = dive.fighters[1], dive.fighters[2]
+		passive(c, -40, 50, 0); passive(d, 30, 50, 0)
+		c.phase, c.phaseLeft = "Windup", 0
+		local struck
+		for _ = 1, 400 do
+			Simulation.step(dive, Simulation.FIXED_DT)
+			check(not c.armed, "A Meteor mothership armed its own nose")
+			passive(c, -40, 50, 0); passive(d, 30, 50, 0)
+			for _, entry in ipairs(dive.events) do if entry.kind == "hit" and entry.source == "meteor" then struck = entry end end
+			if struck then break end
+		end
+		check(struck and struck.actor == 1 and d.armor == 2, "A Meteor drone did not ram the rival")
+
+		local swat = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework", wildIds = { "Mothership" } })
+		passive(swat.fighters[1], -40, 80, 0); passive(swat.fighters[2], 40, 20, 0)
+		swat.drones = { { id = 5, owner = 2, mode = "fly", age = 0, x = 0, y = 50, heading = math.pi, vx = 0, vy = 0 } }
+		swat.projectiles = { projectile(7, 1, -6, 50, 60, 0) }
+		Simulation.step(swat, Simulation.FIXED_DT)
+		Simulation.step(swat, Simulation.FIXED_DT)
+		check(#swat.drones == 0 and #swat.projectiles == 0 and said(swat, "drone_pop") and swat.fighters[2].armor == 3,
+			"A shot that met a drone did not pop it and stop there")
+	end)
+
+	test("Rewind cancels the first hit and puts the whole round back three seconds, but not the clock", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework", wildIds = { "Rewind" } })
+		local a, b = state.fighters[1], state.fighters[2]
+		check(state.recording and b.rewindReady, "Rewind was not armed")
+		for _ = 1, 120 do
+			passive(a, -40, 50, 0); passive(b, 30, 50, 0)
+			Simulation.step(state, Simulation.FIXED_DT)
+		end
+		a.armor = 2
+		for _ = 1, 120 do
+			passive(a, -40, 70, 0); passive(b, 30, 70, 0)
+			Simulation.step(state, Simulation.FIXED_DT)
+		end
+		passive(a, -40, 70, 0); passive(b, 30, 70, 0)
+		local serial = state.eventSerial
+		shoot(state, 30, 70)
+		a, b = state.fighters[1], state.fighters[2]
+		check(b.armor == 3 and not b.rewindReady, "The hit landed, or Rewind stayed ready")
+		check(math.abs(b.y - 50) < 2 and math.abs(a.y - 50) < 2, "The planes were not put back where they were three seconds ago")
+		check(a.armor == 3, "Rewind kept damage the rewinder had dealt in the last three seconds")
+		check(state.elapsed > 4 and state.eventSerial > serial and #state.projectiles == 0, "The clock or the event list went backwards")
+		local scrub = said(state, "rewind")
+		check(scrub and scrub.actor == 2 and scrub.back > 2.5 and scrub.back <= 3.3 and said(state, "skill", "Rewind"), "The rewind was not announced")
+		check(#state._history == 0, "A second rewind could reach back past the first")
+		passive(a, -40, 50, 0); passive(b, 30, 50, 0); b.invulnerable = 0; state.projectiles = {}
+		shoot(state, 30, 50)
+		check(state.fighters[2].armor == 2, "Rewind worked twice")
+		for seed = 1, 4 do
+			for _, pair in ipairs({ { "BlackHole", "UFOBeam" }, { "UFOBeam", "Sniper" }, { "MachineGun", "BlackHole" } }) do
+				local first = run(seed, { offenceId = pair[1], wildIds = { "Mothership", "Rewind" } }, { offenceId = pair[2], wildIds = { "Rewind", "Thief" } })
+				local again = run(seed, { offenceId = pair[1], wildIds = { "Mothership", "Rewind" } }, { offenceId = pair[2], wildIds = { "Rewind", "Thief" } })
+				check(first.elapsed <= Simulation.MAX_TIME and equal(first, again), pair[1] .. " against " .. pair[2] .. " was not deterministic")
 			end
 		end
 	end)

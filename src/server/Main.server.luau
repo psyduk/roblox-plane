@@ -494,6 +494,10 @@ local battleLab=BattleLab.new({simulation=BattleSimulation,skills=SkillCatalog,n
         return script:GetAttribute("BattleGuidedFirstMatch")~=false and handle~=nil
             and (sessionOnly or handle.safe) and statsService:getBattle(handle).matches==0
     end,
+    discover=function(player,ids)
+        local p=profiles[player.UserId]
+        return p and statsService:discover(p.statsHandle,ids) or {}
+    end,
     onTerminal=function(player,result)
         local p=profiles[player.UserId]
         if not p then return nil end

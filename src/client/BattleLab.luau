@@ -167,9 +167,12 @@ function BattleLab.new(World,shared)
         local name=label(card,"SkillName",30,NAVY,Enum.Font.FredokaOne); name.Text=string.upper(spec.name)
         local promise=label(card,"Promise",14,NAVY); promise.Text=spec.promise
         local scale=make("UIScale",card,"Pop")
+        -- A card this pilot has never been dealt before wears a gold star.
+        local badge=label(card,"New",12,NAVY,Enum.Font.FredokaOne); badge.Text="NEW!"; badge.TextWrapped=false
+        badge.BackgroundColor3=GOLD; badge.BackgroundTransparency=0; badge.Rotation=8; badge.ZIndex=4; badge.Visible=false; corner(badge,8)
         card.Activated:Connect(function() self:choose(spec.id) end)
         icon.Text=spec.icon
-        self.powerCards[spec.id]={button=card,spec=spec,edge=edge,tag=tag,icon=icon,word=word,name=name,promise=promise,scale=scale,color=tint(spec.color)}
+        self.powerCards[spec.id]={button=card,spec=spec,edge=edge,tag=tag,icon=icon,word=word,name=name,promise=promise,scale=scale,badge=badge,color=tint(spec.color)}
     end
     -- The loadout bar says what is on the plane: one tile for the attack and
     -- one for each wild card slot. Tapping a tile picks the slot to change.
@@ -275,6 +278,21 @@ function BattleLab.new(World,shared)
         swatch.BackgroundColor3=Color3.new(1,1,1); corner(swatch)
         local gradient=make("UIGradient",swatch,"Colors"); gradient.Color=ColorSequence.new(tint(item.color),tint(item.secondaryColor))
         self.starterCards[#self.starterCards+1]={button=card,swatch=swatch,item=item}
+    end
+    -- Every power in the game, as a wall of tiles. The ones this pilot has not
+    -- met yet are dark question marks with a one-line hint.
+    self.powersCard=make("Frame",self.result,"Powers"); self.powersCard.BackgroundColor3=Color3.fromRGB(24,38,62)
+    self.powersCard.BorderSizePixel=0; self.powersCard.ZIndex=21; self.powersCard.Visible=false; corner(self.powersCard,16)
+    local powersEdge=make("UIStroke",self.powersCard,"Edge"); powersEdge.Thickness=3; powersEdge.Color=Color3.fromRGB(118,154,187)
+    self.powersTitle=label(self.powersCard,"Found",18,GOLD,Enum.Font.FredokaOne); self.powersTitle.ZIndex=22; self.powersTitle.TextWrapped=false
+    self.powersDetail=label(self.powersCard,"Detail",13,WHITE); self.powersDetail.ZIndex=22
+    self.powerTiles={}
+    for index,spec in ipairs(self.skills.all()) do
+        local tile=make("TextButton",self.powersCard,"Power"..spec.id)
+        tile.BorderSizePixel=0; tile.AutoButtonColor=false; tile.Font=Enum.Font.FredokaOne; tile.ZIndex=22; corner(tile,10)
+        local edge=make("UIStroke",tile,"Edge"); edge.ApplyStrokeMode=Enum.ApplyStrokeMode.Border; edge.Thickness=2
+        tile.Activated:Connect(function() self.powerFocus=spec.id; self.audio:ui("tap") end)
+        self.powerTiles[index]={button=tile,edge=edge,spec=spec,color=tint(spec.color)}
     end
     -- Full-screen beats: a white impact flash and the 3-2-1-FIGHT call.
     self.flash=make("Frame",self.panel,"ImpactFlash"); self.flash.Size=UDim2.fromScale(1,1)
@@ -468,6 +486,53 @@ function BattleLab:showRewards(data,x,y,width)
     end
     return y+height+10
 end
+-- How many of the game's powers this pilot has met, and how many there are.
+function BattleLab:found(discovered)
+    local count,total=0,0
+    for _,spec in ipairs(self.skills.all()) do
+        total=total+1
+        if type(discovered)=="table" and discovered[spec.id]==true then count=count+1 end
+    end
+    return count,total
+end
+-- What the wall of powers says about one tile. An unmet power keeps its name
+-- and its rules to itself.
+function BattleLab:powerLine(id,discovered)
+    local spec=self.skills.get(id or "")
+    if not spec then return "Tap a tile. The ? ones are still out there: play to find them!" end
+    if type(discovered)~="table" or discovered[id]~=true then return "???  ·  "..spec.teaser end
+    return spec.icon.." "..string.upper(spec.name).."  ·  "..spec.promise
+end
+function BattleLab:showPowers(data,x,y,width)
+    local economy=data.economy
+    self.powersCard.Visible=data.phase=="MatchOver" and economy~=nil
+    if not self.powersCard.Visible then return y end
+    local discovered=(economy.progression or {}).discovered or {}
+    local count,total=self:found(discovered)
+    local cols=math.clamp(math.floor((width-24+6)/50),7,14)
+    local size=math.min(48,(width-24-(cols-1)*6)/cols)
+    local rows=math.ceil(total/cols)
+    local gridWidth=cols*size+(cols-1)*6
+    local height=40+rows*(size+6)+44
+    place(self.powersCard,x,y,width,height)
+    place(self.powersTitle,12,8,width-24,24); self.powersTitle.TextSize=width<450 and 15 or 18
+    self.powersTitle.Text=count>=total and "ALL "..tostring(total).." POWERS FOUND!" or "POWERS FOUND  ·  "..tostring(count).." OF "..tostring(total)
+    for index,tile in ipairs(self.powerTiles) do
+        local known=discovered[tile.spec.id]==true
+        local row,col=math.floor((index-1)/cols),(index-1)%cols
+        place(tile.button,(width-gridWidth)/2+col*(size+6),38+row*(size+6),size,size)
+        local focused=self.powerFocus==tile.spec.id
+        tile.button.Text=known and tile.spec.icon or "?"
+        tile.button.TextSize=size*(known and 0.56 or 0.6)
+        tile.button.TextColor3=known and WHITE or MUTED
+        tile.button.BackgroundColor3=known and tile.color:Lerp(NAVY,0.35) or EMPTY
+        tile.edge.Color=focused and GOLD or (known and tile.color or Color3.fromRGB(70,84,110))
+        tile.edge.Thickness=focused and 4 or 2
+    end
+    place(self.powersDetail,12,40+rows*(size+6),width-24,38); self.powersDetail.TextSize=width<450 and 11 or 13
+    self.powersDetail.Text=self:powerLine(self.powerFocus,discovered)
+    return y+height+10
+end
 function BattleLab:buildIcons(build)
     build=build or {}; local icons={}
     for _,id in ipairs({build.offenceId or "",(build.wildIds or {})[1] or "",(build.wildIds or {})[2] or ""}) do
@@ -594,7 +659,7 @@ function BattleLab:showResult(data,accents,width,height,top,compact,short)
         place(self.roundPlate,(width-plateWidth)/2,lineTop-8,plateWidth,y+30-lineTop+8)
         self.roundPlateEdge.Color=outcome=="draw" and WHITE or accents[winner]
         self.lastRound={matchId=data.matchId,text=self.resultLine.Text,draw=winner==0}
-        self.rewardCard.Visible=false; self.result.CanvasSize=UDim2.fromOffset(0,0)
+        self.rewardCard.Visible=false; self.powersCard.Visible=false; self.result.CanvasSize=UDim2.fromOffset(0,0)
         for _,piece in ipairs(self.confetti) do piece.frame.Visible=false end
         return
     end
@@ -636,7 +701,7 @@ function BattleLab:showResult(data,accents,width,height,top,compact,short)
     self.resultHint.Text=gone and "Choose Next rival to find a new match."
         or (data.guided and "Next match you pick your attack too!"..(gift and " Your gift is below ↓" or "")
             or (gift and "Your first-match gift is below ↓" or "Rematch keeps this rival. Both pilots start a fresh build."))
-    local endY=self:showRewards(data,x,y+28,content)
+    local endY=self:showPowers(data,x,self:showRewards(data,x,y+28,content),content)
     self.result.CanvasSize=UDim2.fromOffset(0,endY>area and endY+8 or 0)
     self:reportRewardShown(data)
     for _,piece in ipairs(self.confetti) do
@@ -683,6 +748,7 @@ function BattleLab:feedback(data)
     local builds=data.settings or {}
     local rival=string.upper(((data.players or {})[2] or {}).name or "RIVAL")
     local function attack(side,event)
+        if event.source=="pea" then return "PEA-SHOOTER" end
         local skill=self.skills.get(event.source=="wake" and "FizzyFuel" or (builds[side] or {}).offenceId or "")
         return string.upper(skill and skill.name or "ATTACK")
     end
@@ -709,6 +775,21 @@ function BattleLab:feedback(data)
             elseif event.kind=="decoy_pop" then
                 self:call(event.target==1 and "YOUR DECOY TOOK THE HIT!" or "YOU HIT "..rival.."'S DECOY",event.target==1 and "good" or "bad",3,1.3)
                 self.wildTimes[event.target==1 and 1 or 2].Decoy=os.clock()
+            elseif event.kind=="rewind" then
+                self.rewoundAt=os.clock()
+                self:call(mine and "⏪ REWIND! THAT HIT NEVER HAPPENED" or "⏪ "..rival.." REWOUND THE FIGHT!",mine and "good" or "bad",4,2.2)
+                self.wildTimes[mine and 1 or 2].Rewind=os.clock()
+            elseif event.kind=="beam" then
+                self:call(mine and "🛸 GOTCHA! YOU GRABBED "..rival or "🛸 "..rival.."'S BEAM HAS YOU!",mine and "good" or "bad",3,1.4)
+            elseif event.kind=="beam_miss" then
+                self:call(mine and "YOUR BEAM MISSED" or "YOU SLIPPED "..rival.."'S BEAM!",mine and "you" or "rival",1,0.9)
+            elseif event.kind=="hole" then
+                self:call(mine and "⚫ YOUR BLACK HOLE IS OPEN!" or "⚫ BLACK HOLE! GET AWAY!",mine and "you" or "bad",2,1.4)
+            elseif event.kind=="drone" then
+                self:call(mine and "🛰️ YOUR DRONES ARE AWAY!" or "🛰️ "..rival.." LAUNCHED DRONES!",mine and "you" or "rival",2,1.2)
+                self.wildTimes[mine and 1 or 2].Mothership=os.clock()
+            elseif event.kind=="drone_pop" and (event.target or 0)>0 then
+                self:call(mine and "YOU SHOT DOWN A DRONE!" or rival.." SHOT DOWN YOUR DRONE",mine and "good" or "bad",2,1.1)
             elseif event.kind=="blocked" then
                 self:call(mine and "YOUR BUMPER BLOCKED IT!" or rival.."'S BUMPER BLOCKED YOUR HIT","good",3,1.3)
                 self.wildTimes[mine and 1 or 2].SpringBumper=os.clock()
@@ -721,12 +802,16 @@ function BattleLab:feedback(data)
                     self.wildTimes[mine and 1 or 2].Gambler=os.clock()
                 elseif skill and skill.id=="Thief" then
                     local loot=self.skills.get(event.stolen or "")
-                    local name=string.upper(loot and loot.name or "A CARD")
+                    -- With no card worth taking, a thief makes off with the ammo.
+                    local name=string.upper(loot and loot.name or "AMMO")
                     self:call(mine and "YOINK! YOU STOLE "..name or rival.." STOLE YOUR "..name.."!",mine and "good" or "bad",3,2)
                     self.wildTimes[mine and 1 or 2].Thief=os.clock()
                 elseif skill and skill.id=="Swap" then
                     self:call("SWAP! YOU TRADED ARMOR","good",3,1.6)
                     self.wildTimes[mine and 1 or 2].Swap=os.clock()
+                elseif skill and skill.id=="Rewind" then
+                    -- The rewind itself makes the call a moment later.
+                    self.wildTimes[mine and 1 or 2].Rewind=os.clock()
                 elseif skill then
                     self:call((mine and "YOUR " or rival.."'S ")..string.upper(skill.name)..": "..skill.word,mine and "you" or "rival",2,1)
                     self.wildTimes[mine and 1 or 2][skill.id]=os.clock()
@@ -801,9 +886,12 @@ function BattleLab:update(dt)
         if fighting and offence and state.phase then
             if fighter.meterPhase~=state.phase then fighter.meterPhase=state.phase; fighter.meterSpan=math.max(0.1,state.phaseLeft or 0.1) end
             local done=1-math.clamp((state.phaseLeft or 0)/fighter.meterSpan,0,1)
+            -- An ejected pilot or a mothership no longer attacks the way the card says.
+            local tells=self.skills.tells(offence.id,state) or offence
+            if state.form or state.mothership then pillText=string.upper(tells.name) end
             if state.phase=="Approach" then fill=0.5*done
-            elseif state.phase=="Windup" then fill=0.5+0.5*done; pillText=offence.windupTell or pillText
-            elseif state.phase=="Attack" then striking=true; pillText=offence.attackTell or pillText
+            elseif state.phase=="Windup" then fill=0.5+0.5*done; pillText=tells.windupTell or pillText
+            elseif state.phase=="Attack" then striking=true; pillText=tells.attackTell or pillText
             else fill=0 end
         else fighter.meterPhase=nil end
         fighter.powerText.Text=pillText
@@ -818,8 +906,11 @@ function BattleLab:update(dt)
         -- A wild card carries its name whenever the plate has room for two.
         local nameWidth=math.min(132,(textWidth-powerWidth-10)/2-5)
         local named=nameWidth>=78
+        -- In a fight the chips follow the round itself, so a stolen card moves
+        -- to the thief's plate.
+        local held=(fighting or results) and type(state.wildIds)=="table" and state.wildIds or build.wildIds or {}
         for n,chip in ipairs(fighter.wilds) do
-            local wild=self.skills.get((build.wildIds or {})[n] or "")
+            local wild=self.skills.get(held[n] or "")
             -- With no room beside the pill, the chips ride on the portrait's rim.
             local badge=not named and textWidth<powerWidth+2*(chipSize+5)
             chip.label.Visible=wild~=nil
@@ -914,7 +1005,7 @@ function BattleLab:update(dt)
         local rivalName=string.upper((identities[2] or {}).name or "RIVAL")
         for _,phase in ipairs({"Attack","Windup"}) do
             for index=1,2 do
-                local skill=self.skills.get((builds[index] or {}).offenceId or "")
+                local skill=self.skills.tells((builds[index] or {}).offenceId or "",fighters[index])
                 if not line and skill and (fighters[index] or {}).phase==phase then
                     side=index
                     line=(index==1 and "YOU: " or rivalName..": ")..(phase=="Attack" and skill.attackTell or skill.windupTell)
@@ -1059,6 +1150,12 @@ function BattleLab:update(dt)
                 local bounce=chosen and math.max(0,1-(now-(self.pickedAt or 0))/0.2) or 0
                 card.scale.Scale=math.max(0.01,deal)*((chosen and 1.03 or (selected and 0.95 or 1))+bounce*0.07)
                 card.button.ZIndex=chosen and 3 or 2
+                local fresh=table.find(offer.fresh or {},id)~=nil and not locked
+                card.badge.Visible=fresh
+                if fresh then
+                    local badgeWidth=math.min(58,cardWidth*0.36)
+                    place(card.badge,cardWidth-badgeWidth-6,-4,badgeWidth,20); card.badge.TextSize=badgeWidth<50 and 10 or 13
+                end
                 local roomy=not stackedCards and cardHeight>=150 and cardWidth>=120
                 card.tag.Visible=roomy; card.word.Visible=roomy and cardWidth>=190; card.promise.Visible=true
                 -- A stacked card has no tag, so its trigger leads the promise.
@@ -1170,15 +1267,16 @@ function BattleLab:update(dt)
         local remaining=(data.endsAt or 0)-workspace:GetServerTimeNow()
         if self.countRound~=data.roundId then self.countRound=data.roundId; self.countSpan=math.max(0.3,remaining) end
         call=tostring(4-math.clamp(math.floor((1-remaining/self.countSpan)*3)+1,1,3))
-    elseif fighting and (sim.elapsed or 0)<0.8 then call="FIGHT!" end
+    elseif fighting and (sim.elapsed or 0)<0.8 then call="FIGHT!"
+    elseif fighting and self.rewoundAt and now-self.rewoundAt<0.9 then call="⏪ REWIND" end
     if call~=self.countText then self.countText=call; self.countAt=now end
     self.count.Visible=call~=nil
     if call then
         local age=now-(self.countAt or 0)
         self.count.Text=call
         self.count.Position=UDim2.fromOffset(width/2,contentTop+(height-contentTop)*(countdown and 0.6 or 0.5))
-        self.count.TextSize=math.min(short and 90 or (call=="FIGHT!" and 130 or 170),width*0.24)
-        self.count.TextColor3=call=="FIGHT!" and RED or GOLD
+        self.count.TextSize=math.min(short and 90 or (#call>2 and 130 or 170),width*(#call>6 and 0.13 or 0.24))
+        self.count.TextColor3=call=="FIGHT!" and RED or (#call>6 and Color3.fromRGB(150,215,255) or GOLD)
         self.countScale.Scale=self.reducedMotion and 1 or 1+1.1*math.max(0,1-age/0.18)^2
         self.count.TextTransparency=math.clamp((age-0.45)/0.3,0,1)
         self.countEdge.Transparency=self.count.TextTransparency

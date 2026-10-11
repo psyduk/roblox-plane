@@ -625,5 +625,31 @@ return function(PlayerStats)
         assert(stats:getEconomy(h).credits==0 and stats:getBattle(h).matches==0 and #h.receipts==0)
     end)
 
+    test("cards seen are recorded once, saved with the profile, and survive a slow load and an old save",function()
+        local store=fakeStore();local stats=service(store);local h=stats:open(42)
+        -- Seen before the profile has loaded: kept, and merged once it has.
+        local early=stats:discover(h,{"Meteor","Nope","Meteor",7})
+        assert(#early==1 and early[1]=="Meteor" and stats:getEconomy(h).progression.discovered.Meteor==true)
+        assert(stats:load(h))
+        local fresh=stats:discover(h,{"Meteor","Rewind","BlackHole"})
+        assert(#fresh==2 and fresh[1]=="Rewind" and fresh[2]=="BlackHole","A card already seen was reported as new")
+        assert(#stats:discover(h,{"Rewind"})==0 and #stats:discover(h,nil)==0 and #stats:discover(nil,{"Meteor"})==0)
+        assert(stats:close(h))
+        local saved=store.values.player_42.battle.discovered
+        assert(saved.Meteor==true and saved.Rewind==true and saved.BlackHole==true and saved.Nope==nil)
+        local nextStats=service(store,"server-B");local nextHandle=nextStats:open(42);assert(nextStats:load(nextHandle))
+        assert(nextStats:getBattle(nextHandle).discovered.Rewind==true and #nextStats:discover(nextHandle,{"Rewind","Thief"})==1)
+        assert(nextStats:close(nextHandle))
+        -- A save from before the record existed loads as "nothing seen yet".
+        store.values.player_42.battle.discovered=nil;store.values.player_42.lease=nil
+        local old=service(store,"server-C");local oldHandle=old:open(42);assert(old:load(oldHandle))
+        assert(next(old:getBattle(oldHandle).discovered)==nil and old:getBattle(oldHandle).matches==0)
+        assert(old:close(oldHandle))
+        -- A record naming a card that does not exist is corrupt, like any other.
+        store.values.player_42.battle.discovered={Paid=true};store.values.player_42.lease=nil
+        local bad=service(store,"server-D");local badHandle=bad:open(42)
+        assert(not bad:load(badHandle) and bad:getBattle(badHandle).status=="unavailable")
+    end)
+
 	return tostring(passed) .. " player-stats tests passed"
 end

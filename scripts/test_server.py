@@ -190,20 +190,21 @@ DEFAULT_SCENARIOS = {
         Harness.send(a,'play');Harness.send(b,'play');local old=Harness.battleLatest(a)
         -- The public draft shows the whole roster: every attack now, every wild card later.
         assert(#old.offer.offences==5 and #old.offer.wilds==5 and old.slots==0 and old.draft.offenceId==nil)
+        local one,two=old.offer.offences[1],old.offer.offences[2]
         Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offerRevision=old.offerRevision})
         assert(not Harness.battleLatest(a).locked[1] and Harness.battleLatest(a).draft.offenceId==nil)
         Harness.advance(.1)
-        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId='Firework',wildIds={},offerRevision=old.offerRevision+1})
+        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId=one,wildIds={},offerRevision=old.offerRevision+1})
         Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId='SpringBumper',wildIds={},offerRevision=old.offerRevision})
-        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId='Firework',wildIds={'SpringBumper'},offerRevision=old.offerRevision})
+        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId=one,wildIds={'SpringBumper'},offerRevision=old.offerRevision})
         assert(not Harness.battleLatest(a).locked[1] and Harness.battleLatest(a).draft.offenceId==nil)
         Harness.advance(.1)
-        Harness.battleSend(a,'pick',{matchId=old.matchId,stage=old.stage,slot='offence',skillId='Pinball',offerRevision=old.offerRevision})
-        assert(Harness.battleLatest(a).draft.offenceId=='Pinball' and Harness.battleLatest(b).draft.offenceId==nil)
-        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId='Firework',wildIds={},offerRevision=old.offerRevision})
+        Harness.battleSend(a,'pick',{matchId=old.matchId,stage=old.stage,slot='offence',skillId=two,offerRevision=old.offerRevision})
+        assert(Harness.battleLatest(a).draft.offenceId==two and Harness.battleLatest(b).draft.offenceId==nil)
+        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId=one,wildIds={},offerRevision=old.offerRevision})
         local sb=Harness.battleLatest(b)
-        Harness.battleSend(b,'lock',{matchId=sb.matchId,stage=sb.stage,offenceId='Meteor',wildIds={},offerRevision=sb.offerRevision})
-        assert(Harness.battleLatest(a).phase=='Countdown' and Harness.battleLatest(a).settings[1].offenceId=='Firework')
+        Harness.battleSend(b,'lock',{matchId=sb.matchId,stage=sb.stage,offenceId=sb.offer.offences[1],wildIds={},offerRevision=sb.offerRevision})
+        assert(Harness.battleLatest(a).phase=='Countdown' and Harness.battleLatest(a).settings[1].offenceId==one)
     ''',
     'default queue cancellation and disconnect restore controls and allow a new match': r'''
         local a,b=Harness.add(101),Harness.add(102)

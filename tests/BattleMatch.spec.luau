@@ -156,7 +156,7 @@ return function(BattleLab, Skills)
     test("timeout keeps a tapped card fills gaps with the first offer and ignores late picks",function()
         local t=harness();local a,b,m=t.pair();local s=t.lab:snapshot(a)
         t.send(a,"pick",{slot="offence",skillId=s.offer.offences[2]});t.advance(10.1)
-        assert(m.phase=="Countdown" and m.settings[1].offenceId==s.offer.offences[2] and m.settings[2].offenceId==s.offer.offences[1])
+        assert(m.phase=="Countdown" and m.settings[1].offenceId==s.offer.offences[2] and m.settings[2].offenceId==m.offers[2].offences[1])
         t.send(a,"pick",{slot="offence",skillId=s.offer.offences[3]});assert(m.settings[1].offenceId==s.offer.offences[2])
         t.advance(2.5);t.finish(m,1);t.advance(2.1);assert(m.phase=="Pick" and m.stage==2)
         t.advance(10.1);assert(m.phase=="Countdown" and m.settings[1].offenceId==s.offer.offences[2])
@@ -188,7 +188,7 @@ return function(BattleLab, Skills)
         t.advance(.5);t.send(a,"lock",{offenceId=attack,wildIds={first,first}});assert(not m.locked[1],"A doubled wild card locked")
         t.send(a,"lock",{offenceId=attack,wildIds={first}});assert(not m.locked[1],"A short loadout locked")
         -- Swap the attack and the old wild card, then add a new one.
-        local swap=attack=="Pinball" and "Meteor" or "Pinball"
+        local swap;for _,id in ipairs(s.offer.offences)do if id~=attack then swap=swap or id end end
         t.advance(.5);t.send(a,"pick",{slot="offence",skillId=swap});t.send(a,"pick",{slot="wild",index=1,skillId=one})
         t.send(a,"pick",{slot="wild",index=2,skillId=two});s=t.lab:snapshot(a)
         assert(s.draft.offenceId==swap and s.draft.wildIds[1]==one and s.draft.wildIds[2]==two)
@@ -268,7 +268,7 @@ return function(BattleLab, Skills)
     end)
     test("public ignores experimental requests; authorized pools freeze and never mix",function()
         local roster={version="experiment",offences={"Meteor","Firework"},wilds={"Afterburner","SpringBumper"}}
-        local t=harness({resolveRoster=function()return roster end});local a,b,m=t.pair();assert(m.roster.mode=="public" and #m.roster.offences==6)
+        local t=harness({resolveRoster=function()return roster end});local a,b,m=t.pair();assert(m.roster.mode=="public" and #m.roster.offences==8)
         local x=harness({allowExperimental=true,resolveRoster=function(p)if p.UserId==1 then return roster end end})
         local c,d=x.player(1),x.player(2);x.send(c,"enter");x.send(d,"enter");assert(x.lab:snapshot(c).phase=="Searching")
         x.advance(8.1);local old=x.lab.sessions[1].match;roster.offences={"Pinball"}
@@ -285,6 +285,41 @@ return function(BattleLab, Skills)
         assert(m.simulation.events[1].actor==1 and m.simulation.fighters[1].x==-52)
         t.finish(m,1);local result=t.lab:snapshot(b).roundResult
         assert(result.winner==2 and result.events[1].actor==2 and string.find(result.facts[1],"Rival's Meteor"))
+    end)
+    test("perspective mirrors holes drones and beams and never sends a rewind history",function()
+        local t=harness();local a,b,m=t.pair();t.fight(a,b)
+        local sim=m.simulation
+        sim.holes={{id=1,owner=1,x=10,y=40}};sim.drones={{id=2,owner=2,x=-5,vx=3,heading=0}}
+        sim.fighters[2].hold={x=20,y=30,by=1,left=.5};sim.fighters[1].throw={vx=80,vy=0,by=2,left=1}
+        sim._history={{at=0,state={fighters={{x=1}}}}}
+        local view=t.lab:snapshot(b).simulation
+        assert(view._history==nil and sim._history[1].state.fighters[1].x==1,"The rewind history left the server")
+        assert(view.holes[1].owner==2 and view.holes[1].x==-10 and view.holes[1].y==40)
+        assert(view.drones[1].owner==1 and view.drones[1].x==5 and view.drones[1].vx==-3 and math.abs(math.abs(view.drones[1].heading)-math.pi)<1e-9)
+        assert(view.fighters[1].hold.by==2 and view.fighters[1].hold.x==-20 and view.fighters[2].throw.by==1 and view.fighters[2].throw.vx==-80)
+        assert(t.lab:snapshot(a).simulation.holes[1].x==10 and sim.holes[1].owner==1)
+    end)
+    test("cards are recorded as seen when dealt and when revealed, and a first deal is marked new",function()
+        local seen={}
+        local t=harness({discover=function(p,ids)
+            local fresh={};seen[p.UserId]=seen[p.UserId] or {}
+            for _,id in ipairs(ids)do if not seen[p.UserId][id] then seen[p.UserId][id]=true;fresh[#fresh+1]=id end end
+            return fresh
+        end})
+        local a,b,m=t.pair();local s=t.lab:snapshot(a)
+        assert(#s.offer.fresh==#s.offer.offences,"A first deal was not all new, or counted wild cards nobody could see")
+        for _,id in ipairs(s.offer.wilds)do assert(not seen[a.UserId][id],"A hidden wild card was recorded as seen")end
+        for _,id in ipairs(s.offer.offences)do assert(seen[a.UserId][id] and table.find(s.offer.fresh,id))end
+        t.fight(a,b)
+        -- Each pilot has now also seen the rival's plane.
+        assert(seen[a.UserId][m.settings[2].offenceId] and seen[b.UserId][m.settings[1].offenceId])
+        t.finish(m,1);t.advance(2.1);s=t.lab:snapshot(a)
+        for _,id in ipairs(s.offer.fresh)do assert(id~=m.settings[1].offenceId,"The attack on the plane was called new")end
+        assert(#s.offer.fresh>=#s.offer.wilds-1 and #s.offer.fresh<#s.offer.offences+#s.offer.wilds,"The first wild hand was not marked new")
+        -- Without a profile to record in, nothing is marked and nothing breaks.
+        local plain=harness();local c=plain.pair();assert(#plain.lab:snapshot(c).offer.fresh==0)
+        local broken=harness({discover=function()error("profile offline")end});local d=broken.pair()
+        assert(broken.lab:snapshot(d).phase=="Pick" and #broken.lab:snapshot(d).offer.fresh==0 and #broken.lab:snapshot(d).offer.offences==5)
     end)
     test("snapshot mutation cannot change the server offer build roster or simulation",function()
         local t=harness();local a,b,m=t.pair();local s=t.lab:snapshot(a)

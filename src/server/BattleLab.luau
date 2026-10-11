@@ -20,9 +20,9 @@ BattleLab.MAX_ROUNDS = 5
 BattleLab.GUIDE_INTRO_SECONDS = 5
 BattleLab.GUIDE_PICK_SECONDS = 40
 local GUIDE = {offences={"Meteor","Firework"},wilds={"SpringBumper","Afterburner","FizzyFuel","Magnet"},hand={[2]=2,[3]=3}}
-local PUBLIC = {offences={"Meteor","Firework","MachineGun","Pinball","Sniper","Boomerang"},
+local PUBLIC = {offences={"Meteor","Firework","MachineGun","Pinball","Sniper","Boomerang","BlackHole","UFOBeam"},
     wilds={"Afterburner","SpringBumper","FizzyFuel","Magnet","SecondWind","Squadron","Giant","Eject","Vampire","Chicken",
-        "Bug","Snowball","Swap","Gambler","Wrap","HotPotato","Decoy","Thief"}}
+        "Bug","Snowball","Swap","Gambler","Wrap","HotPotato","Decoy","Thief","Mothership","Rewind"}}
 -- A pick shows this many attacks and this many wild cards: the ones already
 -- on the plane, then a fresh random deal from the rest of the roster.
 local HAND = 5
@@ -31,7 +31,8 @@ local function finite(value)
 end
 local function copy(value)
     if type(value)~="table" then return value end
-    local result={}; for key,item in pairs(value) do result[key]=copy(item) end; return result
+    -- A round's rewind history is the simulation's own business and never travels.
+    local result={}; for key,item in pairs(value) do if key~="_history" then result[key]=copy(item) end end; return result
 end
 local function contains(list,value)
     for _,item in ipairs(list or {}) do if item==value then return true end end
@@ -52,7 +53,7 @@ local function perspective(value,side)
         if type(item)~="table" then return end
         for key,v in pairs(item) do
             if type(v)=="table" then visit(v)
-            elseif key=="actor" or key=="target" or key=="owner" or key=="holder" or key=="winner" then item[key]=seat(v,side)
+            elseif key=="actor" or key=="target" or key=="owner" or key=="holder" or key=="by" or key=="winner" then item[key]=seat(v,side)
             elseif key=="x" or key=="vx" or key=="decoyX" or key=="lockX" or key=="_knockX" or key=="_chargeX" or key=="_recoverX" then
                 if type(v)=="number" then item[key]=-v end
             elseif key=="heading" or key=="_attackHeading" then
@@ -178,13 +179,32 @@ function BattleLab:startPick(m)
                 if #offer.wilds<(GUIDE.hand[m.stage] or 3) and contains(m.roster.wilds,id) then offer.wilds[#offer.wilds+1]=id end
             end
         end
+        -- Cards this pilot has never been dealt before are marked as new.
+        -- With no wild slot open yet the wild hand is not on screen, so it is not seen.
+        if participant.player then offer.fresh=self:discover(participant.player,offer.offences,self:slots(m)>0 and offer.wilds or {}) end
         m.offers[side]=offer
         -- Each draft starts as the plane that just flew.
         m.drafts[side]={offenceId=m.settings[side].offenceId,wildIds=copy(m.settings[side].wildIds)}
         if not participant.player then self:fillDraft(m,side,true); m.locked[side]=true end
     end
 end
+-- Tells the profile which cards a pilot has now seen: dealt, flown or faced.
+-- Returns the ones that were new.
+function BattleLab:discover(player,...)
+    if not self.deps.discover then return {} end
+    local ids={}
+    for _,list in ipairs({...}) do for _,id in ipairs(list or {}) do ids[#ids+1]=id end end
+    -- A profile that cannot record a sighting must never stop a pick.
+    local ok,fresh=pcall(self.deps.discover,player,ids)
+    return ok and type(fresh)=="table" and fresh or {}
+end
 function BattleLab:startRound(m,countdown)
+    -- Both planes are about to be shown to both pilots.
+    for _,participant in ipairs(m.participants) do
+        if participant.player then
+            for side=1,2 do self:discover(participant.player,{m.settings[side].offenceId},m.settings[side].wildIds) end
+        end
+    end
     self.roundSequence=self.roundSequence+1
     m.roundId=self.roundSequence; m.roundNumber=m.roundNumber+1
     local seed
@@ -558,7 +578,8 @@ function BattleLab:step(dt)
                         m.eventSerial=event.serial
                         if event.kind=="hit" or event.kind=="wake_hit" or event.kind=="blocked" or event.kind=="finish" or event.kind=="revive" then
                             local recorded=copy(event); recorded.roundNumber=m.roundNumber; recorded.outcome=event.kind
-                            local sourceSkills={meteor="Meteor",rocket="Firework",machinegun="MachineGun",pinball="Pinball",wake="FizzyFuel"}
+                            local sourceSkills={meteor="Meteor",rocket="Firework",machinegun="MachineGun",pinball="Pinball",wake="FizzyFuel",
+                                sniper="Sniper",boomerang="Boomerang",blackhole="BlackHole",ufo="UFOBeam"}
                             recorded.skillId=recorded.skillId or sourceSkills[recorded.source]
                             m.roundEvents[#m.roundEvents+1]=recorded
                         end

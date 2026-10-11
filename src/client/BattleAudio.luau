@@ -60,6 +60,8 @@ local KINDS = {
     fizz=true, pinball_bounce=true, vampire=true, chicken=true, eject=true, combo=true,
     snowball=true, swap=true, gambler=true, sniper=true,
     wrap=true, potato=true, potato_pass=true, decoy_pop=true, thief=true, boomerang=true, catch=true,
+    hole=true, hole_close=true, beam=true, beam_miss=true, throw=true, slam=true,
+    drone=true, drone_fire=true, drone_pop=true, rewind=true,
 }
 local function finite(value)
     return type(value)=="number" and value==value and value>-math.huge and value<math.huge
@@ -371,6 +373,35 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
         voice("jump",0.2,0.9,0.5,1.6); shot("whoosh",0.5,0.8); shot("rise",0.25,1.1)
     elseif kind=="catch" then
         voice("land",0.16,1.6,0.08); shot("click",0.35,1.5)
+    elseif kind=="hole" then
+        -- The sky tears: a deep drop with a long downward slide.
+        voice("jump",0.26,1.4,0.9,0.25); voice("boom",0.2,0.5,0.6,0.3)
+        shot("sub",0.7,0.7); shot("rise",0.4,0.5)
+    elseif kind=="hole_close" then
+        voice("chime",0.14,0.5,0.25,1.6); shot("thump",0.4,0.7)
+    elseif kind=="beam" then
+        -- A wobbling sci-fi hum that climbs while the rival is held.
+        voice("chime",0.22,0.7,0.6,1.8); voice("jump",0.16,2.2,0.6,2.8)
+        shot("beep",0.4,0.8); shot("rise",0.45,1.5)
+    elseif kind=="beam_miss" then
+        voice("chime",0.12,1.6,0.2,0.7); shot("beep",0.2,0.6)
+    elseif kind=="throw" then
+        voice("jump",0.26,1.2,0.4,0.5); shot("whoosh",0.65,1.1)
+    elseif kind=="slam" then
+        -- Metal meets wall.
+        voice("boom",0.3,0.9,0.3,0.6); shot("crunch",0.7,0.9); shot("thump",0.6,0.8)
+    elseif kind=="drone" then
+        -- Two quick hatches popping open.
+        voice("land",0.16,2,0.08); voice("jump",0.2,1.6,0.3,2.4)
+        shot("click",0.4,1.3); shot("whoosh",0.35,1.7)
+    elseif kind=="drone_fire" then
+        voice("chime",0.1,2.3,0.1); shot("beep",0.22,2.4)
+    elseif kind=="drone_pop" then
+        voice("land",0.18,2.2,0.08); shot("punch",0.4,1.8); shot("click",0.3,2)
+    elseif kind=="rewind" then
+        -- A tape spooling backwards: everything slides up in pitch and stops dead.
+        voice("jump",0.28,0.5,0.6,3); voice("chime",0.2,0.6,0.6,2.8)
+        shot("rise",0.6,2.2); shot("whoosh",0.45,2); shot("click",0.5,0.9)
     elseif kind=="snowball" then
         -- A soft crunch that drops in pitch as the plane swells.
         voice("land",0.2,1.4,0.3,0.7); shot("crunch",0.4,1.5); shot("thump",0.4,1.3)

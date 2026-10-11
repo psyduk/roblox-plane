@@ -27,10 +27,13 @@ local function copyArray(source)
 end
 local BATTLE_FIELDS = { "matches", "wins", "losses", "draws", "currentStreak", "bestStreak" }
 local function copyBattle(source)
-    local result = { mastery = {}, starterAvailable = source and source.starterAvailable == true or false,
+    local result = { mastery = {}, discovered = {}, starterAvailable = source and source.starterAvailable == true or false,
         starterChoice = source and source.starterChoice or nil, goalId = source and source.goalId or CosmeticCatalog.BATTLE_GOAL_ID }
     for _,field in ipairs(BATTLE_FIELDS) do result[field] = source and source[field] or 0 end
     for id,value in pairs(source and source.mastery or {}) do result.mastery[id] = value end
+    -- Cards this pilot has been dealt, flown or faced. Saves from before the
+    -- record existed simply start empty.
+    for id,value in pairs(source and source.discovered or {}) do if value == true then result.discovered[id] = true end end
     return result
 end
 local function starter(id)
@@ -44,6 +47,12 @@ local function decodeBattle(value)
     end
     for id,amount in pairs(value.mastery) do
         if not SkillCatalog.valid(id) or not finite(amount) or amount < 0 or amount % 1 ~= 0 or amount > 1e12 then return nil end
+    end
+    if value.discovered ~= nil then
+        if type(value.discovered) ~= "table" then return nil end
+        for id,seen in pairs(value.discovered) do
+            if seen ~= true or not SkillCatalog.valid(id) then return nil end
+        end
     end
     if value.starterChoice ~= nil and not starter(value.starterChoice) then return nil end
     if value.starterChoice and value.starterAvailable then return nil end
@@ -137,6 +146,25 @@ function PlayerStats:getBattle(record)
     result.status = record and record.status or "unavailable"
     result.confirmed = result.status == "saved"
     return result
+end
+-- Marks cards as seen and returns the ones that were new to this pilot. It is
+-- saved with the profile's next write; losing a few sightings to a crash only
+-- means a card shows as new again.
+function PlayerStats:discover(record, ids)
+    local fresh = {}
+    if not record or record.closed or record.closing or type(ids) ~= "table" then return fresh end
+    for _,id in ipairs(ids) do
+        if SkillCatalog.valid(id) and not record.battle.discovered[id] then
+            record.battle.discovered[id] = true
+            fresh[#fresh+1] = id
+        end
+    end
+    if #fresh > 0 then
+        record.version = record.version + 1
+        if record.loaded and record.safe and record.status ~= "unavailable" then record.status = "pending" end
+        self:_changed(record)
+    end
+    return fresh
 end
 function PlayerStats:getEconomy(record)
     local result = copyEconomy(record and record.economy)
@@ -380,11 +408,16 @@ function PlayerStats:load(record)
 	if ok then
 		record.stats = copyStats(loaded.stats)
 		record.economy = copyEconomy(loaded.economy)
+        local early = record.battle.discovered
         record.battle = copyBattle(loaded.battle)
 		record.receipts = copyArray(loaded.receipts)
 		record.seen = {}
 		for _, id in ipairs(record.receipts) do record.seen[id] = true end
 		record.version, record.savedVersion = 0, 0
+        -- Cards seen while the profile was still loading are kept.
+        for id in pairs(early) do
+            if not record.battle.discovered[id] then record.battle.discovered[id] = true; record.version = 1 end
+        end
 		for _, pending in ipairs(record.pending) do
             if pending.kind=="battle" then self:_applyBattle(record,pending.id,pending.outcome)
             else self:_apply(record, pending.id, pending.outcome) end

@@ -44,13 +44,27 @@ return function(Catalog)
 			Afterburner = true, SpringBumper = true, FizzyFuel = true, Magnet = true, SecondWind = true,
 			Squadron = true, Giant = true, Eject = true, Vampire = true, Chicken = true,
 			Sniper = true, Bug = true, Snowball = true, Swap = true, Gambler = true,
-			Boomerang = true, Wrap = true, HotPotato = true, Decoy = true, Thief = true }
-		check(#Catalog.all("offence") == 6 and #Catalog.all("wild") == 18, "Approved roster changed")
+			Boomerang = true, Wrap = true, HotPotato = true, Decoy = true, Thief = true,
+			BlackHole = true, UFOBeam = true, Mothership = true, Rewind = true }
+		check(#Catalog.all("offence") == 8 and #Catalog.all("wild") == 20, "Approved roster changed")
 		for _, entry in ipairs(Catalog.all()) do
 			check(wanted[entry.id] and entry.starter, "Skill is gated or outside agreed roster")
 		end
 		check(not Catalog.valid("Copycat") and not Catalog.valid("Harpoon"), "Expansion leaked into active roster")
 		check(Catalog.ROSTER_VERSION == "sky-battle-public-v1", "Roster has no version")
+	end)
+
+	test("every card has a teaser that does not give its name away, and attack words follow the plane's form", function()
+		for _, entry in ipairs(Catalog.all()) do
+			check(type(entry.teaser) == "string" and #entry.teaser > 3 and #entry.teaser <= 44, entry.id .. " has no short teaser")
+			check(not string.find(string.lower(entry.teaser), string.lower(entry.name), 1, true), entry.id .. "'s teaser names it")
+		end
+		local plain = Catalog.tells("Meteor", { phase = "Windup" })
+		check(plain.windupTell == Catalog.get("Meteor").windupTell and plain.name == "Meteor", "A plain plane lost its attack words")
+		check(Catalog.tells("Meteor", { form = "PeaShooter" }).attackTell == "PEW!", "An ejected pilot still shouts the plane's attack")
+		check(Catalog.tells("Sniper", { mothership = true }).attackTell == "LAUNCH!", "A mothership still shouts its own attack")
+		check(Catalog.tells("Sniper", { mothership = true, form = "PeaShooter" }).name == "Pea-Shooter", "Ejecting from a mothership kept the drones")
+		check(Catalog.tells("Nope", {}) == nil and Catalog.tells("Meteor").name == "Meteor", "Missing state or skill was not handled")
 	end)
 
 	test("records are detached from the catalog", function()

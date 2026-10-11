@@ -36,6 +36,8 @@ local POWER = {
 	wrap = Color3.fromRGB(110, 150, 255), blade = Color3.fromRGB(255, 170, 60), decoy = Color3.fromRGB(255, 150, 200),
 	bomb = Color3.fromRGB(255, 110, 60),
 	sniper = Color3.fromRGB(255, 50, 50), snow = Color3.fromRGB(215, 240, 255), swap = Color3.fromRGB(190, 120, 255),
+	hole = Color3.fromRGB(170, 90, 255), ufo = Color3.fromRGB(120, 255, 160), drone = Color3.fromRGB(140, 220, 235),
+	rewind = Color3.fromRGB(150, 215, 255),
 }
 -- Where a squadron's wingmen fly, matching BattleSimulation's formation.
 local WING = { Vector3.new(-9, 8, 0), Vector3.new(-9, -8, 0) }
@@ -51,7 +53,8 @@ local SMOKE_TEXTURE = "rbxasset://textures/particles/smoke_main.dds"
 local FIRE_TEXTURE = "rbxasset://textures/particles/fire_main.dds"
 local SPARK_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
 local BURST_LIMIT = 6
-local EFFECT_LIMIT, ROCKET_LIMIT, WAKE_LIMIT = 10, 24, 12
+-- A squadron's machine guns can put eighteen tracers in the air at once, twice over.
+local EFFECT_LIMIT, ROCKET_LIMIT, WAKE_LIMIT = 10, 48, 12
 
 local function part(parent, name, size, pose, color, material, shape)
 	local object = Instance.new("Part")
@@ -120,6 +123,59 @@ end
 local function hideWake(wake)
 	wake.disc.Transparency = 1
 	hide(wake.edge)
+end
+
+-- A mothership's drone: a small steel dart with fins in its owner's paint.
+local function makeDrone(parent, color)
+	local model = Instance.new("Model"); model.Name = "Drone"; model.Parent = parent
+	local body = ellipsoid(model, "Body", Vector3.new(4.4, 1.7, 1.7), CFrame.identity, COLORS.steel)
+	part(model, "Eye", Vector3.one * 1.1, CFrame.new(1.8, 0, 0), color, Enum.Material.Neon, Enum.PartType.Ball)
+	part(model, "Wings", Vector3.new(1.3, 4.4, 0.25), CFrame.new(-0.5, 0, 0), color)
+	part(model, "Fins", Vector3.new(0.9, 2.4, 0.25), CFrame.new(-1.9, 0, 0), color)
+	model.PrimaryPart = body
+	return model
+end
+
+-- What a plane is turned into by Chicken: a fat white hen.
+local function makeChicken(parent)
+	local model = Instance.new("Model"); model.Name = "Chicken"; model.Parent = parent
+	local root = part(model, "Root", Vector3.one, CFrame.identity, COLORS.cream); root.Transparency = 1
+	model.PrimaryPart = root
+	local white, orange, red = Color3.fromRGB(255, 252, 240), Color3.fromRGB(255, 160, 40), Color3.fromRGB(230, 50, 50)
+	ellipsoid(model, "Body", Vector3.new(7, 5.6, 5), CFrame.identity, white)
+	ellipsoid(model, "Head", Vector3.new(3.4, 3.4, 3.2), CFrame.new(3.2, 3, 0), white)
+	part(model, "Beak", Vector3.new(1.5, 0.8, 0.9), CFrame.new(5.2, 2.8, 0), orange)
+	ellipsoid(model, "Comb", Vector3.new(1.7, 1.6, 0.7), CFrame.new(3.2, 4.9, 0), red)
+	ellipsoid(model, "Wattle", Vector3.new(0.8, 1.2, 0.6), CFrame.new(4.5, 1.6, 0), red)
+	ellipsoid(model, "Tail", Vector3.new(2.6, 3.8, 1.2), CFrame.new(-3.6, 2, 0) * CFrame.Angles(0, 0, 0.5), white)
+	for _, side in ipairs({ -1, 1 }) do
+		part(model, "Eye", Vector3.one * 0.6, CFrame.new(4.1, 3.5, side * 1.5), COLORS.ink, nil, Enum.PartType.Ball)
+		ellipsoid(model, "Wing", Vector3.new(4, 2.6, 0.8), CFrame.new(-0.4, 0.4, side * 2.6) * CFrame.Angles(0, 0, -0.3), Color3.fromRGB(238, 228, 208))
+		part(model, "Leg", Vector3.new(0.35, 2.2, 0.35), CFrame.new(0.3, -3.5, side), orange)
+		part(model, "Foot", Vector3.new(1.3, 0.3, 0.6), CFrame.new(0.7, -4.6, side), orange)
+	end
+	return model
+end
+
+-- What is left after Eject: a small pilot with a pea-shooter under a canopy
+-- in the plane's paint.
+local function makeParachute(parent, color)
+	local model = Instance.new("Model"); model.Name = "Parachute"; model.Parent = parent
+	local root = part(model, "Root", Vector3.one, CFrame.identity, COLORS.cream); root.Transparency = 1
+	model.PrimaryPart = root
+	ellipsoid(model, "Canopy", Vector3.new(11, 6, 9), CFrame.new(0, 8, 0), color)
+	ellipsoid(model, "CanopyStripe", Vector3.new(3.8, 6.15, 9.1), CFrame.new(0, 8, 0), COLORS.cream)
+	-- The canopy is open underneath: a dark hollow hides the bottom of the dome.
+	ellipsoid(model, "Hollow", Vector3.new(10, 2.6, 8.4), CFrame.new(0, 6, 0), COLORS.ink)
+	for _, side in ipairs({ -1, 1 }) do
+		part(model, "Line", Vector3.new(0.16, 6.6, 0.16), CFrame.new(side * 2.2, 3.7, 0) * CFrame.Angles(0, 0, -side * 0.72), COLORS.cream)
+		part(model, "Leg", Vector3.new(0.6, 1.7, 0.6), CFrame.new(side * 0.45, -1.8, 0), COLORS.navy)
+	end
+	part(model, "Torso", Vector3.new(1.7, 2.2, 1.2), CFrame.identity, COLORS.steel)
+	part(model, "Head", Vector3.one * 1.8, CFrame.new(0, 2, 0), Color3.fromRGB(255, 214, 170), nil, Enum.PartType.Ball)
+	part(model, "Goggles", Vector3.new(0.5, 0.5, 1.5), CFrame.new(0.7, 2.2, 0), COLORS.ink)
+	part(model, "PeaShooter", Vector3.new(2.4, 0.4, 0.4), CFrame.new(1.7, 0.3, 0), COLORS.yellow, nil, Enum.PartType.Cylinder)
+	return model
 end
 
 local function poseForVelocity(position, vx, vy, facing, bank)
@@ -353,6 +409,7 @@ end
 function BattleView.new(World, onPresentationCue, options)
 	local self = setmetatable({
 		World = World, fighters = {}, rockets = {}, rocketPool = {}, effects = {}, wakes = {}, wakePool = {},
+		holes = {}, drones = {}, rewindTime = -100,
 		effectCursor = 0, roundId = nil, lastEvent = 0, clock = 0, realClock = 0,
 		sampleElapsed = nil, sampleAge = 0, destroyed = false,
 		shake = 0, punch = 0, freeze = 0, screenFlash = 0, hype = 0, bursts = {}, burstCursor = 0,
@@ -427,6 +484,7 @@ function BattleView:_resetRound(roundId)
 		hide(fighter.burnerFlames)
 		hide(fighter.magnetGrip)
 		fighter.magnetBeam.Transparency, fighter.windAura.Transparency = 1, 1
+		if fighter.tractor then fighter.tractor.Transparency = 1; hide(fighter.tractorGrip) end
 		fighter.approachSpan = nil
 		hide(fighter.cometFlames)
 		hide(fighter.signatureSparks)
@@ -442,6 +500,16 @@ function BattleView:_resetRound(roundId)
 		table.insert(self.wakePool, wake)
 		self.wakes[id] = nil
 	end
+	for id, hole in pairs(self.holes) do
+		hole.folder:Destroy()
+		self.holes[id] = nil
+	end
+	for id, drone in pairs(self.drones) do
+		drone.model:Destroy()
+		self.drones[id] = nil
+	end
+	self.rewindTime = -100
+	self.grade.TintColor = Color3.new(1, 1, 1)
 	for id, rocket in pairs(self.rockets) do
 		rocket.trail.Enabled = false
 		rocket.trail:Clear()
@@ -540,12 +608,12 @@ function BattleView:_fighter(id, index)
 	noseGlow.Transparency = 1
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "AttackTell"
-	gui.Adornee = pivot:FindFirstChild("Top") or pivot
-	gui.Size = UDim2.fromOffset(260, 44)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, 5.5, 0)
-	gui.AlwaysOnTop = true
+	-- Sized in studs and anchored to the plane itself, like the bomb counter.
+	-- The earlier pixel-sized, always-on-top labels on the Top mount never drew.
+	gui.Adornee = pivot
+	gui.Size = UDim2.fromScale(30, 4.6)
+	gui.StudsOffset = Vector3.new(0, 10.5, 0)
 	gui.LightInfluence = 0
-	gui.MaxDistance = 10000
 	gui.Enabled = false
 	gui.Parent = pivot
 	local label = Instance.new("TextLabel")
@@ -553,7 +621,7 @@ function BattleView:_fighter(id, index)
 	label.BackgroundTransparency = 1
 	label.BorderSizePixel = 0
 	label.Font = Enum.Font.FredokaOne
-	label.TextSize = 26
+	label.TextScaled = true
 	label.TextColor3 = COLORS.cream
 	label.TextTransparency = 0
 	label.Rotation = index == 1 and -5 or 5
@@ -564,12 +632,12 @@ function BattleView:_fighter(id, index)
 	local pop = Instance.new("UIScale")
 	pop.Parent = label
 	local identityGui = Instance.new("BillboardGui")
-	identityGui.Name = "PilotIdentity"; identityGui.Adornee = pivot:FindFirstChild("Top") or pivot
-	identityGui.Size = UDim2.fromOffset(180, 26); identityGui.StudsOffsetWorldSpace = Vector3.new(0, 2.5, 0)
-	identityGui.AlwaysOnTop = true; identityGui.MaxDistance = 10000; identityGui.Parent = pivot
+	identityGui.Name = "PilotIdentity"; identityGui.Adornee = pivot
+	identityGui.Size = UDim2.fromScale(18, index == 1 and 2.6 or 2.2); identityGui.StudsOffset = Vector3.new(0, 6.8, 0)
+	identityGui.LightInfluence = 0; identityGui.Parent = pivot
 	local identityText = Instance.new("TextLabel")
 	identityText.BackgroundTransparency = 1; identityText.Size = UDim2.fromScale(1, 1)
-	identityText.Font = Enum.Font.FredokaOne; identityText.TextSize = index == 1 and 18 or 15
+	identityText.Font = Enum.Font.FredokaOne; identityText.TextScaled = true
 	identityText.Text = index == 1 and "▼ YOU" or string.upper(look.name or "RIVAL")
 	identityText.TextColor3 = index == 1 and COLORS.yellow or COLORS.cream
 	identityText.TextTruncate = Enum.TextTruncate.AtEnd; identityText.Parent = identityGui
@@ -751,33 +819,92 @@ function BattleView:_wingmen(fighter, count, pose, heading)
 	fighter.wingShown = count
 end
 
--- Swap the plane for a big picture (a chicken, a pilot on a parachute), or
+-- Swap the plane for something else entirely ("chicken" or "parachute"), or
 -- pass nil to show the plane again.
-function BattleView:_morph(fighter, picture, size)
-	if picture and not fighter.morphGui then
-		local gui = Instance.new("BillboardGui"); gui.Name = "Morph"; gui.LightInfluence = 0
-		gui.Adornee, gui.Parent = fighter.model.PrimaryPart, fighter.model.PrimaryPart
-		local label = Instance.new("TextLabel"); label.BackgroundTransparency = 1; label.Size = UDim2.fromScale(1, 1)
-		label.TextScaled, label.Font, label.Parent = true, Enum.Font.FredokaOne, gui
-		fighter.morphGui, fighter.morphLabel = gui, label
-	end
-	if fighter.morph ~= picture then
-		fighter.morph = picture
-		local hidden = picture and 1 or 0
+function BattleView:_morph(fighter, kind, scale)
+	if fighter.morph ~= kind then
+		fighter.morph = kind
+		local hidden = kind and 1 or 0
 		for _, piece in ipairs(fighter.model:GetDescendants()) do
 			if piece:IsA("BasePart") then piece.LocalTransparencyModifier = hidden end
 		end
 		for _, wingman in ipairs(fighter.wingmen) do
 			for _, piece in ipairs(wingman.model:GetChildren()) do piece.LocalTransparencyModifier = hidden end
 		end
-		if fighter.morphGui then fighter.morphGui.Enabled = picture ~= nil end
-		if fighter.morphLabel and picture then fighter.morphLabel.Text = picture end
+		if fighter.morphModel then fighter.morphModel:Destroy(); fighter.morphModel = nil end
+		if kind then
+			fighter.morphModel = kind == "chicken" and makeChicken(fighter.fx) or makeParachute(fighter.fx, fighter.color)
+			fighter.morphScale = nil
+		end
+		fighter.model:SetAttribute("Morph", kind)
 	end
-	if picture then
-		fighter.morphGui.Size = UDim2.fromScale(size, size)
-		-- A chicken flaps in a panic; a parachute sways.
-		local flap = picture == "🐔" and math.sin(self.clock * 16) * 20 or math.sin(self.clock * 2.4) * 9
-		fighter.morphLabel.Rotation = self.reducedMotion and 0 or flap
+	if not kind or not fighter.position then return end
+	if fighter.morphScale ~= scale then fighter.morphModel:ScaleTo(scale); fighter.morphScale = scale end
+	-- A chicken flaps in a panic; a parachute sways.
+	local sway, bob = 0, 0
+	if not self.reducedMotion then
+		if kind == "chicken" then sway, bob = math.sin(self.clock * 18) * 0.28, math.abs(math.sin(self.clock * 12)) * 1.2
+		else sway = math.sin(self.clock * 2.4) * 0.16 end
+	end
+	fighter.morphModel:PivotTo(CFrame.new(fighter.position + Vector3.new(0, bob, 0))
+		* CFrame.Angles(0, fighter.facing < 0 and math.pi or 0, 0) * CFrame.Angles(0, 0, sway))
+end
+
+-- Black holes: a dark core inside a spinning ring, and a faint ring that
+-- shrinks inward to show how far the pull reaches.
+function BattleView:_holes(simulation)
+	local seen = {}
+	for _, state in ipairs(simulation.holes or {}) do
+		local id = state.id or 0
+		seen[id] = true
+		local hole = self.holes[id]
+		if not hole then
+			local folder = Instance.new("Folder"); folder.Name = "BlackHole"; folder.Parent = self.dynamic
+			hole = { folder = folder, born = self.clock,
+				core = ellipsoid(folder, "Core", Vector3.one, CFrame.identity, Color3.new(0, 0, 0)),
+				disc = makeRing(folder, "Disc", 14, POWER.hole), reach = makeRing(folder, "Reach", 16, POWER.hole) }
+			self.holes[id] = hole
+		end
+		-- Behind the planes, so a plane caught in it can still be seen.
+		local center = ORIGIN + Vector3.new(numeric(state.x, 0), numeric(state.y, CENTER_Y), -4)
+		local armed = numeric(state.armLeft, 0) <= self.sampleAge
+		local size = numeric(state.core, 4.5) * math.clamp((self.clock - hole.born) / 0.45, 0.15, 1)
+			* math.clamp(numeric(state.life, 0) / 0.3, 0, 1)
+		hole.core.Size = Vector3.new(size * 2, size * 2, 1.2)
+		hole.core.CFrame = CFrame.new(center)
+		hole.core.Transparency = armed and 0 or 0.4
+		local spin = self.reducedMotion and 0 or self.clock * 5
+		-- White while it is still opening, purple once touching it costs armor.
+		ring(hole.disc, center + Vector3.new(0, 0, 0.5), size * 1.35, armed and POWER.hole or COLORS.cream, armed and 0.05 or 0.4, -spin, 0.9)
+		local pulse = self.reducedMotion and 0 or (self.clock * 1.6) % 1
+		ring(hole.reach, center, numeric(state.reach, 34) * (1 - pulse * 0.5), POWER.hole, 0.7 + pulse * 0.25, spin * 0.2, 0.3)
+	end
+	for id, hole in pairs(self.holes) do
+		if not seen[id] then hole.folder:Destroy(); self.holes[id] = nil end
+	end
+end
+
+function BattleView:_drones(simulation, extrapolate, smoothing)
+	local seen = {}
+	for _, state in ipairs(simulation.drones or {}) do
+		local id = state.id or 0
+		if not state.dead then
+			seen[id] = true
+			local drone = self.drones[id]
+			if not drone then
+				local owner = self.fighters[state.owner]
+				drone = { model = makeDrone(self.dynamic, owner and owner.color or COLORS.yellow) }
+				self.drones[id] = drone
+			end
+			local target = ORIGIN + Vector3.new(numeric(state.x, 0) + numeric(state.vx, 0) * extrapolate,
+				numeric(state.y, CENTER_Y) + numeric(state.vy, 0) * extrapolate, 2)
+			if drone.position and (target - drone.position).Magnitude > 45 then drone.position = nil end
+			drone.position = drone.position and drone.position:Lerp(target, smoothing) or target
+			drone.model:PivotTo(CFrame.new(drone.position) * CFrame.Angles(0, 0, numeric(state.heading, 0)))
+		end
+	end
+	for id, drone in pairs(self.drones) do
+		if not seen[id] then drone.model:Destroy(); self.drones[id] = nil end
 	end
 end
 
@@ -900,6 +1027,15 @@ function BattleView:_setSignature(fighter, offenceId)
 		local cap = piece("ReboundRing", Vector3.new(0.65, 2.9, 2.9), "Nose", Vector3.new(-0.55, 0, 0),
 			Color3.fromRGB(110, 220, 255), Enum.Material.Neon, Enum.PartType.Cylinder)
 		table.insert(fighter.chargePieces, cap)
+	elseif offenceId == "UFOBeam" then
+		-- A glowing saucer rim under the belly and the lamp the beam comes from.
+		piece("SaucerRim", Vector3.new(7.5, 0.35, 5.5), "Belly", Vector3.new(0, -0.1, 0), POWER.ufo, Enum.Material.Neon)
+		local lamp = piece("BeamLamp", Vector3.one * 1.5, "Belly", Vector3.new(0, -0.7, 0), COLORS.cream, Enum.Material.Neon, Enum.PartType.Ball)
+		table.insert(fighter.chargePieces, lamp)
+	elseif offenceId == "BlackHole" then
+		piece("VoidOrb", Vector3.one * 2.1, "Nose", Vector3.new(0.2, 0, 0), Color3.new(0, 0, 0), nil, Enum.PartType.Ball)
+		local collar = piece("VoidCollar", Vector3.new(0.5, 2.8, 2.8), "Nose", Vector3.new(-0.6, 0, 0), POWER.hole, Enum.Material.Neon, Enum.PartType.Cylinder)
+		table.insert(fighter.chargePieces, collar)
 	elseif offenceId == "Meteor" then
 		piece("ImpactCollar", Vector3.new(0.6, 2.8, 2.8), "Nose", Vector3.new(-0.5, 0, 0), COLORS.yellow, nil, Enum.PartType.Cylinder)
 		for _, side in ipairs({ -1, 1 }) do
@@ -983,7 +1119,7 @@ function BattleView:_hit(fighter, x, y, source, actorColor)
 		if self.clock - fighter.lastHitBurst < 0.12 then return end
 		fighter.lastHitBurst = self.clock
 	end
-	local color = source == "meteor" and COLORS.yellow or (source == "pinball" and POWER.pinball or (source == "wake" and POWER.fizz
+	local color = source == "blackhole" and POWER.hole or source == "ufo" and POWER.ufo or source == "meteor" and COLORS.yellow or (source == "pinball" and POWER.pinball or (source == "wake" and POWER.fizz
 		or (source == "rocket" and actorColor and actorColor:Lerp(COLORS.cream, 0.55) or COLORS.cream)))
 	self:_burst(x, y, color, true, source)
 	x, y = numeric(x, 0), numeric(y, CENTER_Y)
@@ -1006,6 +1142,16 @@ function BattleView:_hit(fighter, x, y, source, actorColor)
 		self:_particles(x, y, POWER.sniper, 90, 6, 0, 130)
 		self:_particles(x, y, COLORS.cream, 30, 0, 0, 60)
 		self:_jolt(5, 1, 0.16, 0.7, 0.85)
+	elseif source == "blackhole" then
+		-- The core takes a bite: everything nearby is sucked into a purple flash.
+		self:_particles(x, y, POWER.hole, 100, 10, 0, 140)
+		self:_particles(x, y, COLORS.cream, 30, 0, 0, 50)
+		self:_jolt(4.6, 1, 0.15, 0.7, 0.85)
+	elseif source == "ufo" then
+		-- Thrown into the wall: dust, sparks and a long rattle.
+		self:_particles(x, y, POWER.ufo, 70, 24, 0, 110)
+		self:_particles(x, y, COLORS.cream, 40, 0, 0, 70)
+		self:_jolt(5.2, 1, 0.16, 0.7, 0.9)
 	elseif source == "machinegun" then
 		-- The burst chews through: hot sparks and shrapnel smoke.
 		self:_particles(x, y, COLORS.yellow, 60, 14, 6, 90)
@@ -1100,6 +1246,43 @@ function BattleView:_events(simulation)
 					self:_particles(x, y, POWER.bomb, 24, 0, 0, 50)
 				elseif kind == "catch" then
 					self:_particles(x, y, POWER.blade, 16, 0, 0, 30)
+				elseif kind == "hole" then
+					self:_burst(x, y, POWER.hole, true)
+					self:_particles(x, y, POWER.hole, 50, 0, 0, 90)
+					self:_jolt(1.8, 0.5, 0.04, 0.2, 0.4)
+				elseif kind == "hole_close" then
+					self:_burst(x, y, POWER.hole, false)
+					self:_particles(x, y, POWER.hole, 30, 0, 0, 40)
+				elseif kind == "swallow" then
+					self:_particles(x, y, POWER.hole, 12, 0, 0, 20)
+				elseif kind == "drone" then
+					if actor then actor.shotTime = self.clock end
+					self:_particles(x, y, POWER.drone, 24, 4, 0, 50)
+					self:_jolt(0.8, 0.2, 0, 0, 0.15)
+				elseif kind == "drone_fire" then
+					self:_particles(x, y, COLORS.yellow, 10, 0, 4, 30)
+				elseif kind == "drone_pop" then
+					self:_burst(x, y, POWER.drone, true)
+					self:_particles(x, y, COLORS.fire, 30, 8, 10, 60)
+				elseif kind == "beam" then
+					self:_burst(x, y, POWER.ufo, true)
+					self:_particles(x, y, POWER.ufo, 60, 0, 0, 80)
+					self:_jolt(2.2, 0.6, 0.06, 0.3, 0.5)
+				elseif kind == "beam_miss" then
+					self:_burst(x, y, POWER.ufo, false, "fizzle")
+				elseif kind == "throw" then
+					self:_burst(x, y, POWER.ufo, false, "dive", numeric(event.heading, 0))
+					self:_jolt(1.6, 0.5, 0, 0.1, 0.3)
+				elseif kind == "rewind" then
+					-- Everything jumps back at once: nothing may streak across the arena.
+					self.rewindTime = self.realClock
+					for _, fighter in pairs(self.fighters) do
+						fighter.position, fighter.pose = nil, nil
+						fighter.trail:Clear()
+					end
+					for _, rocket in pairs(self.rockets) do rocket.position = nil; rocket.trail:Clear() end
+					for _, drone in pairs(self.drones) do drone.position = nil end
+					self:_jolt(2, 0.7, 0, 0.6, 0.7)
 				elseif kind == "skill" and event.skillId == "Thief" then
 					self:_particles(x, y, COLORS.cream, 50, 6, 0, 70)
 					self:_jolt(1.4, 0.4, 0.04, 0.15, 0.3)
@@ -1351,7 +1534,7 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 		end
 	else hide(fighter.loadRing) end
 	fighter.model:SetAttribute("AttackLoaded", loading and (state.phase == "Windup" or state.circling == false) or false)
-	local offence = self.skills and self.skills.get(fighter.offenceId)
+	local offence = self.skills and (self.skills.tells and self.skills.tells(fighter.offenceId, state) or self.skills.get(fighter.offenceId))
 	-- Count down to a Swap on both planes, whoever brought the card.
 	local swapIn
 	for _, other in ipairs(simulation.fighters or {}) do
@@ -1361,6 +1544,7 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 	local tell
 	if winner then tell = "WINNER!"
 	elseif knockedOut then tell = "K.O.!"
+	elseif self.realClock - self.rewindTime < 1.1 then tell = "⏪ REWIND!"
 	elseif self.clock - fighter.swapTime < 1.2 then tell = "SWAP!"
 	elseif type(state.roll) == "number" and numeric(simulation.elapsed, 0) < 2.5 then
 		tell = "🎲 " .. state.roll .. (state.roll == 1 and "  OUCH!" or (state.roll == 6 and "  JACKPOT!" or (state.roll >= 4 and "  +1 ARMOR!" or "  NOTHING...")))
@@ -1368,6 +1552,8 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 	elseif swapIn then tell = "SWAP IN " .. swapIn .. "..."
 	elseif self.clock - fighter.snowTime < 0.9 then tell = "BIGGER!"
 	elseif self.clock - fighter.ejectTime < 1.1 then tell = "EJECT!"
+	elseif type(state.hold) == "table" then tell = "GOT YOU!"
+	elseif type(state.throw) == "table" then tell = "WHEEE!"
 	elseif numeric(state.chickenLeft, 0) > 0 then tell = "BAWK!"
 	elseif self.clock - fighter.vampireTime < 0.8 then tell = "SLURP!"
 	elseif hitAge < 0.45 then tell = "POW!"
@@ -1548,7 +1734,10 @@ function BattleView:update(snapshot, dt, viewportRect)
 	self.hype = self.hype * math.exp(-0.9 * realDt)
 	self.grade.Brightness = self.screenFlash * 0.16
 	self.grade.Contrast = 0.06 + self.screenFlash * 0.2
-	self.grade.Saturation = slowMotion and -0.35 or 0.14
+	-- A rewind washes the picture out to a cold blue for a moment, like a tape.
+	local rewinding = math.clamp(1 - (self.realClock - self.rewindTime) / 0.7, 0, 1)
+	self.grade.Saturation = slowMotion and -0.35 or 0.14 - rewinding * 0.95
+	self.grade.TintColor = Color3.new(1, 1, 1):Lerp(POWER.rewind, rewinding * 0.7)
 	for _, cloud in ipairs(self.clouds) do
 		cloud.x = cloud.x + cloud.drift * realDt
 		if cloud.x > cloud.span then cloud.x = -cloud.span end
@@ -1635,7 +1824,32 @@ function BattleView:update(snapshot, dt, viewportRect)
 			for _, ghost in ipairs(fighter.afterimages) do ghost.model:ScaleTo(size) end
 			fighter.shownScale = size
 		end
+		-- A thrown plane tumbles end over end until it meets the wall.
+		if type(state.throw) == "table" and not knockedOut and not self.reducedMotion then
+			displayPose = displayPose * CFrame.Angles(0, 0, self.clock * 18)
+		end
 		fighter.model:PivotTo(displayPose)
+		-- A plane held in a beam is joined to whatever grabbed it.
+		local holder = type(state.hold) == "table" and moving and self.fighters[state.hold.by]
+		if holder and holder.position then
+			if not fighter.tractor then
+				fighter.tractor = part(fighter.fx, "TractorBeam", Vector3.one, CFrame.identity, POWER.ufo, Enum.Material.Neon)
+				fighter.tractorGrip = makeRing(fighter.fx, "TractorGrip", 10, POWER.ufo)
+			end
+			local from = holder.position
+			for _, drone in pairs(self.drones) do
+				if drone.position and (drone.position - fighter.position).Magnitude < (from - fighter.position).Magnitude then from = drone.position end
+			end
+			local span = fighter.position - from
+			local wobble = self.reducedMotion and 1 or 1 + math.sin(self.clock * 40) * 0.25
+			fighter.tractor.Size = Vector3.new(math.max(0.1, span.Magnitude), 3.2 * wobble, 0.3)
+			fighter.tractor.CFrame = CFrame.new((from + fighter.position) / 2 + Vector3.new(0, 0, 6)) * CFrame.Angles(0, 0, math.atan2(span.Y, span.X))
+			fighter.tractor.Transparency = 0.35
+			ring(fighter.tractorGrip, fighter.position + Vector3.new(0, 0, 8), 8 - (self.clock * 12 % 2.5), POWER.ufo, 0.1, self.clock * 4, 0.6)
+		elseif fighter.tractor then
+			fighter.tractor.Transparency = 1
+			hide(fighter.tractorGrip)
+		end
 		local squad = knockedOut and 0 or math.max(0, math.min(numeric(state.squad, 0), armor) - 1)
 		self:_wingmen(fighter, squad, displayPose, numeric(state.heading, math.atan2(vy, vx)))
 		-- A sniper's aim is a thin red line that goes solid once it is locked.
@@ -1659,7 +1873,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 		end
 		if fuse and not fighter.bombGui then
 			local gui = Instance.new("BillboardGui"); gui.Name = "Bomb"; gui.LightInfluence = 0
-			gui.Size, gui.StudsOffset = UDim2.fromScale(13, 7), Vector3.new(0, 11, 0)
+			gui.Size, gui.StudsOffset = UDim2.fromScale(13, 6), Vector3.new(0, 16, 0)
 			gui.Adornee, gui.Parent = fighter.model.PrimaryPart, fighter.model.PrimaryPart
 			local label = Instance.new("TextLabel"); label.BackgroundTransparency = 1; label.Size = UDim2.fromScale(1, 1)
 			label.TextScaled, label.Font, label.TextColor3 = true, Enum.Font.FredokaOne, COLORS.cream
@@ -1674,8 +1888,8 @@ function BattleView:update(snapshot, dt, viewportRect)
 			end
 		end
 		local chicken = numeric(state.chickenLeft, 0) > 0 and not knockedOut
-		self:_morph(fighter, chicken and "🐔" or (state.ejected == true and armor > 0 and "🪂") or nil,
-			(chicken and 15 or 13) * (chicken and math.max(0.7, size) or 1))
+		self:_morph(fighter, chicken and "chicken" or (state.ejected == true and armor > 0 and "parachute") or nil,
+			chicken and math.clamp(size, 0.7, 1.6) or 1)
 		local propellerPhase = knockedOut and fighter.stoppedPropeller or self.clock * (moving and 52 or 16)
 		if fighter.propeller then fighter.propeller:PivotTo(displayPose * mount(fighter, "Nose") * CFrame.Angles(propellerPhase, 0, 0)) end
 		if fighter.armor and armor < fighter.armor then self:_hit(fighter, state.x, state.y) end
@@ -1824,6 +2038,8 @@ function BattleView:update(snapshot, dt, viewportRect)
 		rocket.fizz.Color = ColorSequence.new(COLORS.cream, color)
 	end
 	self:_wakes(simulation, moving)
+	self:_holes(simulation)
+	self:_drones(simulation, extrapolate, smoothing)
 	for _, effect in ipairs(self.effects) do
 		if effect.active then
 			effect.age = effect.age + dt

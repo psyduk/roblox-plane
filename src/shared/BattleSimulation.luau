@@ -97,10 +97,27 @@ local function settings(input, fallback)
 	}
 end
 
+local function copy(value)
+	if type(value) ~= "table" then return value end
+	local result = {}
+	for key, item in pairs(value) do result[key] = copy(item) end
+	return result
+end
+
 -- What a plane attacks with right now. A wild card may swap the plane into a
 -- different form for the rest of the round (an ejected pilot's pea-shooter).
 local function offenceOf(fighter)
 	return fighter.form and Skills.form[fighter.form] or Skills.offence[fighter.offenceId]
+end
+
+-- A mothership does not attack with its own nose or guns: it launches drones.
+local function launching(fighter)
+	return fighter.mothership == true and not fighter.form
+end
+
+-- The source name of a plane whose nose is its weapon right now, or nil.
+local function rams(fighter)
+	return not launching(fighter) and offenceOf(fighter).ram or nil
 end
 
 -- How many planes a fighter is flying: one, or a squadron with one plane per
@@ -164,6 +181,30 @@ end
 -- Helpers handed to every skill hook.
 local api = { event = event, clamp = clamp, direction = direction,
 	IMPACT_PROTECTION = BattleSimulation.IMPACT_PROTECTION }
+
+-- A decoy that is reached pops, and comes back after its cooldown.
+function api.pop(state, target, x, y, actorId)
+	target.decoyUp, target.decoyLeft = false, Skills.wild.Decoy.cooldown
+	target.decoyX, target.decoyY = nil, nil
+	event(state, "decoy_pop", x, y, actorId, target.id, "decoy", "Decoy")
+end
+
+-- Open a hole in the arena. It drags both planes and bends every shot toward
+-- it; once it has armed, its core breaks the armor of the rival that touches
+-- it. A squadron opens one hole per plane.
+function api.hole(state, fighter, x, y, options)
+	state.holes = state.holes or {}
+	state._holeSerial = (state._holeSerial or 0) + 1
+	local b = state.bounds
+	local hole = {
+		id = state._holeSerial, owner = fighter.id, skillId = options.skillId,
+		x = clamp(x, b.left + 6, b.right - 6), y = clamp(y, b.bottom + 6, b.top - 6),
+		life = options.life, maxLife = options.life, armLeft = options.armTime,
+		core = options.core * (fighter.shotScale or 1), reach = options.reach, pull = options.pull, bend = options.bend,
+	}
+	state.holes[#state.holes + 1] = hole
+	return hole
+end
 
 -- Add a projectile owned by this fighter. It flies straight and hits only the rival.
 function api.launch(state, fighter, projectile)
@@ -311,12 +352,49 @@ local function recover(state, fighter, opponent, duration)
 	fighter._recoverY = clamp(fighter.y + awayY * 15 + (above and 18 or -18), 25, 77)
 end
 
-local function lockTarget(fighter, opponent)
-	local distance = math.sqrt((opponent.x - fighter.x) ^ 2 + (opponent.y - fighter.y) ^ 2)
-	local offence = offenceOf(fighter)
+-- A plane caught mid-attack by something that takes its controls away banks
+-- off as if the attack were over.
+function api.interrupt(state, fighter)
+	if fighter.phase == "Windup" or fighter.phase == "Attack" then
+		recover(state, fighter, state.fighters[3 - fighter.id])
+	end
+end
+
+-- Where an attack from (x, y) should aim to meet a moving rival.
+local function aimAt(offence, x, y, opponent)
+	local distance = math.sqrt((opponent.x - x) ^ 2 + (opponent.y - y) ^ 2)
 	local lead = clamp(distance / offence.leadSpeed, 0, 0.95) * offence.leadFactor
-	fighter.lockX = clamp(opponent.x + opponent.vx * lead, -64, 64)
-	fighter.lockY = clamp(opponent.y + opponent.vy * lead, 15, 88)
+	return clamp(opponent.x + opponent.vx * lead, -64, 64), clamp(opponent.y + opponent.vy * lead, 15, 88)
+end
+
+local function lockTarget(fighter, opponent)
+	fighter.lockX, fighter.lockY = aimAt(offenceOf(fighter), fighter.x, fighter.y, opponent)
+end
+
+-- A mothership's drones: small flyers that home on the rival, carry out the
+-- plane's attack once from wherever they are, and fly off.
+local function launchDrones(state, fighter)
+	local self = Skills.wild.Mothership
+	state.drones = state.drones or {}
+	for index = 1, self.drones do
+		state._droneSerial = (state._droneSerial or 0) + 1
+		local fan = (index - (self.drones + 1) / 2) * self.fan
+		local heading = fighter.heading + fan
+		state.drones[#state.drones + 1] = {
+			id = state._droneSerial, owner = fighter.id, mode = "fly", age = -(index - 1) * self.stagger,
+			x = fighter.x + math.cos(heading) * 6, y = fighter.y + math.sin(heading) * 6,
+			heading = heading, vx = math.cos(heading) * self.droneSpeed, vy = math.sin(heading) * self.droneSpeed,
+		}
+	end
+	event(state, "drone", fighter.x, fighter.y, fighter.id, 3 - fighter.id, "drone", "Mothership")
+end
+
+-- Lets a drone run its owner's attack hooks from its own position. Everything
+-- else the hooks read or write is the owner's.
+local function droneProxy(owner, drone)
+	return setmetatable({ x = drone.x, y = drone.y, vx = drone.vx, vy = drone.vy,
+		heading = drone.heading, _attackHeading = drone.heading },
+		{ __index = owner, __newindex = function(_, key, value) owner[key] = value end })
 end
 
 local function beginAttack(state, fighter, opponent)
@@ -324,13 +402,16 @@ local function beginAttack(state, fighter, opponent)
 	lockTarget(fighter, opponent)
 	fighter.phase = "Attack"
 	fighter.phaseLeft = offence.attackTime
-	fighter.armed = offence.ram ~= nil
+	fighter.armed = rams(fighter) ~= nil
 	fighter.attacks = fighter.attacks + 1
 	fighter._attackHit, fighter._wrapped = false, false
 	wild(fighter, "attack", state, fighter, opponent)
 	-- The direction is locked for the whole attack; no homing after launch.
 	fighter._attackHeading = fighter.heading
-	if offence.attack then offence.attack(api, state, fighter, opponent) end
+	if launching(fighter) then
+		fighter.phaseLeft = Skills.wild.Mothership.launchTime
+		launchDrones(state, fighter)
+	elseif offence.attack then offence.attack(api, state, fighter, opponent) end
 end
 
 local function prepare(state, fighter, opponent, dt)
@@ -339,6 +420,9 @@ local function prepare(state, fighter, opponent, dt)
 	fighter.boostLeft = math.max(0, fighter.boostLeft - dt)
 	if fighter.magnetLeft then fighter.magnetLeft = math.max(0, fighter.magnetLeft - dt) end
 	fighter.phaseLeft = fighter.phaseLeft - dt
+	-- A plane that is held or thrown has no controls: its attack clock stops.
+	if fighter.hold or fighter.throw then fighter.phaseLeft = fighter.phaseLeft + dt end
+	local carrier = launching(fighter)
 	if (fighter.chickenLeft or 0) > 0 then
 		-- A chicken cannot attack: it flaps in circles until the spell ends.
 		fighter.chickenLeft = math.max(0, fighter.chickenLeft - dt)
@@ -347,21 +431,23 @@ local function prepare(state, fighter, opponent, dt)
 	end
 	local dx, dy = opponent.x - fighter.x, opponent.y - fighter.y
 	if fighter.phase == "Approach" then
-		local inPosition = offence.inPosition ~= nil and offence.inPosition(api, state, fighter, opponent, dx, dy)
+		-- Drones find their own way, so a mothership is always in position.
+		local inPosition = carrier or (offence.inPosition ~= nil and offence.inPosition(api, state, fighter, opponent, dx, dy))
 		if fighter.phaseLeft <= 0 or (fighter.phaseLeft < offence.earliest and inPosition) then
-			fighter.phase, fighter.phaseLeft = "Windup", fighter.windupDuration
+			fighter.phase, fighter.phaseLeft = "Windup", carrier and Skills.wild.Mothership.windup or fighter.windupDuration
 			-- A skill's hurry lasts for one trip back to the attack.
 			fighter.tempo = nil
-			if offence.windupStart then offence.windupStart(api, state, fighter, opponent) end
+			if offence.windupStart and not carrier then offence.windupStart(api, state, fighter, opponent) end
 			lockTarget(fighter, opponent)
 			event(state, "windup", fighter.x, fighter.y, fighter.id, opponent.id)
 		end
 	elseif fighter.phase == "Windup" and fighter.phaseLeft <= 0 then
 		beginAttack(state, fighter, opponent)
 	elseif fighter.phase == "Attack" and fighter.phaseLeft <= 0 then
-		if offence.ram and not fighter._attackHit then
+		if rams(fighter) and not fighter._attackHit then
 			event(state, "miss", fighter.x, fighter.y, fighter.id, opponent.id)
 		end
+		if offence.release and not carrier then offence.release(api, state, fighter, opponent) end
 		recover(state, fighter, opponent)
 	elseif fighter.phase == "Recover" and fighter.phaseLeft <= 0 then
 		fighter.phase, fighter.phaseLeft = "Approach", ((offence.approachTime or BattleSimulation.APPROACH_TIME) + fighter._approachOffset) * (fighter.tempo or 1) * (fighter.pace or 1)
@@ -370,8 +456,9 @@ local function prepare(state, fighter, opponent, dt)
 	local targetX, targetY = opponent.x, opponent.y
 	local speed, turnRate = 28, 2.8
 	local wantX, wantY, wantSpeed, wantTurn
-	if fighter.phase == "Approach" then
-		fighter.circling = fighter.phaseLeft >= offence.earliest
+	if fighter.phase == "Approach" or (carrier and fighter.phase == "Windup") then
+		-- A mothership never closes in: it circles until the drones are away.
+		fighter.circling = carrier or fighter.phaseLeft >= offence.earliest
 		if fighter.circling then
 			-- Aim for a point on the standoff ring a little way round from here.
 			local awayX, awayY = direction(-dx, -dy, fighter.id == 1 and -1 or 1)
@@ -380,20 +467,20 @@ local function prepare(state, fighter, opponent, dt)
 			targetY = clamp(opponent.y + (awayX * s + awayY * c) * BattleSimulation.STANDOFF, state.bounds.bottom + 6, state.bounds.top - 6)
 			speed, turnRate = BattleSimulation.ORBIT_SPEED, 3.4
 		end
-		if offence.approach then
+		if offence.approach and not carrier then
 			wantX, wantY, wantSpeed, wantTurn = offence.approach(api, state, fighter, opponent, dx, dy)
 		end
 	elseif fighter.phase == "Windup" then
 		lockTarget(fighter, opponent)
 		targetX, targetY = fighter.lockX, fighter.lockY
 		speed, turnRate = 9, 5.5
-		if offence.windupMove then
+		if offence.windupMove and not carrier then
 			wantX, wantY, wantSpeed, wantTurn = offence.windupMove(api, state, fighter, opponent)
 		end
 	elseif fighter.phase == "Attack" then
-		speed = offence.attackSpeed
+		speed = carrier and 20 or offence.attackSpeed
 		fighter.heading = fighter._attackHeading
-		if offence.attackTick then offence.attackTick(api, state, fighter, dt) end
+		if offence.attackTick and not carrier then offence.attackTick(api, state, fighter, dt) end
 	elseif fighter.phase == "Recover" then
 		targetX, targetY = fighter._recoverX, fighter._recoverY
 		speed, turnRate = 30, 3.5
@@ -469,6 +556,20 @@ local function tick(state)
 	state.elapsed = math.min(BattleSimulation.MAX_TIME, state.elapsed + dt)
 	updateBounds(state)
 	state._bumpCooldown = math.max(0, state._bumpCooldown - dt)
+	if state.recording then
+		-- Keep a few seconds of the round, four pictures a second, for Rewind.
+		local history = state._history or {}
+		state._history = history
+		local last = history[#history]
+		if not last or state.elapsed - last.at >= 0.25 - EPSILON then
+			local picture = {}
+			for key, value in pairs(state) do
+				if key ~= "_history" and key ~= "events" then picture[key] = copy(value) end
+			end
+			history[#history + 1] = { at = state.elapsed, state = picture }
+			while history[1].at < state.elapsed - Skills.wild.Rewind.back - EPSILON do table.remove(history, 1) end
+		end
+	end
 	local previous = {}
 	for id, fighter in ipairs(state.fighters) do
 		previous[id] = { id = id, x = fighter.x, y = fighter.y, vx = fighter.vx, vy = fighter.vy, heading = fighter.heading }
@@ -479,7 +580,7 @@ local function tick(state)
 		local real = previous[id]
 		local x, y = decoyAt(state, state.fighters[id], real.x, real.y, real.heading)
 		if not x or (x - viewer.x) ^ 2 + (y - viewer.y) ^ 2 >= (real.x - viewer.x) ^ 2 + (real.y - viewer.y) ^ 2 then return real end
-		return { id = id, x = x, y = y, vx = real.vx, vy = real.vy, heading = real.heading }
+		return { id = id, x = x, y = y, vx = real.vx, vy = real.vy, heading = real.heading, decoy = true }
 	end
 	for id, fighter in ipairs(state.fighters) do prepare(state, fighter, quarry(previous[id], 3 - id), dt) end
 	-- A live magnet yanks the rival toward its owner's attack: the nearest shot
@@ -501,18 +602,43 @@ local function tick(state)
 			local nx, ny = direction(towardX - fighter.x, towardY - fighter.y)
 			fighter.vx, fighter.vy = fighter.vx + nx * pull, fighter.vy + ny * pull
 		end
+		-- A hole drags every plane inside its reach, its owner included.
+		for _, hole in ipairs(state.holes or {}) do
+			local gap = math.sqrt((hole.x - fighter.x) ^ 2 + (hole.y - fighter.y) ^ 2)
+			if gap < hole.reach and gap > EPSILON then
+				local pull = hole.pull * (1 - gap / hole.reach)
+				fighter.vx, fighter.vy = fighter.vx + (hole.x - fighter.x) / gap * pull, fighter.vy + (hole.y - fighter.y) / gap * pull
+			end
+		end
+		if fighter.hold then
+			-- Caught in a beam: dragged to where the beam holds it, whatever it wants.
+			local hold = fighter.hold
+			fighter.vx, fighter.vy = (hold.x - fighter.x) * 8, (hold.y - fighter.y) * 8
+			hold.left = hold.left - dt
+			if hold.left <= 0 then fighter.hold = nil end
+		elseif fighter.throw then
+			local throw = fighter.throw
+			fighter.vx, fighter.vy = throw.vx, throw.vy
+			throw.left = throw.left - dt
+			if throw.left <= 0 then fighter.throw = nil end
+		end
 		local magnitude = math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2)
 		if magnitude > BattleSimulation.MAX_TOTAL_SPEED then
 			fighter.vx, fighter.vy = fighter.vx * BattleSimulation.MAX_TOTAL_SPEED / magnitude, fighter.vy * BattleSimulation.MAX_TOTAL_SPEED / magnitude
 		end
 	end
-	local edgeHit = {}
+	local edgeHit, slams = {}, {}
 	for id, fighter in ipairs(state.fighters) do
 		local x, y = fighter.x + fighter.vx * dt, fighter.y + fighter.vy * dt
 		fighter.x = clamp(x, state.bounds.left, state.bounds.right)
 		fighter.y = clamp(y, state.bounds.bottom, state.bounds.top)
 		edgeHit[id] = x ~= fighter.x or y ~= fighter.y
-		if fighter.wrapShots and fighter.phase == "Attack" and offenceOf(fighter).ram and not fighter._wrapped
+		if fighter.throw and edgeHit[id] then
+			-- A thrown plane that reaches a wall is slammed into it.
+			slams[#slams + 1] = { id = id, by = fighter.throw.by, vx = fighter.throw.vx, vy = fighter.throw.vy }
+			fighter.throw = nil
+		end
+		if fighter.wrapShots and fighter.phase == "Attack" and rams(fighter) and not fighter._wrapped
 			and (x < state.bounds.left or x > state.bounds.right) then
 			-- A wrapping dive leaves one side of the arena and carries on from the other.
 			event(state, "wrap", fighter.x, fighter.y, id, 0, "plane", "Wrap")
@@ -564,7 +690,7 @@ local function tick(state)
 			end
 			if fighter.armed and not fighter._attackHit and ahead then
 				landed[id], blocked[id] = damage(state, id, 3 - id, (x + ox) / 2, (y + oy) / 2,
-					math.cos(fighter.heading), math.sin(fighter.heading), offenceOf(fighter).ram)
+					math.cos(fighter.heading), math.sin(fighter.heading), rams(fighter))
 				resolved[id] = landed[id] or blocked[id]
 			end
 		end
@@ -584,11 +710,7 @@ local function tick(state)
 	end
 
 	-- An armed nose that reaches a decoy pops it and wastes the dive.
-	local function pop(target, x, y, actorId)
-		target.decoyUp, target.decoyLeft = false, Skills.wild.Decoy.cooldown
-		target.decoyX, target.decoyY = nil, nil
-		event(state, "decoy_pop", x, y, actorId, target.id, "decoy", "Decoy")
-	end
+	local function pop(target, x, y, actorId) api.pop(state, target, x, y, actorId) end
 	for id, fighter in ipairs(state.fighters) do
 		local opponent, otherOld = state.fighters[3 - id], previous[3 - id]
 		local x, y = decoyAt(state, opponent, opponent.x, opponent.y, opponent.heading)
@@ -601,8 +723,118 @@ local function tick(state)
 		end
 	end
 
+	for _, slam in ipairs(slams) do
+		local nx, ny = direction(slam.vx, slam.vy)
+		local victim = state.fighters[slam.id]
+		local successful, absorbed = damage(state, slam.by, slam.id, victim.x, victim.y, -nx, -ny, "ufo", "UFOBeam")
+		if successful then landed[slam.by] = true end
+		if successful or absorbed then resolved[slam.by] = true end
+		event(state, "slam", victim.x, victim.y, slam.by, slam.id, "ufo", "UFOBeam").landed = successful == true
+	end
+
+	local openHoles = {}
+	for _, hole in ipairs(state.holes or {}) do
+		hole.life = hole.life - dt
+		hole.armLeft = math.max(0, hole.armLeft - dt)
+		local targetId = 3 - hole.owner
+		local hit = hole.armLeft <= 0 and hole.life > 0 and strike(hole.x, hole.y, hole.x, hole.y, targetId, hole.core)
+		if hit then
+			-- The core takes one bite and the hole collapses.
+			local target = state.fighters[targetId]
+			local nx, ny = direction(target.x - hole.x, target.y - hole.y, targetId == 1 and -1 or 1)
+			local successful, absorbed = damage(state, hole.owner, targetId, hole.x, hole.y, nx, ny, "blackhole", hole.skillId)
+			if successful then landed[hole.owner] = true end
+			if successful or absorbed then resolved[hole.owner] = true end
+			event(state, "hole_close", hole.x, hole.y, hole.owner, targetId, "blackhole", hole.skillId)
+		elseif hole.life > 0 then
+			openHoles[#openHoles + 1] = hole
+		else
+			event(state, "hole_close", hole.x, hole.y, hole.owner, 0, "blackhole", hole.skillId)
+		end
+	end
+	if state.holes then state.holes = openHoles end
+
+	local flying = {}
+	for _, drone in ipairs(state.drones or {}) do
+		local carrier = Skills.wild.Mothership
+		local owner, target = state.fighters[drone.owner], quarry(drone, 3 - drone.owner)
+		local offence = offenceOf(owner)
+		local oldX, oldY = drone.x, drone.y
+		local speed = carrier.droneSpeed
+		drone.age = drone.age + dt
+		if drone.dead or owner.armor <= 0 then
+			drone.mode, drone.left = "gone", 0
+		elseif drone.mode == "fly" then
+			drone.heading = turn(drone.heading, atan2(target.y - drone.y, target.x - drone.x), carrier.droneTurn * dt)
+			local range = math.min(carrier.range, offence.range and offence.range - 6 or carrier.range)
+			local gap = (target.x - drone.x) ^ 2 + (target.y - drone.y) ^ 2
+			-- One drone attacks at a time; the next holds its fire until it is done.
+			local busy = false
+			for _, other in ipairs(state.drones) do busy = busy or (other.owner == drone.owner and other.mode == "fire") end
+			if not busy and drone.age >= carrier.arm and (gap < range * range or drone.age >= carrier.flight) then
+				-- The drone carries out its owner's attack from where it is.
+				local aimX, aimY = aimAt(offence, drone.x, drone.y, target)
+				drone.heading = atan2(aimY - drone.y, aimX - drone.x)
+				drone.mode, drone.left = "fire", offence.attackTime
+				owner.attacks = owner.attacks + 1
+				event(state, "drone_fire", drone.x, drone.y, drone.owner, target.id, "drone", "Mothership").heading = drone.heading
+				if offence.ram then drone.armed = true
+				elseif offence.attack then offence.attack(api, state, droneProxy(owner, drone), target) end
+			end
+		elseif drone.mode == "fire" then
+			speed = offence.ram and offence.attackSpeed * carrier.dive or carrier.droneSpeed * 0.4
+			if offence.attackTick then offence.attackTick(api, state, droneProxy(owner, drone), dt) end
+			drone.left = drone.left - dt
+			if drone.left <= 0 then
+				if offence.release then offence.release(api, state, droneProxy(owner, drone), target) end
+				if drone.armed then event(state, "miss", drone.x, drone.y, drone.owner, target.id) end
+				drone.mode, drone.left, drone.armed = "leave", carrier.leave, false
+			end
+		else
+			drone.left = drone.left - dt
+		end
+		drone.vx, drone.vy = math.cos(drone.heading) * speed, math.sin(drone.heading) * speed
+		drone.x, drone.y = drone.x + drone.vx * dt, drone.y + drone.vy * dt
+		if drone.armed then
+			local hit = strike(oldX, oldY, drone.x, drone.y, 3 - drone.owner, carrier.droneRadius)
+			local rival = state.fighters[3 - drone.owner]
+			local decoyX, decoyY = decoyAt(state, rival, rival.x, rival.y, rival.heading)
+			if hit then
+				local successful, absorbed = damage(state, drone.owner, 3 - drone.owner, drone.x, drone.y,
+					math.cos(drone.heading), math.sin(drone.heading), offence.ram, owner.offenceId)
+				if successful then landed[drone.owner] = true end
+				if successful or absorbed then resolved[drone.owner] = true end
+				drone.mode, drone.left, drone.armed = "gone", 0, false
+				event(state, "drone_pop", drone.x, drone.y, drone.owner, 0, "drone", "Mothership")
+			elseif decoyX and (decoyX - drone.x) ^ 2 + (decoyY - drone.y) ^ 2 < (carrier.droneRadius + rival.radius) ^ 2 then
+				pop(rival, decoyX, decoyY, drone.owner)
+				drone.mode, drone.left, drone.armed = "gone", 0, false
+				event(state, "drone_pop", drone.x, drone.y, drone.owner, 0, "drone", "Mothership")
+			end
+		end
+		local b = state.bounds
+		if (drone.mode == "fly" or drone.mode == "fire" or drone.left > 0)
+			and drone.x > b.left - 12 and drone.x < b.right + 12 and drone.y > b.bottom - 12 and drone.y < b.top + 12 then
+			flying[#flying + 1] = drone
+		end
+	end
+	if state.drones then state.drones = flying end
+
 	local surviving = {}
 	for _, projectile in ipairs(state.projectiles) do
+		-- A hole bends every shot in its reach and swallows what reaches its core.
+		local swallowed = false
+		for _, hole in ipairs(state.holes or {}) do
+			local gap = math.sqrt((hole.x - projectile.x) ^ 2 + (hole.y - projectile.y) ^ 2)
+			if gap < hole.core then swallowed = true
+			elseif gap < hole.reach then
+				local speed = math.sqrt(projectile.vx ^ 2 + projectile.vy ^ 2)
+				local bend = hole.bend * (1 - gap / hole.reach) * dt
+				local nx, ny = direction(projectile.vx + (hole.x - projectile.x) / gap * bend, projectile.vy + (hole.y - projectile.y) / gap * bend)
+				projectile.vx, projectile.vy = nx * speed, ny * speed
+			end
+		end
+		if swallowed then projectile.life = 0 end
 		if projectile.returnAfter then
 			-- A boomerang flies out, then curves back to wherever its thrower is now.
 			projectile.age = (projectile.age or 0) + dt
@@ -628,7 +860,21 @@ local function tick(state)
 			fooled = sweep(oldX, oldY, projectile.x, projectile.y, wasX, wasY, decoyX, decoyY, target.radius + (projectile.radius or 3.5))
 		end
 		local thrower = state.fighters[projectile.owner]
-		if fooled and (not hit or fooled < hit) then
+		local swatted
+		for _, drone in ipairs(state.drones or {}) do
+			if drone.owner == targetId and not drone.dead and not swatted
+				and sweep(oldX, oldY, projectile.x, projectile.y, drone.x, drone.y, drone.x, drone.y,
+					Skills.wild.Mothership.droneRadius + (projectile.radius or 3.5)) then
+				swatted = drone
+			end
+		end
+		if swallowed then
+			event(state, "swallow", projectile.x, projectile.y, projectile.owner, 0, projectile.source)
+		elseif swatted and not hit then
+			-- The shot is spent on a drone.
+			swatted.dead = true
+			event(state, "drone_pop", swatted.x, swatted.y, projectile.owner, targetId, "drone", "Mothership")
+		elseif fooled and (not hit or fooled < hit) then
 			-- The shot is spent on the decoy.
 			pop(target, decoyX, decoyY, projectile.owner)
 		elseif projectile.returning and not hit and (projectile.x - thrower.x) ^ 2 + (projectile.y - thrower.y) ^ 2 < (thrower.radius + 4) ^ 2 then
@@ -720,7 +966,7 @@ local function tick(state)
 		if resolved[id] or resolved[3 - id] then
 			recover(state, fighter, state.fighters[3 - id])
 		elseif edgeHit[id] and fighter.phase == "Attack" then
-			if offenceOf(fighter).ram and not fighter._attackHit then
+			if rams(fighter) and not fighter._attackHit then
 				event(state, "miss", fighter.x, fighter.y, id, 3 - id)
 			end
 			recover(state, fighter, state.fighters[3 - id])
@@ -739,6 +985,34 @@ local function tick(state)
 				event(state, "potato", holder.x, holder.y, 3 - potato.holder, potato.holder, "potato", "HotPotato")
 				wild(holder, "damaged", state, holder, state.fighters[3 - potato.holder])
 			end
+		end
+	end
+	if state._rewind then
+		-- The hit that set this off never happened: put the round back as it was
+		-- a few seconds ago. The clock, the closing walls and the list of events
+		-- carry on, so nothing a client has already seen is taken back.
+		local owner, past = state._rewind, (state._history or {})[1]
+		state._rewind = nil
+		if past then
+			local kept = { seed = true, elapsed = true, events = true, eventSerial = true, _accumulator = true,
+				_projectileSerial = true, _wakeSerial = true, _droneSerial = true, _holeSerial = true, rewound = true, recording = true,
+				regulationTime = true, maxTime = true, suddenDeath = true, pressure = true, bounds = true, _history = true }
+			for key in pairs(state) do if not kept[key] and past.state[key] == nil then state[key] = nil end end
+			for key, value in pairs(past.state) do if not kept[key] then state[key] = copy(value) end end
+			state._history = {}
+			state.rewound = state.rewound or {}
+			state.rewound[owner] = true
+			for id in pairs(state.rewound) do state.fighters[id].rewindReady = false end
+			-- It must not simply play out the same way: both planes get new timing
+			-- and circle the other way round.
+			for _, fighter in ipairs(state.fighters) do
+				fighter._cadence = (fighter._cadence * 16807) % 2147483647
+				fighter.x = clamp(fighter.x, state.bounds.left, state.bounds.right)
+				fighter.y = clamp(fighter.y, state.bounds.bottom, state.bounds.top)
+			end
+			state.spin = -state.spin
+			a, b = state.fighters[1], state.fighters[2]
+			event(state, "rewind", (a.x + b.x) / 2, (a.y + b.y) / 2, owner, 3 - owner, "rewind", "Rewind").back = state.elapsed - past.at
 		end
 	end
 	if a.armor <= 0 or b.armor <= 0 then

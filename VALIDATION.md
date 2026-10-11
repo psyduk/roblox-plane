@@ -1,3 +1,54 @@
+# Fourth batch: Mothership, Rewind, Black Hole, UFO Beam and the powers wall — October 10, 2026 (not published; version 15 does not contain this)
+
+Finishes Linear AND-234. All nineteen planned powers now exist: 8 attacks and 20 wild cards. Local package SHA-256 **`d5d5d87a36837ac81ac20a9f329dca05c38a0ef18f4573f1aae1fad1e425ff01`**.
+
+**Rules**
+- **Black Hole (attack):** opens a hole on the rival. It drags both planes (the owner too) and bends every shot in its reach; a shot that reaches the core is swallowed. After 0.55 s the core arms, and the rival touching it loses 1 armor and collapses the hole. It never hurts its owner.
+- **UFO Beam (attack):** must be within 24 units when it fires. A grabbed rival loses its controls and its attack, is held for 0.6 s, then thrown the way the saucer is facing; at the wall it loses 1 armor. Spring Bumper blocks the wall. A protected plane cannot be grabbed. A beam that closes on a Decoy pops it.
+- **Mothership (wild card):** the plane is 1.3× size, a little slower, and never attacks. Each attack launches 2 drones that home on the rival and carry out the plane's attack once, one at a time, from where they are. A Meteor drone rams. A rival's shot that meets a drone pops it and is spent.
+- **Rewind (wild card):** the first hit on the owner is cancelled and the round is put back as it was 3 s earlier: positions, armor (both planes'), shots, bombs, stolen cards. The clock, the closing walls and the event list do not go back. It works once per plane. The pitch had the rewinder "ready sooner" afterwards; that scored 79% and was removed.
+- **Thief** with nothing to steal now takes the rival's ammo: its next attack comes 1.5 s later.
+- **Cards seen** are saved with the profile (`battle.discovered`). A card counts as seen when it is dealt on screen, flown, or faced. Saves from before this record load as "nothing seen".
+
+**On screen**
+- A wall of all 28 powers on the match result: met ones show their icon, the rest are "?" with a one-line teaser on tap. Cards dealt for the first time wear a NEW! badge.
+- The floating words over the planes now draw. They never had: pixel-sized, always-on-top labels fixed to a mount point did not render in this game, so combo names, "POW!" and every attack tell were missing in the arena. They are now sized in studs and fixed to the plane.
+- Chicken and the ejected pilot are models built from parts, not emoji.
+- During a fight the HUD chips follow the round, so a stolen card moves to the thief's plate; an ejected pilot's pill reads PEA-SHOOTER and a mothership's reads DRONES.
+- The view draws up to 48 shots (was 24).
+- Black Hole's 🕳️ and Boomerang's 🪃 icons did not exist in Roblox's font (they drew as an empty box on the card); they are now ⚫ and ↩️.
+
+**Measured (both seats, no wild card unless stated)**
+
+Attacks alone, 60 seeds against each of the other seven: Meteor 55%, Firework 52%, Machine Gun 51%, Pinball 44%, Sniper 36%, Boomerang 52%, Black Hole 55%, UFO Beam 54%.
+
+| Card (20 seeds, across all 8 attacks on both sides) | Score |
+|---|---|
+| Mothership | 59% (73% with Meteor, 36% with Machine Gun) |
+| Rewind | 59% |
+| Spring Bumper, for comparison | 63% |
+| Thief against a rival holding Bug (nothing to steal, so it takes ammo) | 51%, against 38% with no card at all |
+| Thief against a rival holding Spring Bumper (stolen) | 43% |
+
+**Why balance looked jumpy (the open item from batch three)**
+- **Sample size.** The earlier tables used 24 seeds. Three different sets of 24 seeds moved the same attack by up to 7 points (Machine Gun 51–58%, Sniper 37–42%). On 200 seeds the six old attacks were 38–59%, wider than the 43–55% reported before.
+- **Whose attack cycle is shorter.** Any hit sends both planes back to the start of their cycles together, so the plane with the shorter recover-approach-windup total fires first every time. Shortening one cycle by about a second moved UFO Beam from 34% to 74% and Mothership from 12% to 76%. Sniper's old 27%-to-79% swing was the same cliff.
+- **Matchups are rock-paper-scissors.** Individual pairings run from 17% to 83% (Boomerang beats Sniper 83–17, Meteor beats UFO Beam 79–21). The averages hide this.
+- Not fixed here. Giving the plane that was hit a 40% shorter recovery did not narrow the spread. Shortening Sniper's wait to lift it made one seeded fight where it never fired, which a test rejects, so Sniper stays at 36%.
+
+**Checks run**
+- 67 simulation tests (4 new, 1 extended) and 6 catalog tests (1 new); 52 profile, 35 match, 12 client and 48 server scenarios. All pass.
+- Native Studio on this exact source: 67 simulation, 6 catalog, 14 view, 24 audio. All pass.
+- Two full matches through the real draft against a bot in local Studio, by mouse input: one at desktop size and one with the HUD at 844×390. NEW! badges, the status calls and the powers wall (18 and 17 of 28 found) all showed. No game-script errors.
+- Staged fights watched in local Studio: beam grab with drones in the air (`previews/planes-ufo-beam-drones.jpg`), a thrown plane tumbling, an open hole, the rewind wash and words (`previews/planes-rewind.jpg`), the chicken (`previews/planes-chicken-model.jpg`), the parachute (`previews/planes-parachute-model.jpg`), the wall (`previews/planes-powers-wall.jpg`), NEW! badges (`previews/planes-new-badges.jpg`), a combo name over a plane at phone size (`previews/planes-phone-combo-tell.jpg`).
+
+**Not verified**
+- Nothing was heard. Every new sound is an existing sample re-pitched, and Chicken still has no real cluck.
+- No physical phone, no second human, no published build, no live save of the cards-seen record (Studio is session-only).
+- The hole and the drones were seen in still frames stepped by a test driver, not as continuous motion at full frame rate.
+- Machine Gun is weak on a Mothership: only one drone's burst counts at a time.
+- Two UFO Beams that fire in the same sixtieth of a second: seat one grabs first.
+
 # Version 15 publication — expanded powers and loadout swaps, October 10, 2026
 
 **Published to Skybound Test**, place `86507299893768` / universe `10770074500`, from source **`752ed54ca67ff6d223aee88e3fee5f93874ef72e`**, including feature base `f952aaa`. Native Studio confirmed publication and Playtester availability at **2026-10-11T05:01:10Z** (October 10, 22:01:10 PDT), with a link to publish notes for **v15**. [Publication proof](docs/validation/qa-2026-10-10/published-version-15.jpg).

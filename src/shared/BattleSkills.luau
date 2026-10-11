@@ -21,6 +21,10 @@
 --   windupStart(api, state, fighter, opponent)
 --   windupMove(api, state, fighter, opponent) -> targetX, targetY, speed, turnRate
 --   attack(api, state, fighter, opponent)
+--   release(api, state, fighter, opponent)   as the attack ends, before the plane banks away
+-- `range` says how close the attack must be; a Mothership's drones honour it.
+-- An attack hook may be run for a drone: `fighter` is then a stand-in at the
+-- drone's position, so read where the attack starts from only through it.
 -- A movement hook may return nil for any value to keep the default.
 --
 -- Wild card hooks (all optional):
@@ -472,6 +476,7 @@ BattleSkills.wild.Decoy = {
 -- Pickpocket: your first hit takes one of the rival's wild cards for the rest
 -- of the round. Cards that reshape a plane cannot be taken.
 BattleSkills.wild.Thief = {
+	ammo = 1.5,
 	start = function(_, _, fighter) fighter.thiefReady = true end,
 	landed = function(api, state, fighter, target)
 		if not fighter.thiefReady or fighter.ejected then return end
@@ -481,8 +486,14 @@ BattleSkills.wild.Thief = {
 			for _, own in ipairs(fighter.wildIds) do held = held or own == id end
 			if not taken and not held and BattleSkills.wild[id].steal then taken = id end
 		end
-		if not taken then return end
 		fighter.thiefReady = false
+		if not taken then
+			-- Nothing worth taking: pinch the rival's ammo instead, so its next
+			-- attack is a long time coming.
+			target._bumperRecovery = (target._bumperRecovery or 0) + BattleSkills.wild.Thief.ammo
+			api.event(state, "skill", fighter.x, fighter.y, fighter.id, target.id, "thief", "Thief")
+			return
+		end
 		local kept, mine = {}, { taken }
 		for _, id in ipairs(target.wildIds) do if id ~= taken then kept[#kept + 1] = id end end
 		for _, id in ipairs(fighter.wildIds) do mine[#mine + 1] = id end
@@ -496,7 +507,8 @@ BattleSkills.wild.Thief = {
 		elseif taken == "SecondWind" then target.secondWind = false
 		elseif taken == "Wrap" then target.wrapShots = false
 		elseif taken == "Magnet" then target.magnetLeft = 0
-		elseif taken == "FizzyFuel" then target._wakeLeft, target._wakeNext = 0, 0 end
+		elseif taken == "FizzyFuel" then target._wakeLeft, target._wakeNext = 0, 0
+		elseif taken == "Rewind" then target.rewindReady = false end
 		if BattleSkills.wild[taken].start then BattleSkills.wild[taken].start(api, state, fighter) end
 		api.event(state, "skill", fighter.x, fighter.y, fighter.id, target.id, "thief", "Thief").stolen = taken
 	end,
@@ -520,8 +532,132 @@ BattleSkills.offence.Boomerang = {
 	end,
 }
 
+-- A hole in the sky. It opens beside the rival, drags both planes toward it
+-- and bends every shot; once it has armed, touching its core costs the rival
+-- an armor.
+BattleSkills.offence.BlackHole = {
+	windup = 0.85, attackTime = 0.4, attackSpeed = 20,
+	earliest = 1.2, leadSpeed = 60, leadFactor = 0.6,
+	approachTime = 3, recoveryTime = 2,
+	holeLife = 2.6, armTime = 0.55, core = 4.5, reach = 34, pull = 20, bend = 170, lead = 0.35,
+	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 70 * 70 end,
+	attack = function(api, state, fighter, opponent)
+		local self = BattleSkills.offence.BlackHole
+		local x, y = opponent.x + opponent.vx * self.lead, opponent.y + opponent.vy * self.lead
+		local c, s = math.cos(fighter.heading), math.sin(fighter.heading)
+		-- A squadron opens one hole per plane, spread like its formation.
+		local planes = (fighter.squad or 0) > 1 and math.max(1, math.min(fighter.squad, fighter.armor)) or 1
+		for index = 1, planes do
+			local back, side = index == 1 and 0 or -9, index == 1 and 0 or (index == 2 and 12 or -12)
+			api.hole(state, fighter, x + back * c - side * s, y + back * s + side * c, { skillId = "BlackHole",
+				life = self.holeLife, armTime = self.armTime, core = self.core, reach = self.reach, pull = self.pull, bend = self.bend })
+		end
+		api.event(state, "hole", x, y, fighter.id, opponent.id, "blackhole", "BlackHole")
+	end,
+}
+
+-- A flying saucer. It has to get close; then its beam grabs the rival, holds
+-- it for a moment and hurls it away. A thrown plane that reaches a wall loses
+-- an armor.
+BattleSkills.offence.UFOBeam = {
+	windup = 0.7, attackTime = 0.6, attackSpeed = 10,
+	earliest = 1.1, leadSpeed = 60, leadFactor = 0.3,
+	approachTime = 2.85, recoveryTime = 2.3,
+	range = 24, chase = 38, throwSpeed = 80, throwTime = 2.2,
+	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 32 * 32 end,
+	approach = function(_, _, fighter, opponent)
+		-- With the beam loaded, chase harder than a circling plane flies.
+		if fighter.circling then return end
+		return opponent.x, opponent.y, BattleSkills.offence.UFOBeam.chase, 4.4
+	end,
+	windupMove = function(_, _, _, opponent)
+		return opponent.x, opponent.y, BattleSkills.offence.UFOBeam.chase - 4, 5.5
+	end,
+	attack = function(api, state, fighter, opponent)
+		local self = BattleSkills.offence.UFOBeam
+		local victim = state.fighters[opponent.id]
+		local dx, dy = opponent.x - fighter.x, opponent.y - fighter.y
+		local reach = self.range * (fighter.shotScale or 1)
+		if dx * dx + dy * dy > reach * reach or (not opponent.decoy and (victim.invulnerable > 0 or victim.hold or victim.throw)) or fighter.hold or fighter.throw then
+			api.event(state, "beam_miss", fighter.x, fighter.y, fighter.id, opponent.id, "ufo", "UFOBeam")
+			return
+		end
+		fighter._attackHit = true
+		if opponent.decoy then
+			-- The beam closes on a balloon.
+			api.pop(state, victim, opponent.x, opponent.y, fighter.id)
+			return
+		end
+		victim.hold = { x = fighter.x + dx * 0.85, y = fighter.y + dy * 0.85, by = fighter.id, left = self.attackTime + 0.1 }
+		api.interrupt(state, victim)
+		api.event(state, "beam", victim.x, victim.y, fighter.id, victim.id, "ufo", "UFOBeam")
+	end,
+	release = function(api, state, fighter)
+		local self = BattleSkills.offence.UFOBeam
+		local victim = state.fighters[3 - fighter.id]
+		if not victim.hold or victim.hold.by ~= fighter.id then return end
+		victim.hold = nil
+		local heading = fighter._attackHeading
+		victim.throw = { vx = math.cos(heading) * self.throwSpeed, vy = math.sin(heading) * self.throwSpeed, by = fighter.id, left = self.throwTime }
+		api.event(state, "throw", victim.x, victim.y, fighter.id, victim.id, "ufo", "UFOBeam").heading = heading
+	end,
+}
+
+-- Carrier: the plane grows, stops attacking and sends out drones instead.
+-- Each drone homes on the rival, carries out the plane's attack once from
+-- wherever it is, and flies off. A rival's shot that meets a drone pops it.
+BattleSkills.wild.Mothership = {
+	size = 1.3, speed = 0.9, pace = 1.06, windup = 0.4, launchTime = 0.35,
+	drones = 2, fan = 0.9, stagger = 0.35, droneSpeed = 46, droneTurn = 3.2, droneRadius = 2.2,
+	arm = 0.9, range = 30, flight = 2.4, leave = 0.7, dive = 0.5,
+	start = function(_, _, fighter)
+		local self = BattleSkills.wild.Mothership
+		fighter.mothership = true
+		fighter.scale, fighter.radius = fighter.scale * self.size, fighter.radius * self.size
+		fighter.speedScale = fighter.speedScale * self.speed
+		-- Readying a flight of drones takes longer than reloading a gun.
+		fighter.pace = (fighter.pace or 1) * self.pace
+	end,
+}
+
+-- Tape: the first hit on you scrubs the whole fight back a few seconds, and
+-- it plays out again differently. The clock does not go back.
+BattleSkills.wild.Rewind = {
+	steal = true,
+	back = 3,
+	start = function(_, state, fighter)
+		fighter.rewindReady = true
+		state.recording = true
+	end,
+	hit = function(api, state, target, actor, x, y, _, _, source)
+		if not target.rewindReady or state._rewind then return false end
+		target.rewindReady = false
+		state._rewind = target.id
+		target.invulnerable = api.IMPACT_PROTECTION
+		api.event(state, "skill", x, y, target.id, actor.id, source, "Rewind")
+		return true
+	end,
+}
+
 -- Builds worth a shout. The first pair a plane matches names it for the round.
 BattleSkills.combos = {
+	{ "Mothership", "UFOBeam", "ALIEN INVASION!" },
+	{ "Chicken", "UFOBeam", "ALIEN ABDUCTION!" },
+	{ "Mothership", "Squadron", "INVASION FLEET!" },
+	{ "BlackHole", "Mothership", "EVENT HORIZON!" },
+	{ "BlackHole", "Wrap", "RIP IN SPACE!" },
+	{ "BlackHole", "Magnet", "NO ESCAPE!" },
+	{ "BlackHole", "Giant", "SUPERMASSIVE!" },
+	{ "BlackHole", "Squadron", "SWISS CHEESE SKY!" },
+	{ "Giant", "UFOBeam", "TRACTOR BEAM!" },
+	{ "Magnet", "UFOBeam", "COME HERE!" },
+	{ "Rewind", "Swap", "TIME PARADOX!" },
+	{ "Eject", "Rewind", "NINE LIVES!" },
+	{ "Decoy", "Rewind", "DEJA VU!" },
+	{ "HotPotato", "Rewind", "TICK TOCK!" },
+	{ "Meteor", "Mothership", "DRONE STRIKE!" },
+	{ "Mothership", "Sniper", "SNIPER NEST!" },
+	{ "Giant", "Mothership", "PLANET KILLER!" },
 	{ "Squadron", "Vampire", "VAMPIRE SWARM!" },
 	{ "Meteor", "Wrap", "PORTAL DIVE!" },
 	{ "Pinball", "Wrap", "PINBALL WIZARD!" },
