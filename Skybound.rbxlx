@@ -587,7 +587,9 @@ local BattleSimulation = {}
 BattleSimulation.CONTRACT_VERSION = "sky-battle-combat-v1"
 BattleSimulation.MAX_TOTAL_SPEED = 88
 BattleSimulation.MAX_TURN_RATE = 9.6
-BattleSimulation.MAGNET_SPEED = 30
+-- Pull toward the owner's plane, and the stronger pull toward a shot in the air.
+BattleSimulation.MAGNET_SPEED = 14
+BattleSimulation.MAGNET_SHOT_SPEED = 45
 BattleSimulation.FIXED_DT = 1 / 60
 BattleSimulation.MAX_STEP_DT = 0.25
 -- A round is decided on armor at REGULATION_TIME. Level armor goes to sudden
@@ -971,14 +973,24 @@ local function tick(state)
 	end
 	-- Both plans read the same pre-tick snapshot, avoiding first-player bias.
 	for id, fighter in ipairs(state.fighters) do prepare(state, fighter, previous[3 - id], dt) end
-	-- A live magnet yanks the rival toward its owner; the owner is not moved.
-	-- It never touches projectiles or wakes. Cap final velocity after knockback
-	-- and pull.
+	-- A live magnet yanks the rival toward its owner's attack: the nearest shot
+	-- the owner has in the air, or the owner's plane if there is none. The owner
+	-- is not moved, and projectiles and wakes are never touched. Cap final
+	-- velocity after knockback and pull.
 	for id, fighter in ipairs(state.fighters) do
 		if (state.fighters[3 - id].magnetLeft or 0) &gt; 0 then
 			local opponent = previous[3 - id]
-			local nx, ny = direction(opponent.x - fighter.x, opponent.y - fighter.y)
-			fighter.vx, fighter.vy = fighter.vx + nx * BattleSimulation.MAGNET_SPEED, fighter.vy + ny * BattleSimulation.MAGNET_SPEED
+			local towardX, towardY, nearest = opponent.x, opponent.y, math.huge
+			local pull = BattleSimulation.MAGNET_SPEED
+			for _, projectile in ipairs(state.projectiles) do
+				local gap = (projectile.x - fighter.x) ^ 2 + (projectile.y - fighter.y) ^ 2
+				if projectile.owner == 3 - id and gap &lt; nearest then
+					nearest, towardX, towardY = gap, projectile.x, projectile.y
+					pull = BattleSimulation.MAGNET_SHOT_SPEED
+				end
+			end
+			local nx, ny = direction(towardX - fighter.x, towardY - fighter.y)
+			fighter.vx, fighter.vy = fighter.vx + nx * pull, fighter.vy + ny * pull
 		end
 		local magnitude = math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2)
 		if magnitude &gt; BattleSimulation.MAX_TOTAL_SPEED then
@@ -1441,7 +1453,7 @@ local skills = {
 		when = "WHEN YOU ATTACK", promise = "Leave a cloud wall that hurts your rival.",
 		color = { r = 96, g = 255, b = 214 }, starter = true, rarity = "common" },
 	Magnet = { id = "Magnet", kind = "wild", name = "Magnet", icon = "🧲", word = "PULL!",
-		when = "WHEN YOU ATTACK", promise = "Yank your rival toward you.",
+		when = "WHEN YOU ATTACK", promise = "Yank your rival into your attack.",
 		color = { r = 255, g = 120, b = 190 }, starter = true, rarity = "common" },
 	SecondWind = { id = "SecondWind", kind = "wild", name = "Second Wind", icon = "💨", word = "WHOOSH!",
 		when = "ON YOUR LAST ARMOR", promise = "Power up! Fly faster and attack sooner.",
@@ -6380,7 +6392,15 @@ return function(Simulation, Catalog, Skills)
 		Simulation.step(state, Simulation.FIXED_DT)
 		check(close(state.fighters[1].vx, -30), "The magnet moved its own plane")
 		check(close(state.fighters[2].vx, 30 - Simulation.MAGNET_SPEED), "The rival was not yanked toward the magnet")
-		check(Simulation.MAGNET_SPEED &gt;= 25, "The yank is too gentle to see")
+		check(Simulation.MAGNET_SPEED &gt;= 12 and Simulation.MAGNET_SHOT_SPEED &gt; Simulation.MAGNET_SPEED, "The yank is too gentle to see")
+		-- With a shot in the air the rival is dragged toward the shot, not the plane.
+		local shot = Simulation.newRound(1, { wildIds = { "Magnet" } }, {})
+		passive(shot.fighters[1], -25, 50, math.pi); passive(shot.fighters[2], 25, 50, 0)
+		shot.fighters[2].vx, shot.fighters[2]._recoverX, shot.fighters[2]._recoverY = 0, 25, 50
+		shot.fighters[1].magnetLeft = 0.5
+		shot.projectiles = { projectile(1, 1, 25, 85, 0, 0) }
+		Simulation.step(shot, Simulation.FIXED_DT)
+		check(shot.fighters[2].vy &gt; Simulation.MAGNET_SHOT_SPEED * 0.9, "The rival was not dragged toward the shot in the air")
 		local both = Simulation.newRound(1, { wildIds = { "Magnet" } }, { wildIds = { "Magnet" } })
 		passive(both.fighters[1], -25, 50, math.pi); passive(both.fighters[2], 25, 50, 0)
 		both.fighters[1].magnetLeft, both.fighters[2].magnetLeft = 0.5, 0.5
@@ -14935,7 +14955,16 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 	if magnet then
 		ring(fighter.magnetRing, center, 9 + math.sin(self.clock * 6) * 1.2, POWER.magnet, 0.25, -self.clock * 0.8, 0.5)
 		if rival and rival.position then
-			local from, to = center, rival.position + Vector3.new(0, 0, 9)
+			-- The beam comes from whatever is doing the pulling: a shot in the
+			-- air if there is one, otherwise the plane.
+			local to = rival.position + Vector3.new(0, 0, 9)
+			local from, nearest = center, math.huge
+			for _, rocket in pairs(self.rockets) do
+				if rocket.owner == state.id and rocket.position then
+					local gap = (rocket.position - rival.position).Magnitude
+					if gap &lt; nearest then nearest, from = gap, rocket.position + Vector3.new(0, 0, 7) end
+				end
+			end
 			local span = to - from
 			local wobble = self.reducedMotion and 1 or 1 + math.sin(self.clock * 50) * 0.3
 			fighter.magnetBeam.Size = Vector3.new(span.Magnitude, 1.5 * wobble, 0.3)
@@ -15311,6 +15340,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 	for id, rocket in pairs(self.rockets) do
 		if not seenRockets[id] then
 			rocket.trail.Enabled = false
+			rocket.owner = nil
 			rocket.trail:Clear()
 			rocket.fizz.Rate = 0
 			for _, piece in ipairs(rocket.pieces) do piece.Transparency = 1 end
@@ -15332,6 +15362,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 		local color = owner and owner.color or PLAYER_COLORS[tonumber(state.owner) or 1] or COLORS.yellow
 		local tracer = state.source == "machinegun"
 		local ball = state.source == "pinball"
+		rocket.owner = state.owner
 		local squash = (ball and not self.reducedMotion) and 1 + 0.12 * math.sin(self.clock * 30) or 1
 		rocket.ball.Size = Vector3.new(6.4 * squash, 6.4 / squash, 6.4)
 		rocket.ball.Transparency, rocket.ballCore.Transparency = ball and 0.15 or 1, ball and 0 or 1

@@ -711,7 +711,15 @@ return function(Simulation, Catalog, Skills)
 		Simulation.step(state, Simulation.FIXED_DT)
 		check(close(state.fighters[1].vx, -30), "The magnet moved its own plane")
 		check(close(state.fighters[2].vx, 30 - Simulation.MAGNET_SPEED), "The rival was not yanked toward the magnet")
-		check(Simulation.MAGNET_SPEED >= 25, "The yank is too gentle to see")
+		check(Simulation.MAGNET_SPEED >= 12 and Simulation.MAGNET_SHOT_SPEED > Simulation.MAGNET_SPEED, "The yank is too gentle to see")
+		-- With a shot in the air the rival is dragged toward the shot, not the plane.
+		local shot = Simulation.newRound(1, { wildIds = { "Magnet" } }, {})
+		passive(shot.fighters[1], -25, 50, math.pi); passive(shot.fighters[2], 25, 50, 0)
+		shot.fighters[2].vx, shot.fighters[2]._recoverX, shot.fighters[2]._recoverY = 0, 25, 50
+		shot.fighters[1].magnetLeft = 0.5
+		shot.projectiles = { projectile(1, 1, 25, 85, 0, 0) }
+		Simulation.step(shot, Simulation.FIXED_DT)
+		check(shot.fighters[2].vy > Simulation.MAGNET_SHOT_SPEED * 0.9, "The rival was not dragged toward the shot in the air")
 		local both = Simulation.newRound(1, { wildIds = { "Magnet" } }, { wildIds = { "Magnet" } })
 		passive(both.fighters[1], -25, 50, math.pi); passive(both.fighters[2], 25, 50, 0)
 		both.fighters[1].magnetLeft, both.fighters[2].magnetLeft = 0.5, 0.5

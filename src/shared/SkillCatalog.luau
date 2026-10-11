@@ -40,7 +40,7 @@ local skills = {
 		when = "WHEN YOU ATTACK", promise = "Leave a cloud wall that hurts your rival.",
 		color = { r = 96, g = 255, b = 214 }, starter = true, rarity = "common" },
 	Magnet = { id = "Magnet", kind = "wild", name = "Magnet", icon = "🧲", word = "PULL!",
-		when = "WHEN YOU ATTACK", promise = "Yank your rival toward you.",
+		when = "WHEN YOU ATTACK", promise = "Yank your rival into your attack.",
 		color = { r = 255, g = 120, b = 190 }, starter = true, rarity = "common" },
 	SecondWind = { id = "SecondWind", kind = "wild", name = "Second Wind", icon = "💨", word = "WHOOSH!",
 		when = "ON YOUR LAST ARMOR", promise = "Power up! Fly faster and attack sooner.",

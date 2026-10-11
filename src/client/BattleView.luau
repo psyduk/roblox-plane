@@ -1138,7 +1138,16 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 	if magnet then
 		ring(fighter.magnetRing, center, 9 + math.sin(self.clock * 6) * 1.2, POWER.magnet, 0.25, -self.clock * 0.8, 0.5)
 		if rival and rival.position then
-			local from, to = center, rival.position + Vector3.new(0, 0, 9)
+			-- The beam comes from whatever is doing the pulling: a shot in the
+			-- air if there is one, otherwise the plane.
+			local to = rival.position + Vector3.new(0, 0, 9)
+			local from, nearest = center, math.huge
+			for _, rocket in pairs(self.rockets) do
+				if rocket.owner == state.id and rocket.position then
+					local gap = (rocket.position - rival.position).Magnitude
+					if gap < nearest then nearest, from = gap, rocket.position + Vector3.new(0, 0, 7) end
+				end
+			end
 			local span = to - from
 			local wobble = self.reducedMotion and 1 or 1 + math.sin(self.clock * 50) * 0.3
 			fighter.magnetBeam.Size = Vector3.new(span.Magnitude, 1.5 * wobble, 0.3)
@@ -1514,6 +1523,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 	for id, rocket in pairs(self.rockets) do
 		if not seenRockets[id] then
 			rocket.trail.Enabled = false
+			rocket.owner = nil
 			rocket.trail:Clear()
 			rocket.fizz.Rate = 0
 			for _, piece in ipairs(rocket.pieces) do piece.Transparency = 1 end
@@ -1535,6 +1545,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 		local color = owner and owner.color or PLAYER_COLORS[tonumber(state.owner) or 1] or COLORS.yellow
 		local tracer = state.source == "machinegun"
 		local ball = state.source == "pinball"
+		rocket.owner = state.owner
 		local squash = (ball and not self.reducedMotion) and 1 + 0.12 * math.sin(self.clock * 30) or 1
 		rocket.ball.Size = Vector3.new(6.4 * squash, 6.4 / squash, 6.4)
 		rocket.ball.Transparency, rocket.ballCore.Transparency = ball and 0.15 or 1, ball and 0 or 1

@@ -9,7 +9,9 @@ local BattleSimulation = {}
 BattleSimulation.CONTRACT_VERSION = "sky-battle-combat-v1"
 BattleSimulation.MAX_TOTAL_SPEED = 88
 BattleSimulation.MAX_TURN_RATE = 9.6
-BattleSimulation.MAGNET_SPEED = 30
+-- Pull toward the owner's plane, and the stronger pull toward a shot in the air.
+BattleSimulation.MAGNET_SPEED = 14
+BattleSimulation.MAGNET_SHOT_SPEED = 45
 BattleSimulation.FIXED_DT = 1 / 60
 BattleSimulation.MAX_STEP_DT = 0.25
 -- A round is decided on armor at REGULATION_TIME. Level armor goes to sudden
@@ -393,14 +395,24 @@ local function tick(state)
 	end
 	-- Both plans read the same pre-tick snapshot, avoiding first-player bias.
 	for id, fighter in ipairs(state.fighters) do prepare(state, fighter, previous[3 - id], dt) end
-	-- A live magnet yanks the rival toward its owner; the owner is not moved.
-	-- It never touches projectiles or wakes. Cap final velocity after knockback
-	-- and pull.
+	-- A live magnet yanks the rival toward its owner's attack: the nearest shot
+	-- the owner has in the air, or the owner's plane if there is none. The owner
+	-- is not moved, and projectiles and wakes are never touched. Cap final
+	-- velocity after knockback and pull.
 	for id, fighter in ipairs(state.fighters) do
 		if (state.fighters[3 - id].magnetLeft or 0) > 0 then
 			local opponent = previous[3 - id]
-			local nx, ny = direction(opponent.x - fighter.x, opponent.y - fighter.y)
-			fighter.vx, fighter.vy = fighter.vx + nx * BattleSimulation.MAGNET_SPEED, fighter.vy + ny * BattleSimulation.MAGNET_SPEED
+			local towardX, towardY, nearest = opponent.x, opponent.y, math.huge
+			local pull = BattleSimulation.MAGNET_SPEED
+			for _, projectile in ipairs(state.projectiles) do
+				local gap = (projectile.x - fighter.x) ^ 2 + (projectile.y - fighter.y) ^ 2
+				if projectile.owner == 3 - id and gap < nearest then
+					nearest, towardX, towardY = gap, projectile.x, projectile.y
+					pull = BattleSimulation.MAGNET_SHOT_SPEED
+				end
+			end
+			local nx, ny = direction(towardX - fighter.x, towardY - fighter.y)
+			fighter.vx, fighter.vy = fighter.vx + nx * pull, fighter.vy + ny * pull
 		end
 		local magnitude = math.sqrt(fighter.vx ^ 2 + fighter.vy ^ 2)
 		if magnitude > BattleSimulation.MAX_TOTAL_SPEED then
