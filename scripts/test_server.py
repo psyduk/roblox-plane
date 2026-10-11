@@ -933,6 +933,50 @@ GUIDED_SCENARIOS = {
     ''',
 }
 
+GUIDED_LIVE_SCENARIOS = {
+    'published guidance uses verified fresh and returning profiles': r'''
+        local a=Harness.add(101)
+        assert(Harness.latest(a).saveStatus=='saved')
+        Harness.send(a,'play')
+        assert(Harness.battleLatest(a).phase=='Countdown' and Harness.battleLatest(a).guided)
+        Harness.remove(a)
+        Harness.store.values.player_101.battle.matches=3
+        Harness.store.values.player_101.battle.wins=3
+        local b=Harness.add(101)
+        assert(Harness.latest(b).saveStatus=='saved' and Harness.latest(b).economy.progression.matches==3)
+        Harness.send(b,'play')
+        assert(Harness.battleLatest(b).phase=='Searching' and not Harness.battleLatest(b).guided)
+    ''',
+    'unavailable returning profile cannot be mistaken for a first-time pilot': r'''
+        local a=Harness.add(101);Harness.remove(a)
+        Harness.store.values.player_101.battle.matches=3
+        Harness.store.values.player_101.battle.wins=3
+        Harness.store.failures=3
+        local b=Harness.add(101)
+        assert(Harness.latest(b).saveStatus=='unavailable')
+        Harness.send(b,'play')
+        assert(Harness.battleLatest(b).phase=='Searching' and not Harness.battleLatest(b).guided)
+        assert(Harness.store.values.player_101.battle.matches==3)
+    ''',
+    'pending profile load cannot start guidance before returning history arrives': r'''
+        local a=Harness.add(101);Harness.remove(a)
+        Harness.store.values.player_101.battle.matches=3
+        Harness.store.values.player_101.battle.wins=3
+        local spawn,queued=task.spawn,{}
+        task.spawn=function(fn,...)table.insert(queued,{fn=fn,args={...}})end
+        local b=Harness.add(101)
+        assert(Harness.latest(b).saveStatus=='loading')
+        Harness.send(b,'play')
+        assert(Harness.battleLatest(b).phase=='Searching' and not Harness.battleLatest(b).guided)
+        task.spawn=spawn
+        for _,job in ipairs(queued)do job.fn(table.unpack(job.args))end
+        Harness.advance(.1);Harness.send(b,'request')
+        assert(Harness.latest(b).saveStatus=='saved' and Harness.latest(b).economy.progression.matches==3)
+        Harness.battleSend(b,'exit');Harness.advance(.1);Harness.send(b,'play')
+        assert(Harness.battleLatest(b).phase=='Searching' and not Harness.battleLatest(b).guided)
+    ''',
+}
+
 
 def main():
     runtime = make_runtime()
@@ -993,8 +1037,15 @@ def main():
         except Exception as error:
             raise AssertionError(f"FAILED: {name}\n{error}") from error
         print(f"PASS: {name}")
-    print(f"{len(DEFAULT_SCENARIOS) + len(GUIDED_SCENARIOS) + len(SCENARIOS) + len(LIVE_SCENARIOS) + len(BATTLE_LIVE_SCENARIOS)} server scenarios passed "
-          f"({len(DEFAULT_SCENARIOS) + len(GUIDED_SCENARIOS) + len(BATTLE_LIVE_SCENARIOS)} default battle mode; {len(SCENARIOS) + len(LIVE_SCENARIOS)} explicit distance mode)")
+    for name, scenario in GUIDED_LIVE_SCENARIOS.items():
+        runtime = make_runtime(studio=False, published=True, guided=True)
+        try:
+            runtime.execute(scenario)
+        except Exception as error:
+            raise AssertionError(f"FAILED: {name}\n{error}") from error
+        print(f"PASS: {name}")
+    print(f"{len(DEFAULT_SCENARIOS) + len(GUIDED_SCENARIOS) + len(GUIDED_LIVE_SCENARIOS) + len(SCENARIOS) + len(LIVE_SCENARIOS) + len(BATTLE_LIVE_SCENARIOS)} server scenarios passed "
+          f"({len(DEFAULT_SCENARIOS) + len(GUIDED_SCENARIOS) + len(GUIDED_LIVE_SCENARIOS) + len(BATTLE_LIVE_SCENARIOS)} default battle mode; {len(SCENARIOS) + len(LIVE_SCENARIOS)} explicit distance mode)")
 
 
 if __name__ == "__main__":

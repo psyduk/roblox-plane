@@ -489,7 +489,10 @@ local battleLab=BattleLab.new({simulation=BattleSimulation,skills=SkillCatalog,n
     onEvent=function(player,event,data) telemetry:battleEvent(player,event,data) end,
     firstMatch=function(player)
         local p=profiles[player.UserId]
-        return script:GetAttribute("BattleGuidedFirstMatch")~=false and p~=nil and statsService:getBattle(p.statsHandle).matches==0
+        local handle=p and p.statsHandle
+        -- An unloaded profile has zero placeholder matches, not a verified new pilot.
+        return script:GetAttribute("BattleGuidedFirstMatch")~=false and handle~=nil
+            and (sessionOnly or handle.safe) and statsService:getBattle(handle).matches==0
     end,
     onTerminal=function(player,result)
         local p=profiles[player.UserId]
