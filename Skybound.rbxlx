@@ -675,6 +675,32 @@ local function settings(input, fallback)
 	}
 end
 
+-- What a plane attacks with right now. A wild card may swap the plane into a
+-- different form for the rest of the round (an ejected pilot's pea-shooter).
+local function offenceOf(fighter)
+	return fighter.form and Skills.form[fighter.form] or Skills.offence[fighter.offenceId]
+end
+
+-- How many planes a fighter is flying: one, or a squadron with one plane per
+-- armor left.
+local function members(fighter)
+	if (fighter.squad or 0) &lt;= 1 then return 1 end
+	return math.max(1, math.min(fighter.squad, fighter.armor))
+end
+
+-- Where each of a fighter's planes is, given the leader's position. Wingmen
+-- fly behind and to either side of the leader.
+local WING = { { -9, 8 }, { -9, -8 } }
+local function bodies(fighter, x, y, heading)
+	local list = { { x = x, y = y } }
+	local c, s = math.cos(heading), math.sin(heading)
+	for index = 2, members(fighter) do
+		local offset = WING[index - 1]
+		list[index] = { x = x + offset[1] * c - offset[2] * s, y = y + offset[1] * s + offset[2] * c }
+	end
+	return list
+end
+
 local function event(state, kind, x, y, actor, target, source, skillId)
 	state.eventSerial = state.eventSerial + 1
 	local entry = {
@@ -710,9 +736,20 @@ local api = { event = event, clamp = clamp, direction = direction,
 
 -- Add a projectile owned by this fighter. It flies straight and hits only the rival.
 function api.launch(state, fighter, projectile)
-	state._projectileSerial = state._projectileSerial + 1
-	projectile.id, projectile.owner = state._projectileSerial, fighter.id
-	state.projectiles[#state.projectiles + 1] = projectile
+	projectile.radius = (projectile.radius or 3.5) * (fighter.shotScale or 1)
+	local leaderX, leaderY = projectile.x, projectile.y
+	for index, body in ipairs(bodies(fighter, 0, 0, fighter.heading)) do
+		-- Every plane in a squadron fires the same shot from its own nose.
+		local shot = projectile
+		if index &gt; 1 then
+			shot = {}
+			for key, value in pairs(projectile) do shot[key] = value end
+		end
+		state._projectileSerial = state._projectileSerial + 1
+		shot.id, shot.owner = state._projectileSerial, fighter.id
+		shot.x, shot.y = leaderX + body.x, leaderY + body.y
+		state.projectiles[#state.projectiles + 1] = shot
+	end
 	return projectile
 end
 
@@ -775,7 +812,7 @@ function BattleSimulation.newRound(seed, settingsA, settingsB)
 			_approachOffset = ((seed * 48271 + (seed % 2 == 0 and id or 3 - id) * 1299709) % 2147483647) / 2147483647 * 2.4 - 1.2,
 			x = -52 * side, y = 31 + random() * 13,
 			heading = heading, vx = math.cos(heading) * 29, vy = math.sin(heading) * 29,
-			armor = 3, phase = "Approach", phaseLeft = (Skills.offence[config.offenceId].approachTime or BattleSimulation.APPROACH_TIME) +
+			armor = 3, maxArmor = 3, scale = 1, speedScale = 1, shotScale = 1, squad = 0, phase = "Approach", phaseLeft = (Skills.offence[config.offenceId].approachTime or BattleSimulation.APPROACH_TIME) +
 				(configs[1].offenceId == "Meteor" and configs[2].offenceId == "Meteor" and id == seed % 2 + 1 and (0.25 + (seed * 69621 % 9999) / 9999 * 0.35) or 0),
 			windupDuration = Skills.offence[config.offenceId].windup,
 			armed = false, invulnerable = 0, attacks = 0, hits = 0,
@@ -789,6 +826,18 @@ function BattleSimulation.newRound(seed, settingsA, settingsB)
 		state.fighters[id] = fighter
 		wild(fighter, "start", state, fighter)
 		event(state, "launch", fighter.x, fighter.y, id, 0)
+	end
+	-- Name a build the first time its parts meet, so players go looking for more.
+	for id, fighter in ipairs(state.fighters) do
+		local has = { [fighter.offenceId] = true }
+		for _, wildId in ipairs(fighter.wildIds) do has[wildId] = true end
+		for _, combo in ipairs(Skills.combos) do
+			if has[combo[1]] and has[combo[2]] then
+				fighter.combo = combo[3]
+				event(state, "combo", fighter.x, fighter.y, id, 0).text = combo[3]
+				break
+			end
+		end
 	end
 	return state
 end
@@ -819,7 +868,7 @@ local function recover(state, fighter, opponent, duration)
 	fighter._approachOffset = fighter._cadence / 2147483647 * 2.4 - 1.2
 	-- Both planes circle the same way round, or they would meet head-on.
 	state.spin = fighter._cadence % 2 == 0 and 1 or -1
-	fighter.phase, fighter.phaseLeft = "Recover", ((duration or Skills.offence[fighter.offenceId].recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.88 or 1) * (fighter.tempo or 1)
+	fighter.phase, fighter.phaseLeft = "Recover", ((duration or offenceOf(fighter).recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.88 or 1) * (fighter.tempo or 1)
 	fighter._bumperRecovery = nil
 	fighter.armed = false
 	local awayX, awayY = direction(fighter.x - opponent.x, fighter.y - opponent.y, fighter.id == 1 and -1 or 1)
@@ -832,14 +881,14 @@ end
 
 local function lockTarget(fighter, opponent)
 	local distance = math.sqrt((opponent.x - fighter.x) ^ 2 + (opponent.y - fighter.y) ^ 2)
-	local offence = Skills.offence[fighter.offenceId]
+	local offence = offenceOf(fighter)
 	local lead = clamp(distance / offence.leadSpeed, 0, 0.95) * offence.leadFactor
 	fighter.lockX = clamp(opponent.x + opponent.vx * lead, -64, 64)
 	fighter.lockY = clamp(opponent.y + opponent.vy * lead, 15, 88)
 end
 
 local function beginAttack(state, fighter, opponent)
-	local offence = Skills.offence[fighter.offenceId]
+	local offence = offenceOf(fighter)
 	lockTarget(fighter, opponent)
 	fighter.phase = "Attack"
 	fighter.phaseLeft = offence.attackTime
@@ -853,11 +902,17 @@ local function beginAttack(state, fighter, opponent)
 end
 
 local function prepare(state, fighter, opponent, dt)
-	local offence = Skills.offence[fighter.offenceId]
+	local offence = offenceOf(fighter)
 	fighter.invulnerable = math.max(0, fighter.invulnerable - dt)
 	fighter.boostLeft = math.max(0, fighter.boostLeft - dt)
 	if fighter.magnetLeft then fighter.magnetLeft = math.max(0, fighter.magnetLeft - dt) end
 	fighter.phaseLeft = fighter.phaseLeft - dt
+	if (fighter.chickenLeft or 0) &gt; 0 then
+		-- A chicken cannot attack: it flaps in circles until the spell ends.
+		fighter.chickenLeft = math.max(0, fighter.chickenLeft - dt)
+		fighter.phase, fighter.armed = "Approach", false
+		fighter.phaseLeft = math.max(fighter.phaseLeft, offence.approachTime or BattleSimulation.APPROACH_TIME)
+	end
 	local dx, dy = opponent.x - fighter.x, opponent.y - fighter.y
 	if fighter.phase == "Approach" then
 		local inPosition = offence.inPosition ~= nil and offence.inPosition(api, state, fighter, opponent, dx, dy)
@@ -921,6 +976,7 @@ local function prepare(state, fighter, opponent, dt)
 		turnRate = math.max(turnRate, 4.5)
 	end
 	if fighter.secondWind then speed, turnRate = speed * 1.12, turnRate * 1.2 end
+	speed = speed * (fighter.speedScale or 1)
 	turnRate = math.min(turnRate, BattleSimulation.MAX_TURN_RATE)
 	if fighter.phase ~= "Attack" then
 		-- Looking ahead turns the plane away from the visible edge before impact.
@@ -958,7 +1014,8 @@ local function damage(state, actorId, targetId, x, y, dirX, dirY, source, skillI
 	actor.hits = actor.hits + 1
 	actor._attackHit = true
 	event(state, source == "wake" and "wake_hit" or "hit", x, y, actorId, targetId, source, skillId)
-	wild(target, "damaged", state, target)
+	wild(target, "damaged", state, target, actor)
+	wild(actor, "landed", state, actor, target)
 	return true
 end
 
@@ -969,7 +1026,7 @@ local function tick(state)
 	state._bumpCooldown = math.max(0, state._bumpCooldown - dt)
 	local previous = {}
 	for id, fighter in ipairs(state.fighters) do
-		previous[id] = { id = id, x = fighter.x, y = fighter.y, vx = fighter.vx, vy = fighter.vy }
+		previous[id] = { id = id, x = fighter.x, y = fighter.y, vx = fighter.vx, vy = fighter.vy, heading = fighter.heading }
 	end
 	-- Both plans read the same pre-tick snapshot, avoiding first-player bias.
 	for id, fighter in ipairs(state.fighters) do prepare(state, fighter, previous[3 - id], dt) end
@@ -1007,8 +1064,22 @@ local function tick(state)
 	end
 
 	local a, b = state.fighters[1], state.fighters[2]
-	local contact = sweep(previous[1].x, previous[1].y, a.x, a.y,
-		previous[2].x, previous[2].y, b.x, b.y, a.radius + b.radius)
+	-- Any plane of one side touching any plane of the other counts.
+	local function strike(oldX, oldY, x, y, targetId, radius)
+		local target, old, best = state.fighters[targetId], previous[targetId], nil
+		local before, after = bodies(target, old.x, old.y, old.heading), bodies(target, target.x, target.y, target.heading)
+		for index, body in ipairs(after) do
+			local t = sweep(oldX, oldY, x, y, before[index].x, before[index].y, body.x, body.y, target.radius + radius)
+			if t and (not best or t &lt; best) then best = t end
+		end
+		return best
+	end
+	local contact
+	local wasA, nowA = bodies(a, previous[1].x, previous[1].y, previous[1].heading), bodies(a, a.x, a.y, a.heading)
+	for index, body in ipairs(nowA) do
+		local t = strike(wasA[index].x, wasA[index].y, body.x, body.y, 2, a.radius)
+		if t and (not contact or t &lt; contact) then contact = t end
+	end
 	local landed, blocked, resolved = {}, {}, {}
 	if contact then
 		-- Evaluate BOTH armed noses before applying recovery: simultaneous strikes
@@ -1020,9 +1091,15 @@ local function tick(state)
 			local ox = otherOld.x + (opponent.x - otherOld.x) * contact
 			local oy = otherOld.y + (opponent.y - otherOld.y) * contact
 			local forward = (ox - x) * math.cos(fighter.heading) + (oy - y) * math.sin(fighter.heading)
-			if fighter.armed and not fighter._attackHit and forward &gt;= -EPSILON then
+			-- A squadron dives as a wall of noses, and any of a rival squadron's
+			-- planes ahead of the nose can be the one that is struck.
+			local ahead = forward &gt;= -EPSILON or members(fighter) &gt; 1
+			for _, body in ipairs(bodies(opponent, ox, oy, opponent.heading)) do
+				ahead = ahead or (body.x - x) * math.cos(fighter.heading) + (body.y - y) * math.sin(fighter.heading) &gt;= -EPSILON
+			end
+			if fighter.armed and not fighter._attackHit and ahead then
 				landed[id], blocked[id] = damage(state, id, 3 - id, (x + ox) / 2, (y + oy) / 2,
-					math.cos(fighter.heading), math.sin(fighter.heading), Skills.offence[fighter.offenceId].ram)
+					math.cos(fighter.heading), math.sin(fighter.heading), offenceOf(fighter).ram)
 				resolved[id] = landed[id] or blocked[id]
 			end
 		end
@@ -1048,8 +1125,7 @@ local function tick(state)
 		projectile.life = projectile.life - dt
 		local targetId = 3 - projectile.owner
 		local target, old = state.fighters[targetId], previous[targetId]
-		local hit = sweep(oldX, oldY, projectile.x, projectile.y,
-			old.x, old.y, target.x, target.y, target.radius + (projectile.radius or 3.5))
+		local hit = strike(oldX, oldY, projectile.x, projectile.y, targetId, projectile.radius or 3.5)
 		if hit then
 			local nx, ny = direction(projectile.vx, projectile.vy)
 			local successful, absorbed = false, false
@@ -1106,8 +1182,7 @@ local function tick(state)
 		wake.armLeft = math.max(0, wake.armLeft - dt)
 		local targetId = 3 - wake.owner
 		local target, old = state.fighters[targetId], previous[targetId]
-		local hit = wake.armLeft &lt;= 0 and wake.life &gt; 0 and sweep(wake.x, wake.y, wake.x, wake.y,
-			old.x, old.y, target.x, target.y, target.radius + wake.radius)
+		local hit = wake.armLeft &lt;= 0 and wake.life &gt; 0 and strike(wake.x, wake.y, wake.x, wake.y, targetId, wake.radius)
 		if hit then
 			local nx, ny = direction(target.x - wake.x, target.y - wake.y, targetId == 1 and -1 or 1)
 			local successful, absorbed = damage(state, wake.owner, targetId, wake.x, wake.y, nx, ny, "wake", wake.skillId)
@@ -1124,7 +1199,7 @@ local function tick(state)
 		if resolved[id] or resolved[3 - id] then
 			recover(state, fighter, state.fighters[3 - id])
 		elseif edgeHit[id] and fighter.phase == "Attack" then
-			if Skills.offence[fighter.offenceId].ram and not fighter._attackHit then
+			if offenceOf(fighter).ram and not fighter._attackHit then
 				event(state, "miss", fighter.x, fighter.y, id, 3 - id)
 			end
 			recover(state, fighter, state.fighters[3 - id])
@@ -1195,7 +1270,14 @@ return BattleSimulation
 --   recover(api, state, fighter, opponent)  when the plane banks away
 --   moved(api, state, fighter, dt)          every tick, after the plane moves
 --   hit(api, state, target, actor, x, y, dirX, dirY, source) -&gt; true to cancel the hit
-local BattleSkills = { offence = {}, wild = {} }
+--   damaged(api, state, fighter, actor)     after this plane loses armor
+--   landed(api, state, fighter, target)     after this plane's hit removes armor
+--
+-- A wild card may reshape its plane in `start`: armor and maxArmor, radius and
+-- scale (how big it is and looks), speedScale, shotScale and squad (how many
+-- planes fly, one per armor left). `form` names an entry in BattleSkills.form
+-- that replaces the plane's attack for the rest of the round.
+local BattleSkills = { offence = {}, wild = {}, form = {} }
 
 local PI = math.pi
 
@@ -1404,6 +1486,106 @@ BattleSkills.wild.SecondWind = {
 	end,
 }
 
+-- Swarm: three small planes with one life each, all firing your attack.
+BattleSkills.wild.Squadron = {
+	count = 3, size = 0.62,
+	start = function(_, _, fighter)
+		local self = BattleSkills.wild.Squadron
+		fighter.squad = self.count
+		fighter.scale, fighter.radius = fighter.scale * self.size, fighter.radius * self.size
+	end,
+}
+
+-- Huge: double size and five armor, but slow and easy to hit.
+BattleSkills.wild.Giant = {
+	armor = 4, size = 1.9, speed = 0.78, shot = 1.7,
+	start = function(_, _, fighter)
+		local self = BattleSkills.wild.Giant
+		fighter.armor, fighter.maxArmor = self.armor, self.armor
+		fighter.scale, fighter.radius = fighter.scale * self.size, fighter.radius * self.size
+		fighter.speedScale, fighter.shotScale = fighter.speedScale * self.speed, fighter.shotScale * self.shot
+	end,
+}
+
+-- Hungry: start one armor down, but every hit you land steals one back.
+BattleSkills.wild.Vampire = {
+	most = 5,
+	start = function(_, _, fighter)
+		fighter.armor = math.max(1, fighter.armor - 1)
+	end,
+	landed = function(api, state, fighter, target)
+		-- A pilot on a parachute has one life and nothing adds to it.
+		if fighter.armor &lt;= 0 or fighter.ejected or fighter.armor &gt;= BattleSkills.wild.Vampire.most then return end
+		fighter.armor = fighter.armor + 1
+		fighter.maxArmor = math.max(fighter.maxArmor, fighter.armor)
+		api.event(state, "skill", fighter.x, fighter.y, fighter.id, target.id, "vampire", "Vampire")
+	end,
+}
+
+-- Curse: your first hit turns the rival into a chicken that cannot attack.
+BattleSkills.wild.Chicken = {
+	duration = 3,
+	start = function(_, _, fighter) fighter.chickenReady = true end,
+	landed = function(api, state, fighter, target)
+		if not fighter.chickenReady or target.armor &lt;= 0 then return end
+		fighter.chickenReady = false
+		target.chickenLeft = BattleSkills.wild.Chicken.duration
+		api.event(state, "skill", target.x, target.y, fighter.id, target.id, "chicken", "Chicken")
+	end,
+}
+
+-- Last chance: when the plane is shot down, the pilot bails out on a parachute
+-- with a pea-shooter and one more life.
+BattleSkills.wild.Eject = {
+	size = 0.6, hitbox = 5.5, speed = 0.5, protection = 1,
+	start = function(_, _, fighter) fighter.ejected = false end,
+	damaged = function(api, state, fighter)
+		if fighter.armor &gt; 0 or fighter.ejected then return end
+		local self = BattleSkills.wild.Eject
+		fighter.ejected, fighter.armor = true, 1
+		fighter.form, fighter.windupDuration = "PeaShooter", BattleSkills.form.PeaShooter.windup
+		fighter.squad, fighter.shotScale = 0, 1
+		fighter.radius = self.hitbox
+		fighter.scale, fighter.speedScale = self.size, self.speed
+		fighter.invulnerable = self.protection
+		fighter.chickenLeft, fighter.secondWind = 0, false
+		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "eject", "Eject")
+	end,
+}
+
+-- The parachuting pilot's attack: quick, small and easy to miss with.
+BattleSkills.form.PeaShooter = {
+	windup = 0.5, attackTime = 0.3, attackSpeed = 12,
+	earliest = 0.9, leadSpeed = 70, leadFactor = 0.5,
+	approachTime = 3, recoveryTime = 2,
+	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy &lt; 70 * 70 end,
+	attack = function(api, state, fighter, opponent)
+		local dx, dy = math.cos(fighter.heading), math.sin(fighter.heading)
+		api.launch(state, fighter, { x = fighter.x + dx * 4, y = fighter.y + dy * 4,
+			vx = dx * 60, vy = dy * 60, life = 1.4, radius = 1.2, source = "pea" })
+		api.event(state, "rocket", fighter.x + dx * 4, fighter.y + dy * 4, fighter.id, opponent.id, "pea")
+	end,
+}
+
+-- Builds worth a shout. The first pair a plane matches names it for the round.
+BattleSkills.combos = {
+	{ "Squadron", "Vampire", "VAMPIRE SWARM!" },
+	{ "Giant", "Squadron", "THREE GIANTS!" },
+	{ "Eject", "Giant", "TINY PILOT, BIG PLANE!" },
+	{ "Chicken", "Squadron", "CHICKEN HUNTERS!" },
+	{ "Eject", "Vampire", "UNDEAD PILOT!" },
+	{ "Giant", "Vampire", "DRACULA!" },
+	{ "Chicken", "Magnet", "CHICKEN DINNER!" },
+	{ "Squadron", "MachineGun", "BULLET STORM!" },
+	{ "Squadron", "Meteor", "METEOR SHOWER!" },
+	{ "Squadron", "Firework", "FIREWORK SHOW!" },
+	{ "Squadron", "Pinball", "MULTIBALL!" },
+	{ "Giant", "Meteor", "ASTEROID!" },
+	{ "Giant", "Pinball", "WRECKING BALL!" },
+	{ "Giant", "Firework", "MEGA ROCKET!" },
+	{ "Giant", "MachineGun", "CANNONS!" },
+}
+
 return BattleSkills
 </ProtectedString>
         </Properties>
@@ -1425,7 +1607,8 @@ SkillCatalog.CONTRACT_VERSION = "sky-battle-combat-v1"
 
 -- Order is display order. `starter` skills are owned from the first fight.
 -- Rarity says how strange a skill is, never how strong.
-local order = { "Meteor", "Firework", "MachineGun", "Pinball", "Afterburner", "SpringBumper", "FizzyFuel", "Magnet", "SecondWind" }
+local order = { "Meteor", "Firework", "MachineGun", "Pinball", "Afterburner", "SpringBumper", "FizzyFuel", "Magnet", "SecondWind",
+	"Squadron", "Giant", "Eject", "Vampire", "Chicken" }
 local skills = {
 	Meteor = { id = "Meteor", kind = "offence", name = "Meteor", icon = "☄️", word = "BOOOM!",
 		promise = "Climb high, then dive-bomb your rival.",
@@ -1458,6 +1641,21 @@ local skills = {
 	SecondWind = { id = "SecondWind", kind = "wild", name = "Second Wind", icon = "💨", word = "WHOOSH!",
 		when = "ON YOUR LAST ARMOR", promise = "Power up! Fly faster and attack sooner.",
 		color = { r = 130, g = 255, b = 190 }, starter = true, rarity = "common" },
+	Squadron = { id = "Squadron", kind = "wild", name = "Squadron", icon = "✈️", word = "SQUAD UP!",
+		when = "ALL ROUND", promise = "Fly 3 small planes. Each has 1 life and all of them shoot.",
+		color = { r = 120, g = 190, b = 255 }, starter = true, rarity = "rare" },
+	Giant = { id = "Giant", kind = "wild", name = "Giant", icon = "🐘", word = "STOMP!",
+		when = "ALL ROUND", promise = "Double size, 5 armor and huge shots. Slow and easy to hit.",
+		color = { r = 255, g = 150, b = 90 }, starter = true, rarity = "rare" },
+	Eject = { id = "Eject", kind = "wild", name = "Eject", icon = "🪂", word = "EJECT!",
+		when = "WHEN YOU ARE SHOT DOWN", promise = "Your pilot bails out with a pea-shooter and 1 last life.",
+		color = { r = 255, g = 236, b = 150 }, starter = true, rarity = "rare" },
+	Vampire = { id = "Vampire", kind = "wild", name = "Vampire", icon = "🧛", word = "SLURP!",
+		when = "EVERY HIT YOU LAND", promise = "Start with 2 armor. Every hit steals 1 from your rival.",
+		color = { r = 220, g = 60, b = 110 }, starter = true, rarity = "rare" },
+	Chicken = { id = "Chicken", kind = "wild", name = "Chicken", icon = "🐔", word = "BAWK!",
+		when = "YOUR FIRST HIT", promise = "Turn your rival into a chicken. Chickens cannot attack.",
+		color = { r = 255, g = 244, b = 214 }, starter = true, rarity = "rare" },
 }
 
 function SkillCatalog.valid(id, kind)
@@ -4515,7 +4713,10 @@ BattleLab.GUIDE_INTRO_SECONDS = 5
 BattleLab.GUIDE_PICK_SECONDS = 40
 local GUIDE = {offences={"Meteor","Firework"},wilds={"SpringBumper","Afterburner","FizzyFuel","Magnet"},hand={[2]=2,[3]=3}}
 local PUBLIC = {offences={"Meteor","Firework","MachineGun","Pinball"},
-    wilds={"Afterburner","SpringBumper","FizzyFuel","Magnet","SecondWind"}}
+    wilds={"Afterburner","SpringBumper","FizzyFuel","Magnet","SecondWind","Squadron","Giant","Eject","Vampire","Chicken"}}
+-- A pick shows this many wild cards: the ones already on the plane, then a
+-- fresh random deal from the rest of the roster.
+local HAND = 5
 local function finite(value)
     return type(value)=="number" and value==value and value&gt;-math.huge and value&lt;math.huge
 end
@@ -4633,6 +4834,19 @@ function BattleLab:fillDraft(m,side,random)
         draft.wildIds[#draft.wildIds+1]=free[random and self:random(#free) or 1]
     end
 end
+function BattleLab:hand(m,side)
+    local pool=copy(m.roster.wilds)
+    if #pool&lt;=HAND then return pool end
+    local held,hand={},{}
+    for _,id in ipairs(m.settings[side].wildIds) do held[id]=true end
+    for index=#pool,1,-1 do if held[pool[index]] then table.remove(pool,index) end end
+    local dealt=0
+    for _ in pairs(held) do dealt=dealt+1 end
+    while dealt&lt;HAND and #pool&gt;0 do held[table.remove(pool,self:random(#pool))]=true; dealt=dealt+1 end
+    -- Shown in roster order, so a card keeps its place between picks.
+    for _,id in ipairs(m.roster.wilds) do if held[id] then hand[#hand+1]=id end end
+    return hand
+end
 function BattleLab:changePhase(m,phase,endsAt)
     local elapsed=math.max(0,self.deps.now()-(m.phaseAt or self.deps.now()))
     if m.phase=="Pick" then m.draftSeconds=m.draftSeconds+elapsed
@@ -4644,7 +4858,7 @@ function BattleLab:startPick(m)
     self:changePhase(m,"Pick",self.deps.now()+(m.guided and self.GUIDE_PICK_SECONDS or self.PICK_SECONDS))
     m.locked={false,false}; m.offers={}; m.drafts={}; m.offerRevision={1,1}
     for side,participant in ipairs(m.participants) do
-        local offer={offences=copy(m.roster.offences),wilds=copy(m.roster.wilds)}
+        local offer={offences=copy(m.roster.offences),wilds=self:hand(m,side)}
         if m.guided then
             -- The first cards a pilot ever reads: the plainest ones, in a fixed order.
             offer.offences=copy(GUIDE.offences); offer.wilds={}
@@ -6509,7 +6723,122 @@ return function(Simulation, Catalog, Skills)
 		check(state.fighters[1]._knockX &lt; 0 and state.fighters[2]._knockX &gt; 0, "Tangled planes were not pushed apart")
 	end)
 
-	return string.format("BattleSimulation: %d tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes)", passed)
+	-- A rocket placed just short of this point on fighter 2's side, flying into it.
+	local function shoot(state, x, y)
+		state.projectiles[#state.projectiles + 1] = { id = 900 + #state.projectiles, owner = 1, x = x - 4, y = y, vx = 60, vy = 0, life = 1, radius = 3.5 }
+		Simulation.step(state, Simulation.FIXED_DT)
+	end
+	local function said(state, kind, skillId)
+		for _, entry in ipairs(state.events) do
+			if entry.kind == kind and (skillId == nil or entry.skillId == skillId) then return entry end
+		end
+	end
+
+	test("Squadron flies one plane per armor and every plane shoots and can be shot", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Squadron" } }, { offenceId = "Firework", wildIds = { "Squadron" } })
+		local a, b = state.fighters[1], state.fighters[2]
+		check(a.squad == 3 and a.armor == 3 and a.radius &lt; Simulation.PLANE_RADIUS, "Squadron did not make three small planes")
+		passive(a, -40, 50, 0); passive(b, 30, 50, 0)
+		a.phase, a.phaseLeft, a.windupDuration = "Windup", 0, 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(#state.projectiles == 3, "Three planes did not fire three rockets")
+		local seen = {}
+		for _, shot in ipairs(state.projectiles) do seen[math.floor(shot.y + 0.5)] = true end
+		local rows = 0
+		for _ in pairs(seen) do rows = rows + 1 end
+		check(rows == 3, "The rockets did not leave from three different planes")
+		state.projectiles = {}
+		passive(a, -40, 50, 0); passive(b, 30, 50, 0)
+		-- A wingman sits behind and above the leader; a shot there is a hit.
+		shoot(state, 21, 58)
+		check(b.armor == 2, "A wingman could not be shot")
+		passive(b, 30, 50, 0); b.invulnerable = 0
+		-- With two planes left, the second wingman's place is empty sky.
+		shoot(state, 21, 42)
+		check(b.armor == 2, "An empty wing position was hit")
+	end)
+
+	test("Giant is bigger, tougher and slower, and fires bigger shots", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Giant" } }, { offenceId = "Firework" })
+		local a = state.fighters[1]
+		check(a.armor == Skills.wild.Giant.armor and a.maxArmor == a.armor and a.radius &gt; Simulation.PLANE_RADIUS * 1.5, "Giant was not giant")
+		passive(a, -40, 50, 0); passive(state.fighters[2], 40, 80, 0)
+		a.phase, a.phaseLeft, a.windupDuration = "Windup", 0, 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(#state.projectiles == 1 and state.projectiles[1].radius &gt; 3.5 * 1.5, "Giant fired a normal rocket")
+		local plain = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework" })
+		for _ = 1, 30 do Simulation.step(state, Simulation.FIXED_DT); Simulation.step(plain, Simulation.FIXED_DT) end
+		local function pace(f) return math.sqrt((f.vx - f._knockX) ^ 2 + (f.vy - f._knockY) ^ 2) end
+		check(pace(state.fighters[1]) &lt; pace(plain.fighters[1]) * 0.9 or state.fighters[1].phase ~= plain.fighters[1].phase, "Giant was not slower")
+	end)
+
+	test("Vampire starts hungry and steals armor with every hit, but never as a pilot", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Vampire" } }, { offenceId = "Firework" })
+		local a, b = state.fighters[1], state.fighters[2]
+		check(a.armor == 2 and a.maxArmor == 3, "Vampire did not start one armor down")
+		passive(a, -40, 80, 0); passive(b, 30, 50, 0)
+		shoot(state, 30, 50)
+		check(b.armor == 2 and a.armor == 3 and said(state, "skill", "Vampire"), "A hit did not steal armor")
+		a.ejected = true; passive(b, 30, 50, 0); b.invulnerable = 0
+		shoot(state, 30, 50)
+		check(b.armor == 1 and a.armor == 3, "A parachuting pilot was healed")
+	end)
+
+	test("Chicken stops the rival attacking for three seconds, once", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Chicken" } }, { offenceId = "Firework" })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -40, 80, 0); passive(b, 30, 50, 0)
+		b.phase, b.phaseLeft = "Windup", 0.05
+		shoot(state, 30, 50)
+		check(b.chickenLeft and b.chickenLeft &gt; 2.9 and said(state, "skill", "Chicken"), "The first hit made no chicken")
+		local attacks = b.attacks
+		for _ = 1, math.floor(2.9 / Simulation.FIXED_DT) do
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(b.phase == "Approach" and not b.armed, "A chicken wound up an attack")
+		end
+		check(b.attacks == attacks, "A chicken attacked")
+		for _ = 1, 30 do Simulation.step(state, Simulation.FIXED_DT) end
+		check(b.chickenLeft == 0, "The spell did not end")
+		passive(b, 30, 50, 0); b.invulnerable = 0; state.projectiles = {}
+		shoot(state, 30, 50)
+		check(b.chickenLeft == 0, "A second hit made another chicken")
+	end)
+
+	test("Eject gives one last life as a small slow pilot with a pea-shooter", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Meteor", wildIds = { "Eject", "Giant" } })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -40, 80, 0); passive(b, 30, 50, 0); b.armor = 1
+		shoot(state, 30, 50)
+		check(not state.finished and b.armor == 1 and b.ejected and b.form == "PeaShooter", "The pilot did not bail out")
+		check(b.scale &lt; 1 and b.speedScale &lt; 1 and b.shotScale == 1 and b.invulnerable &gt; 0 and said(state, "skill", "Eject"), "The pilot kept the plane's size")
+		passive(a, -40, 80, 0); passive(b, 30, 50, math.pi)
+		b.phase, b.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(#state.projectiles == 1 and state.projectiles[1].source == "pea", "The pilot did not fire a pea")
+		state.projectiles = {}; passive(b, 30, 50, 0); b.invulnerable = 0
+		shoot(state, 30, 50)
+		check(state.finished and state.winner == 1 and b.armor == 0, "The pilot had more than one life")
+	end)
+
+	test("named builds are announced once and every new card finishes inside the cap", function()
+		local state = Simulation.newRound(7, { offenceId = "Meteor", wildIds = { "Vampire", "Squadron" } }, { offenceId = "Pinball" })
+		local shout = said(state, "combo")
+		check(shout and shout.text == "VAMPIRE SWARM!" and shout.actor == 1 and state.fighters[2].combo == nil, "The build was not named")
+		for _, combo in ipairs(Skills.combos) do
+			check((Skills.wild[combo[1]] or Skills.offence[combo[1]]) and (Skills.wild[combo[2]] or Skills.offence[combo[2]]), "A combo names a missing skill")
+		end
+		for _, offence in ipairs({ "Meteor", "Firework", "MachineGun", "Pinball" }) do
+			for _, card in ipairs({ "Squadron", "Giant", "Vampire", "Chicken", "Eject" }) do
+				for seed = 1, 4 do
+					local first = run(seed, { offenceId = offence, wildIds = { card } }, { offenceId = "Firework", wildIds = { "Eject", "Squadron" } })
+					local again = run(seed, { offenceId = offence, wildIds = { card } }, { offenceId = "Firework", wildIds = { "Eject", "Squadron" } })
+					check(first.elapsed &lt;= Simulation.MAX_TIME and equal(first, again), offence .. " with " .. card .. " was not deterministic")
+				end
+			end
+		end
+	end)
+
+	return string.format("BattleSimulation: %d tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes, plane-changing cards)", passed)
 end
 </ProtectedString>
       </Properties>
@@ -6634,7 +6963,7 @@ return function(BattleLab, Skills)
         assert(table.concat(s.offer.offences,",")=="Meteor,Firework,MachineGun,Pinball" and #s.offer.wilds==5 and s.slots==0)
         t.advance(19.9);assert(m.phase=="Pick");t.advance(.2);assert(m.phase~="Pick","The 20-second deadline did not lock")
         t.advance(2.5);assert(m.phase=="Fight");t.finish(m,1);t.advance(3.6);s=t.lab:snapshot(a)
-        assert(s.phase=="Pick" and s.slots==1 and #s.offer.wilds==5 and s.offer.wilds[1]=="Afterburner","Wild pick hid part of the roster")
+        assert(s.phase=="Pick" and s.slots==1 and #s.offer.wilds==5,"Wild pick did not deal a full hand")
         assert(#s.offer.offences==4 and s.draft.offenceId=="Meteor" and #s.draft.wildIds==0,"The second pick did not start from the plane that flew")
     end)
     test("bare partial and stale locks never fill a gap",function()
@@ -6679,7 +7008,7 @@ return function(BattleLab, Skills)
         t.send(a,"pick",{slot="offence",skillId=s.offer.offences[3]});assert(m.settings[1].offenceId==s.offer.offences[2])
         t.advance(2.5);t.finish(m,1);t.advance(2.1);assert(m.phase=="Pick" and m.stage==2)
         t.advance(10.1);assert(m.phase=="Countdown" and m.settings[1].offenceId==s.offer.offences[2])
-        assert(#m.settings[1].wildIds==1 and m.settings[1].wildIds[1]==m.roster.wilds[1],"The deadline did not add the first wild card")
+        assert(#m.settings[1].wildIds==1 and m.settings[1].wildIds[1]==m.offers[1].wilds[1],"The deadline did not add the first wild card")
     end)
     test("2-0 ends immediately and draft advances both players after decisive rounds",function()
         local t=harness();local a,b,m=t.pair();t.fight(a,b);t.finish(m,1);t.advance(2.1)
@@ -6696,16 +7025,18 @@ return function(BattleLab, Skills)
         local attack,first=m.settings[1].offenceId,m.settings[1].wildIds[1]
         local s=t.lab:snapshot(a)
         assert(s.slots==2 and s.draft.offenceId==attack and #s.draft.wildIds==1 and s.draft.wildIds[1]==first,"The plane was not carried into the pick")
-        assert(#s.offer.wilds==5 and #s.offer.offences==4)
-        t.send(a,"pick",{stage=2,slot="wild",index=2,skillId="Magnet"});assert(#m.drafts[1].wildIds==1)
+        assert(#s.offer.wilds==5 and #s.offer.offences==4 and table.find(s.offer.wilds,first),"The hand dropped the card on the plane")
+        -- Two dealt cards that are not on the plane yet.
+        local fresh={};for _,id in ipairs(s.offer.wilds)do if id~=first then fresh[#fresh+1]=id end end
+        local one,two=fresh[1],fresh[2]
+        t.send(a,"pick",{stage=2,slot="wild",index=2,skillId=one});assert(#m.drafts[1].wildIds==1)
         t.send(a,"pick",{slot="wild",index=2,skillId=first});assert(#m.drafts[1].wildIds==1,"One wild card filled two slots")
-        t.send(a,"pick",{slot="wild",index=3,skillId="Magnet"});t.send(a,"pick",{slot="wild",index=0,skillId="Magnet"})
-        t.send(a,"pick",{slot="wild",index=1.5,skillId="Magnet"});assert(#m.drafts[1].wildIds==1 and m.drafts[1].wildIds[1]==first)
+        t.send(a,"pick",{slot="wild",index=3,skillId=one});t.send(a,"pick",{slot="wild",index=0,skillId=one})
+        t.send(a,"pick",{slot="wild",index=1.5,skillId=one});assert(#m.drafts[1].wildIds==1 and m.drafts[1].wildIds[1]==first)
         t.advance(.5);t.send(a,"lock",{offenceId=attack,wildIds={first,first}});assert(not m.locked[1],"A doubled wild card locked")
         t.send(a,"lock",{offenceId=attack,wildIds={first}});assert(not m.locked[1],"A short loadout locked")
         -- Swap the attack and the old wild card, then add a new one.
         local swap=attack=="Pinball" and "Meteor" or "Pinball"
-        local one=first=="Magnet" and "FizzyFuel" or "Magnet";local two=first=="SecondWind" and "FizzyFuel" or "SecondWind"
         t.advance(.5);t.send(a,"pick",{slot="offence",skillId=swap});t.send(a,"pick",{slot="wild",index=1,skillId=one})
         t.send(a,"pick",{slot="wild",index=2,skillId=two});s=t.lab:snapshot(a)
         assert(s.draft.offenceId==swap and s.draft.wildIds[1]==one and s.draft.wildIds[2]==two)
@@ -6971,8 +7302,9 @@ return function(Catalog)
 
 	test("the public first-test roster is equal and excludes expansion", function()
 		local wanted = { Meteor = true, Firework = true, MachineGun = true, Pinball = true,
-			Afterburner = true, SpringBumper = true, FizzyFuel = true, Magnet = true, SecondWind = true }
-		check(#Catalog.all("offence") == 4 and #Catalog.all("wild") == 5, "Approved roster changed")
+			Afterburner = true, SpringBumper = true, FizzyFuel = true, Magnet = true, SecondWind = true,
+			Squadron = true, Giant = true, Eject = true, Vampire = true, Chicken = true }
+		check(#Catalog.all("offence") == 4 and #Catalog.all("wild") == 10, "Approved roster changed")
 		for _, entry in ipairs(Catalog.all()) do
 			check(wanted[entry.id] and entry.starter, "Skill is gated or outside agreed roster")
 		end
@@ -12836,7 +13168,7 @@ function BattleLab.new(World,shared)
             wilds[n]={label=chip,edge=edge,scale=make("UIScale",chip,"Pulse")}
         end
         local pips={}
-        for n=1,3 do
+        for n=1,5 do
             local pip=make("Frame",frame,"Armor"..n); pip.BorderSizePixel=0; corner(pip,6)
             local edge=make("UIStroke",pip,"Edge"); edge.Thickness=3; edge.Color=NAVY
             pips[n]=pip
@@ -13537,9 +13869,12 @@ function BattleLab:update(dt)
             end
         end
         local pipHeight=tight and 9 or 18
-        local pipWidth=math.min(compact and 30 or (short and 44 or 62),(textWidth-12)/3)
+        -- A Giant has more armor to show and a Vampire can grow past three.
         local armor=state.armor or 3
+        local pipCount=math.clamp(math.max(3,state.maxArmor or 3,armor),3,#fighter.pips)
+        local pipWidth=math.min(compact and 30 or (short and 44 or 62),(textWidth-(pipCount-1)*6)/pipCount)
         for n,pip in ipairs(fighter.pips) do
+            pip.Visible=n&lt;=pipCount
             local offset=(n-1)*(pipWidth+6)
             place(pip,right and textLeft+textWidth-offset-pipWidth or textLeft+offset,portrait-pipHeight+1,pipWidth,pipHeight)
             local full=n&lt;=armor
@@ -13817,9 +14152,11 @@ function BattleLab:update(dt)
             local restY=titleHeight+(stacked and (side-1)*(rowHeight+34) or 0)
             place(item.frame,restX+(1-slide)*(side==1 and -1 or 1)*width*0.6,restY,cardWidth,rowHeight)
             item.frame.BackgroundColor3=skill and tint(skill.color) or accents[side]
-            local tagWidth=math.min(cardWidth-20,side==1 and 56 or 150)
+            -- A named build is shouted on its own card.
+            local combo=((((data.simulation or {}).fighters or {})[side]) or {}).combo
+            local tagWidth=math.min(cardWidth-20,combo and 400 or (side==1 and 56 or 150))
             place(item.name,10,6,tagWidth,18)
-            item.name.Text=side==1 and "YOU" or (string.upper(identity.name or "RIVAL")..(identity.bot and " · BOT" or ""))
+            item.name.Text=(side==1 and "YOU" or (string.upper(identity.name or "RIVAL")..(identity.bot and " · BOT" or "")))..(type(combo)=="string" and " · "..combo or "")
             local iconBox=rowHeight-30
             place(item.icon,8,26,iconBox+8,iconBox); item.icon.TextSize=iconBox*0.8; item.icon.Text=skill and skill.icon or "✈️"
             place(item.skill,iconBox+24,26,cardWidth-iconBox-32,iconBox)
@@ -13911,7 +14248,11 @@ local POWER = {
 	pinball = Color3.fromRGB(80, 215, 255), fizz = Color3.fromRGB(96, 255, 190),
 	magnet = Color3.fromRGB(255, 96, 200), wind = Color3.fromRGB(150, 255, 120),
 	burner = Color3.fromRGB(120, 200, 255), bumper = Color3.fromRGB(215, 255, 80),
+	vampire = Color3.fromRGB(230, 40, 90), feather = Color3.fromRGB(255, 250, 235),
 }
+-- Where a squadron's wingmen fly, matching BattleSimulation's formation.
+local WING = { Vector3.new(-9, 8, 0), Vector3.new(-9, -8, 0) }
+local PARKED = CFrame.new(0, -2000, 0)
 local PLANE_COLORS = { COLORS.coral, COLORS.cyan, COLORS.yellow, COLORS.purple }
 local PLAYER_COLORS = { COLORS.coral, COLORS.cyan }
 local FAN_COLORS = { COLORS.coral, COLORS.cyan, COLORS.yellow, COLORS.cream, COLORS.purple }
@@ -14280,6 +14621,7 @@ function BattleView:_resetRound(roundId)
 		fighter.position, fighter.pose, fighter.armor = nil, nil, nil
 		fighter.hitTime, fighter.blockTime, fighter.lastHitBurst = -100, -100, -100
 		fighter.shotTime, fighter.secondWindTime, fighter.magnetTime = -100, -100, -100
+		fighter.vampireTime, fighter.ejectTime = -100, -100
 		fighter.finishRotation, fighter.finishPosition = nil, nil
 		fighter.crash, fighter.crashLanded, fighter.crashContactY = nil, false, nil
 		fighter.crashGroundY = nil
@@ -14527,6 +14869,7 @@ function BattleView:_fighter(id, index)
 		chargeShell = chargeShell, cometFlames = cometFlames, muzzleFlashes = muzzleFlashes,
 		signatureSparks = makeRing(fx, "SignatureSpark", 8, COLORS.yellow),
 		lampAnchor = lampAnchor, noseLight = noseLight, shotTime = -100, secondWindTime = -100, magnetTime = -100,
+		vampireTime = -100, ejectTime = -100, wingmen = {}, wingShown = 0,
 		magnetRing = makeRing(fx, "MagnetPull", 10, Color3.fromRGB(255, 120, 190)),
 		windRing = makeRing(fx, "SecondWind", 10, Color3.fromRGB(130, 255, 190)),
 		loadRing = makeRing(fx, "AttackLoad", 10, color),
@@ -14557,6 +14900,77 @@ function BattleView:_fighter(id, index)
 	end
 	self.fighters[id] = fighter
 	return fighter
+end
+
+-- A squadron's extra planes: plain copies of the leader's skin that fly in
+-- formation. They carry no pilots, trails or emitters of their own.
+function BattleView:_wingmen(fighter, count, pose, heading)
+	if count &gt; 0 and (#fighter.wingmen == 0 or fighter.wingScale ~= fighter.shownScale) then
+		for _, wingman in ipairs(fighter.wingmen) do wingman.model:Destroy() end
+		fighter.wingmen = {}
+		for number = 1, #WING do
+			local copy = Instance.new("Model"); copy.Name = "Wingman" .. number; copy.Parent = fighter.fx
+			for _, original in ipairs(fighter.model:GetChildren()) do
+				if original:IsA("BasePart") and original.Transparency &lt; 0.5 then
+					local piece = original:Clone()
+					for _, child in ipairs(piece:GetChildren()) do if not child:IsA("DataModelMesh") then child:Destroy() end end
+					piece.Anchored, piece.CanCollide, piece.CanTouch, piece.CanQuery = true, false, false, false
+					piece.Transparency, piece.LocalTransparencyModifier = 0, 0
+					piece.Parent = copy
+				end
+			end
+			copy.WorldPivot = fighter.model:GetPivot()
+			copy:PivotTo(PARKED)
+			fighter.wingmen[number] = { model = copy, parked = true }
+		end
+		fighter.wingScale = fighter.shownScale
+	end
+	local c, s = math.cos(heading), math.sin(heading)
+	for number, wingman in ipairs(fighter.wingmen) do
+		if number &lt;= count then
+			local offset = WING[number]
+			wingman.model:PivotTo(pose + Vector3.new(offset.X * c - offset.Y * s, offset.X * s + offset.Y * c, 0))
+			wingman.parked = false
+		elseif not wingman.parked then
+			-- Shot down: the wingman goes up in its own puff of fire.
+			local last = wingman.model:GetPivot().Position - ORIGIN
+			self:_particles(last.X, last.Y, COLORS.fire, 36, 12, 14, 60)
+			self:_burst(last.X, last.Y, fighter.color, true)
+			wingman.model:PivotTo(PARKED)
+			wingman.parked = true
+		end
+	end
+	fighter.wingShown = count
+end
+
+-- Swap the plane for a big picture (a chicken, a pilot on a parachute), or
+-- pass nil to show the plane again.
+function BattleView:_morph(fighter, picture, size)
+	if picture and not fighter.morphGui then
+		local gui = Instance.new("BillboardGui"); gui.Name = "Morph"; gui.LightInfluence = 0
+		gui.Adornee, gui.Parent = fighter.model.PrimaryPart, fighter.model.PrimaryPart
+		local label = Instance.new("TextLabel"); label.BackgroundTransparency = 1; label.Size = UDim2.fromScale(1, 1)
+		label.TextScaled, label.Font, label.Parent = true, Enum.Font.FredokaOne, gui
+		fighter.morphGui, fighter.morphLabel = gui, label
+	end
+	if fighter.morph ~= picture then
+		fighter.morph = picture
+		local hidden = picture and 1 or 0
+		for _, piece in ipairs(fighter.model:GetDescendants()) do
+			if piece:IsA("BasePart") then piece.LocalTransparencyModifier = hidden end
+		end
+		for _, wingman in ipairs(fighter.wingmen) do
+			for _, piece in ipairs(wingman.model:GetChildren()) do piece.LocalTransparencyModifier = hidden end
+		end
+		if fighter.morphGui then fighter.morphGui.Enabled = picture ~= nil end
+		if fighter.morphLabel and picture then fighter.morphLabel.Text = picture end
+	end
+	if picture then
+		fighter.morphGui.Size = UDim2.fromScale(size, size)
+		-- A chicken flaps in a panic; a parachute sways.
+		local flap = picture == "🐔" and math.sin(self.clock * 16) * 20 or math.sin(self.clock * 2.4) * 9
+		fighter.morphLabel.Rotation = self.reducedMotion and 0 or flap
+	end
 end
 
 function BattleView:_crashPose(fighter, state, target)
@@ -14846,6 +15260,26 @@ function BattleView:_events(simulation)
 					self:_burst(x, y, POWER.wind, true)
 					self:_particles(x, y, POWER.wind, 60, 0, 0, 80)
 					self:_jolt(2.4, 0.6, 0.08, 0.3, 0.6)
+				elseif kind == "skill" and event.skillId == "Vampire" and actor then
+					-- Red drains out of the rival and into the vampire.
+					actor.vampireTime = self.clock
+					self:_particles(x, y, POWER.vampire, 46, 0, 0, 40)
+					if target and target.position then
+						self:_particles(target.position.X - ORIGIN.X, target.position.Y - ORIGIN.Y, POWER.vampire, 60, 0, 0, 95)
+					end
+					self:_burst(x, y, POWER.vampire, true)
+					self:_jolt(1.8, 0.5, 0.06, 0.25, 0.4)
+				elseif kind == "skill" and event.skillId == "Chicken" then
+					-- A poof of feathers where the plane used to be.
+					self:_particles(x, y, POWER.feather, 110, 14, 0, 100)
+					self:_burst(x, y, POWER.feather, true)
+					self:_jolt(2.6, 0.7, 0.1, 0.4, 0.7)
+				elseif kind == "skill" and event.skillId == "Eject" and actor then
+					-- The plane is gone; the pilot is not.
+					actor.ejectTime = self.clock
+					self:_particles(x, y, COLORS.fire, 80, 26, 30, 100)
+					self:_particles(x, y, COLORS.cream, 30, 0, 0, 60)
+					self:_jolt(4, 0.9, 0.14, 0.6, 0.9)
 				elseif kind == "skill" and event.skillId == "Afterburner" then
 					-- The burner lights with a bang right behind the plane.
 					self:_particles(x, y, POWER.burner, 40, 6, 24, 70)
@@ -15070,6 +15504,10 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 	local tell
 	if winner then tell = "WINNER!"
 	elseif knockedOut then tell = "K.O.!"
+	elseif type(state.combo) == "string" and numeric(simulation.elapsed, 0) &lt; 2.5 then tell = state.combo
+	elseif self.clock - fighter.ejectTime &lt; 1.1 then tell = "EJECT!"
+	elseif numeric(state.chickenLeft, 0) &gt; 0 then tell = "BAWK!"
+	elseif self.clock - fighter.vampireTime &lt; 0.8 then tell = "SLURP!"
 	elseif hitAge &lt; 0.45 then tell = "POW!"
 	elseif blockAge &lt; 0.45 then tell = "BOING!"
 	elseif secondWindAge &lt; 0.85 then tell = "SECOND WIND!"
@@ -15326,7 +15764,19 @@ function BattleView:update(snapshot, dt, viewportRect)
 		else
 			fighter.finishRotation, fighter.finishPosition = nil, nil
 		end
+		local size = numeric(state.scale, 1)
+		if fighter.shownScale ~= size then
+			-- Giants, squadrons and ejected pilots change the size of the skin itself.
+			fighter.model:ScaleTo(SCALE * size)
+			for _, ghost in ipairs(fighter.afterimages) do ghost.model:ScaleTo(size) end
+			fighter.shownScale = size
+		end
 		fighter.model:PivotTo(displayPose)
+		local squad = knockedOut and 0 or math.max(0, math.min(numeric(state.squad, 0), armor) - 1)
+		self:_wingmen(fighter, squad, displayPose, numeric(state.heading, math.atan2(vy, vx)))
+		local chicken = numeric(state.chickenLeft, 0) &gt; 0 and not knockedOut
+		self:_morph(fighter, chicken and "🐔" or (state.ejected == true and armor &gt; 0 and "🪂") or nil,
+			(chicken and 15 or 13) * (chicken and math.max(0.7, size) or 1))
 		local propellerPhase = knockedOut and fighter.stoppedPropeller or self.clock * (moving and 52 or 16)
 		if fighter.propeller then fighter.propeller:PivotTo(displayPose * mount(fighter, "Nose") * CFrame.Angles(propellerPhase, 0, 0)) end
 		if fighter.armor and armor &lt; fighter.armor then self:_hit(fighter, state.x, state.y) end
@@ -15422,15 +15872,17 @@ function BattleView:update(snapshot, dt, viewportRect)
 		end
 		local owner = self.fighters[state.owner or state.actor]
 		local color = owner and owner.color or PLAYER_COLORS[tonumber(state.owner) or 1] or COLORS.yellow
-		local tracer = state.source == "machinegun"
+		local tracer = state.source == "machinegun" or state.source == "pea"
 		local ball = state.source == "pinball"
+		-- A Giant's shots are as oversized as it is.
+		local big = numeric(((simulation.fighters or {})[state.owner] or {}).shotScale, 1)
 		rocket.owner = state.owner
 		local squash = (ball and not self.reducedMotion) and 1 + 0.12 * math.sin(self.clock * 30) or 1
-		rocket.ball.Size = Vector3.new(6.4 * squash, 6.4 / squash, 6.4)
+		rocket.ball.Size = Vector3.new(6.4 * squash, 6.4 / squash, 6.4) * big
 		rocket.ball.Transparency, rocket.ballCore.Transparency = ball and 0.15 or 1, ball and 0 or 1
 		rocket.body.Transparency = ball and 1 or 0
 		if ball then tracer = true end
-		rocket.body.Size = tracer and Vector3.new(3.4, 0.36, 0.36) or Vector3.new(5, 1.65, 1.65)
+		rocket.body.Size = (tracer and Vector3.new(3.4, 0.36, 0.36) or Vector3.new(5, 1.65, 1.65)) * big
 		rocket.body.Material = tracer and Enum.Material.Neon or Enum.Material.SmoothPlastic
 		rocket.body.Color = tracer and COLORS.yellow or COLORS.cream
 		rocket.nose.Transparency = tracer and 1 or 0
@@ -15642,14 +16094,17 @@ local KINDS = {
     launch=true, windup=true, dive=true, rocket=true, hit=true, bump=true,
     bumper_block=true, wake_hit=true, afterburner=true, finish=true, knockout=true,
     burst=true, tracer_hit=true, ricochet=true, magnet=true, secondwind=true,
-    fizz=true, pinball_bounce=true,
+    fizz=true, pinball_bounce=true, vampire=true, chicken=true, eject=true, combo=true,
 }
 local function finite(value)
     return type(value)=="number" and value==value and value&gt;-math.huge and value&lt;math.huge
 end
 local function audibleKind(event)
     if event.kind=="skill" then
-        return ({Afterburner="afterburner",Magnet="magnet",SecondWind="secondwind",FizzyFuel="fizz"})[event.skillId]
+        return ({Afterburner="afterburner",Magnet="magnet",SecondWind="secondwind",FizzyFuel="fizz",
+            Vampire="vampire",Chicken="chicken",Eject="eject"})[event.skillId]
+    elseif event.kind=="combo" then
+        return "combo"
     elseif event.kind=="bounce" then
         return event.source=="pinball" and "pinball_bounce" or nil
     elseif event.kind=="blocked" then
@@ -15915,6 +16370,22 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
         -- The comeback: thunder, a rising rush and the crowd on its feet.
         voice("chime",0.22,0.9,0.6,1.9)
         shot("thunder",0.7,1.1); shot("rise",0.45,1.3); shot("cheer",0.4,1.1)
+    elseif kind=="vampire" then
+        -- A wet gulp: a low thud that slides up as the armor is drained.
+        voice("jump",0.24,0.5,0.4,1.5); voice("land",0.16,0.7,0.2,0.4)
+        shot("sub",0.45,1.6); shot("comic",0.45,0.6)
+    elseif kind=="chicken" then
+        -- A squawk and a pop: high, silly and nothing like a weapon.
+        voice("jump",0.26,2.6,0.14,1.5); voice("jump",0.2,2.1,0.22,2.9)
+        shot("whistle",0.3,0.5); shot("comic",0.55,2)
+    elseif kind=="eject" then
+        -- The plane goes up, the seat goes out, the parachute snaps open.
+        voice("jump",0.26,0.7,0.5,2.4)
+        shot("bigBlast",0.6,1.2); shot("rise",0.5,1.6); shot("whoosh",0.4,0.7)
+    elseif kind=="combo" then
+        -- A named build gets its own little announcement.
+        voice("chime",0.2,1.1,0.3,2.2)
+        shot("beep",0.3,1.4); shot("cheer",0.25,1.3)
     elseif kind=="fizz" then
         -- A shaken can: a hiss and a pop.
         voice("land",0.1,2.6,0.25,1.6)

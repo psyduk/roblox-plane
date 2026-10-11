@@ -825,5 +825,120 @@ return function(Simulation, Catalog, Skills)
 		check(state.fighters[1]._knockX < 0 and state.fighters[2]._knockX > 0, "Tangled planes were not pushed apart")
 	end)
 
-	return string.format("BattleSimulation: %d tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes)", passed)
+	-- A rocket placed just short of this point on fighter 2's side, flying into it.
+	local function shoot(state, x, y)
+		state.projectiles[#state.projectiles + 1] = { id = 900 + #state.projectiles, owner = 1, x = x - 4, y = y, vx = 60, vy = 0, life = 1, radius = 3.5 }
+		Simulation.step(state, Simulation.FIXED_DT)
+	end
+	local function said(state, kind, skillId)
+		for _, entry in ipairs(state.events) do
+			if entry.kind == kind and (skillId == nil or entry.skillId == skillId) then return entry end
+		end
+	end
+
+	test("Squadron flies one plane per armor and every plane shoots and can be shot", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Squadron" } }, { offenceId = "Firework", wildIds = { "Squadron" } })
+		local a, b = state.fighters[1], state.fighters[2]
+		check(a.squad == 3 and a.armor == 3 and a.radius < Simulation.PLANE_RADIUS, "Squadron did not make three small planes")
+		passive(a, -40, 50, 0); passive(b, 30, 50, 0)
+		a.phase, a.phaseLeft, a.windupDuration = "Windup", 0, 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(#state.projectiles == 3, "Three planes did not fire three rockets")
+		local seen = {}
+		for _, shot in ipairs(state.projectiles) do seen[math.floor(shot.y + 0.5)] = true end
+		local rows = 0
+		for _ in pairs(seen) do rows = rows + 1 end
+		check(rows == 3, "The rockets did not leave from three different planes")
+		state.projectiles = {}
+		passive(a, -40, 50, 0); passive(b, 30, 50, 0)
+		-- A wingman sits behind and above the leader; a shot there is a hit.
+		shoot(state, 21, 58)
+		check(b.armor == 2, "A wingman could not be shot")
+		passive(b, 30, 50, 0); b.invulnerable = 0
+		-- With two planes left, the second wingman's place is empty sky.
+		shoot(state, 21, 42)
+		check(b.armor == 2, "An empty wing position was hit")
+	end)
+
+	test("Giant is bigger, tougher and slower, and fires bigger shots", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Giant" } }, { offenceId = "Firework" })
+		local a = state.fighters[1]
+		check(a.armor == Skills.wild.Giant.armor and a.maxArmor == a.armor and a.radius > Simulation.PLANE_RADIUS * 1.5, "Giant was not giant")
+		passive(a, -40, 50, 0); passive(state.fighters[2], 40, 80, 0)
+		a.phase, a.phaseLeft, a.windupDuration = "Windup", 0, 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(#state.projectiles == 1 and state.projectiles[1].radius > 3.5 * 1.5, "Giant fired a normal rocket")
+		local plain = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Firework" })
+		for _ = 1, 30 do Simulation.step(state, Simulation.FIXED_DT); Simulation.step(plain, Simulation.FIXED_DT) end
+		local function pace(f) return math.sqrt((f.vx - f._knockX) ^ 2 + (f.vy - f._knockY) ^ 2) end
+		check(pace(state.fighters[1]) < pace(plain.fighters[1]) * 0.9 or state.fighters[1].phase ~= plain.fighters[1].phase, "Giant was not slower")
+	end)
+
+	test("Vampire starts hungry and steals armor with every hit, but never as a pilot", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Vampire" } }, { offenceId = "Firework" })
+		local a, b = state.fighters[1], state.fighters[2]
+		check(a.armor == 2 and a.maxArmor == 3, "Vampire did not start one armor down")
+		passive(a, -40, 80, 0); passive(b, 30, 50, 0)
+		shoot(state, 30, 50)
+		check(b.armor == 2 and a.armor == 3 and said(state, "skill", "Vampire"), "A hit did not steal armor")
+		a.ejected = true; passive(b, 30, 50, 0); b.invulnerable = 0
+		shoot(state, 30, 50)
+		check(b.armor == 1 and a.armor == 3, "A parachuting pilot was healed")
+	end)
+
+	test("Chicken stops the rival attacking for three seconds, once", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Chicken" } }, { offenceId = "Firework" })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -40, 80, 0); passive(b, 30, 50, 0)
+		b.phase, b.phaseLeft = "Windup", 0.05
+		shoot(state, 30, 50)
+		check(b.chickenLeft and b.chickenLeft > 2.9 and said(state, "skill", "Chicken"), "The first hit made no chicken")
+		local attacks = b.attacks
+		for _ = 1, math.floor(2.9 / Simulation.FIXED_DT) do
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(b.phase == "Approach" and not b.armed, "A chicken wound up an attack")
+		end
+		check(b.attacks == attacks, "A chicken attacked")
+		for _ = 1, 30 do Simulation.step(state, Simulation.FIXED_DT) end
+		check(b.chickenLeft == 0, "The spell did not end")
+		passive(b, 30, 50, 0); b.invulnerable = 0; state.projectiles = {}
+		shoot(state, 30, 50)
+		check(b.chickenLeft == 0, "A second hit made another chicken")
+	end)
+
+	test("Eject gives one last life as a small slow pilot with a pea-shooter", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Meteor", wildIds = { "Eject", "Giant" } })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -40, 80, 0); passive(b, 30, 50, 0); b.armor = 1
+		shoot(state, 30, 50)
+		check(not state.finished and b.armor == 1 and b.ejected and b.form == "PeaShooter", "The pilot did not bail out")
+		check(b.scale < 1 and b.speedScale < 1 and b.shotScale == 1 and b.invulnerable > 0 and said(state, "skill", "Eject"), "The pilot kept the plane's size")
+		passive(a, -40, 80, 0); passive(b, 30, 50, math.pi)
+		b.phase, b.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(#state.projectiles == 1 and state.projectiles[1].source == "pea", "The pilot did not fire a pea")
+		state.projectiles = {}; passive(b, 30, 50, 0); b.invulnerable = 0
+		shoot(state, 30, 50)
+		check(state.finished and state.winner == 1 and b.armor == 0, "The pilot had more than one life")
+	end)
+
+	test("named builds are announced once and every new card finishes inside the cap", function()
+		local state = Simulation.newRound(7, { offenceId = "Meteor", wildIds = { "Vampire", "Squadron" } }, { offenceId = "Pinball" })
+		local shout = said(state, "combo")
+		check(shout and shout.text == "VAMPIRE SWARM!" and shout.actor == 1 and state.fighters[2].combo == nil, "The build was not named")
+		for _, combo in ipairs(Skills.combos) do
+			check((Skills.wild[combo[1]] or Skills.offence[combo[1]]) and (Skills.wild[combo[2]] or Skills.offence[combo[2]]), "A combo names a missing skill")
+		end
+		for _, offence in ipairs({ "Meteor", "Firework", "MachineGun", "Pinball" }) do
+			for _, card in ipairs({ "Squadron", "Giant", "Vampire", "Chicken", "Eject" }) do
+				for seed = 1, 4 do
+					local first = run(seed, { offenceId = offence, wildIds = { card } }, { offenceId = "Firework", wildIds = { "Eject", "Squadron" } })
+					local again = run(seed, { offenceId = offence, wildIds = { card } }, { offenceId = "Firework", wildIds = { "Eject", "Squadron" } })
+					check(first.elapsed <= Simulation.MAX_TIME and equal(first, again), offence .. " with " .. card .. " was not deterministic")
+				end
+			end
+		end
+	end)
+
+	return string.format("BattleSimulation: %d tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes, plane-changing cards)", passed)
 end

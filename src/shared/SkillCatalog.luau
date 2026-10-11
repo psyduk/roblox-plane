@@ -12,7 +12,8 @@ SkillCatalog.CONTRACT_VERSION = "sky-battle-combat-v1"
 
 -- Order is display order. `starter` skills are owned from the first fight.
 -- Rarity says how strange a skill is, never how strong.
-local order = { "Meteor", "Firework", "MachineGun", "Pinball", "Afterburner", "SpringBumper", "FizzyFuel", "Magnet", "SecondWind" }
+local order = { "Meteor", "Firework", "MachineGun", "Pinball", "Afterburner", "SpringBumper", "FizzyFuel", "Magnet", "SecondWind",
+	"Squadron", "Giant", "Eject", "Vampire", "Chicken" }
 local skills = {
 	Meteor = { id = "Meteor", kind = "offence", name = "Meteor", icon = "☄️", word = "BOOOM!",
 		promise = "Climb high, then dive-bomb your rival.",
@@ -45,6 +46,21 @@ local skills = {
 	SecondWind = { id = "SecondWind", kind = "wild", name = "Second Wind", icon = "💨", word = "WHOOSH!",
 		when = "ON YOUR LAST ARMOR", promise = "Power up! Fly faster and attack sooner.",
 		color = { r = 130, g = 255, b = 190 }, starter = true, rarity = "common" },
+	Squadron = { id = "Squadron", kind = "wild", name = "Squadron", icon = "✈️", word = "SQUAD UP!",
+		when = "ALL ROUND", promise = "Fly 3 small planes. Each has 1 life and all of them shoot.",
+		color = { r = 120, g = 190, b = 255 }, starter = true, rarity = "rare" },
+	Giant = { id = "Giant", kind = "wild", name = "Giant", icon = "🐘", word = "STOMP!",
+		when = "ALL ROUND", promise = "Double size, 5 armor and huge shots. Slow and easy to hit.",
+		color = { r = 255, g = 150, b = 90 }, starter = true, rarity = "rare" },
+	Eject = { id = "Eject", kind = "wild", name = "Eject", icon = "🪂", word = "EJECT!",
+		when = "WHEN YOU ARE SHOT DOWN", promise = "Your pilot bails out with a pea-shooter and 1 last life.",
+		color = { r = 255, g = 236, b = 150 }, starter = true, rarity = "rare" },
+	Vampire = { id = "Vampire", kind = "wild", name = "Vampire", icon = "🧛", word = "SLURP!",
+		when = "EVERY HIT YOU LAND", promise = "Start with 2 armor. Every hit steals 1 from your rival.",
+		color = { r = 220, g = 60, b = 110 }, starter = true, rarity = "rare" },
+	Chicken = { id = "Chicken", kind = "wild", name = "Chicken", icon = "🐔", word = "BAWK!",
+		when = "YOUR FIRST HIT", promise = "Turn your rival into a chicken. Chickens cannot attack.",
+		color = { r = 255, g = 244, b = 214 }, starter = true, rarity = "rare" },
 }
 
 function SkillCatalog.valid(id, kind)

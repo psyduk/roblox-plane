@@ -29,7 +29,14 @@
 --   recover(api, state, fighter, opponent)  when the plane banks away
 --   moved(api, state, fighter, dt)          every tick, after the plane moves
 --   hit(api, state, target, actor, x, y, dirX, dirY, source) -> true to cancel the hit
-local BattleSkills = { offence = {}, wild = {} }
+--   damaged(api, state, fighter, actor)     after this plane loses armor
+--   landed(api, state, fighter, target)     after this plane's hit removes armor
+--
+-- A wild card may reshape its plane in `start`: armor and maxArmor, radius and
+-- scale (how big it is and looks), speedScale, shotScale and squad (how many
+-- planes fly, one per armor left). `form` names an entry in BattleSkills.form
+-- that replaces the plane's attack for the rest of the round.
+local BattleSkills = { offence = {}, wild = {}, form = {} }
 
 local PI = math.pi
 
@@ -236,6 +243,106 @@ BattleSkills.wild.SecondWind = {
 		fighter.secondWind = true
 		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "secondwind", "SecondWind")
 	end,
+}
+
+-- Swarm: three small planes with one life each, all firing your attack.
+BattleSkills.wild.Squadron = {
+	count = 3, size = 0.62,
+	start = function(_, _, fighter)
+		local self = BattleSkills.wild.Squadron
+		fighter.squad = self.count
+		fighter.scale, fighter.radius = fighter.scale * self.size, fighter.radius * self.size
+	end,
+}
+
+-- Huge: double size and five armor, but slow and easy to hit.
+BattleSkills.wild.Giant = {
+	armor = 4, size = 1.9, speed = 0.78, shot = 1.7,
+	start = function(_, _, fighter)
+		local self = BattleSkills.wild.Giant
+		fighter.armor, fighter.maxArmor = self.armor, self.armor
+		fighter.scale, fighter.radius = fighter.scale * self.size, fighter.radius * self.size
+		fighter.speedScale, fighter.shotScale = fighter.speedScale * self.speed, fighter.shotScale * self.shot
+	end,
+}
+
+-- Hungry: start one armor down, but every hit you land steals one back.
+BattleSkills.wild.Vampire = {
+	most = 5,
+	start = function(_, _, fighter)
+		fighter.armor = math.max(1, fighter.armor - 1)
+	end,
+	landed = function(api, state, fighter, target)
+		-- A pilot on a parachute has one life and nothing adds to it.
+		if fighter.armor <= 0 or fighter.ejected or fighter.armor >= BattleSkills.wild.Vampire.most then return end
+		fighter.armor = fighter.armor + 1
+		fighter.maxArmor = math.max(fighter.maxArmor, fighter.armor)
+		api.event(state, "skill", fighter.x, fighter.y, fighter.id, target.id, "vampire", "Vampire")
+	end,
+}
+
+-- Curse: your first hit turns the rival into a chicken that cannot attack.
+BattleSkills.wild.Chicken = {
+	duration = 3,
+	start = function(_, _, fighter) fighter.chickenReady = true end,
+	landed = function(api, state, fighter, target)
+		if not fighter.chickenReady or target.armor <= 0 then return end
+		fighter.chickenReady = false
+		target.chickenLeft = BattleSkills.wild.Chicken.duration
+		api.event(state, "skill", target.x, target.y, fighter.id, target.id, "chicken", "Chicken")
+	end,
+}
+
+-- Last chance: when the plane is shot down, the pilot bails out on a parachute
+-- with a pea-shooter and one more life.
+BattleSkills.wild.Eject = {
+	size = 0.6, hitbox = 5.5, speed = 0.5, protection = 1,
+	start = function(_, _, fighter) fighter.ejected = false end,
+	damaged = function(api, state, fighter)
+		if fighter.armor > 0 or fighter.ejected then return end
+		local self = BattleSkills.wild.Eject
+		fighter.ejected, fighter.armor = true, 1
+		fighter.form, fighter.windupDuration = "PeaShooter", BattleSkills.form.PeaShooter.windup
+		fighter.squad, fighter.shotScale = 0, 1
+		fighter.radius = self.hitbox
+		fighter.scale, fighter.speedScale = self.size, self.speed
+		fighter.invulnerable = self.protection
+		fighter.chickenLeft, fighter.secondWind = 0, false
+		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "eject", "Eject")
+	end,
+}
+
+-- The parachuting pilot's attack: quick, small and easy to miss with.
+BattleSkills.form.PeaShooter = {
+	windup = 0.5, attackTime = 0.3, attackSpeed = 12,
+	earliest = 0.9, leadSpeed = 70, leadFactor = 0.5,
+	approachTime = 3, recoveryTime = 2,
+	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 70 * 70 end,
+	attack = function(api, state, fighter, opponent)
+		local dx, dy = math.cos(fighter.heading), math.sin(fighter.heading)
+		api.launch(state, fighter, { x = fighter.x + dx * 4, y = fighter.y + dy * 4,
+			vx = dx * 60, vy = dy * 60, life = 1.4, radius = 1.2, source = "pea" })
+		api.event(state, "rocket", fighter.x + dx * 4, fighter.y + dy * 4, fighter.id, opponent.id, "pea")
+	end,
+}
+
+-- Builds worth a shout. The first pair a plane matches names it for the round.
+BattleSkills.combos = {
+	{ "Squadron", "Vampire", "VAMPIRE SWARM!" },
+	{ "Giant", "Squadron", "THREE GIANTS!" },
+	{ "Eject", "Giant", "TINY PILOT, BIG PLANE!" },
+	{ "Chicken", "Squadron", "CHICKEN HUNTERS!" },
+	{ "Eject", "Vampire", "UNDEAD PILOT!" },
+	{ "Giant", "Vampire", "DRACULA!" },
+	{ "Chicken", "Magnet", "CHICKEN DINNER!" },
+	{ "Squadron", "MachineGun", "BULLET STORM!" },
+	{ "Squadron", "Meteor", "METEOR SHOWER!" },
+	{ "Squadron", "Firework", "FIREWORK SHOW!" },
+	{ "Squadron", "Pinball", "MULTIBALL!" },
+	{ "Giant", "Meteor", "ASTEROID!" },
+	{ "Giant", "Pinball", "WRECKING BALL!" },
+	{ "Giant", "Firework", "MEGA ROCKET!" },
+	{ "Giant", "MachineGun", "CANNONS!" },
 }
 
 return BattleSkills

@@ -32,7 +32,11 @@ local POWER = {
 	pinball = Color3.fromRGB(80, 215, 255), fizz = Color3.fromRGB(96, 255, 190),
 	magnet = Color3.fromRGB(255, 96, 200), wind = Color3.fromRGB(150, 255, 120),
 	burner = Color3.fromRGB(120, 200, 255), bumper = Color3.fromRGB(215, 255, 80),
+	vampire = Color3.fromRGB(230, 40, 90), feather = Color3.fromRGB(255, 250, 235),
 }
+-- Where a squadron's wingmen fly, matching BattleSimulation's formation.
+local WING = { Vector3.new(-9, 8, 0), Vector3.new(-9, -8, 0) }
+local PARKED = CFrame.new(0, -2000, 0)
 local PLANE_COLORS = { COLORS.coral, COLORS.cyan, COLORS.yellow, COLORS.purple }
 local PLAYER_COLORS = { COLORS.coral, COLORS.cyan }
 local FAN_COLORS = { COLORS.coral, COLORS.cyan, COLORS.yellow, COLORS.cream, COLORS.purple }
@@ -401,6 +405,7 @@ function BattleView:_resetRound(roundId)
 		fighter.position, fighter.pose, fighter.armor = nil, nil, nil
 		fighter.hitTime, fighter.blockTime, fighter.lastHitBurst = -100, -100, -100
 		fighter.shotTime, fighter.secondWindTime, fighter.magnetTime = -100, -100, -100
+		fighter.vampireTime, fighter.ejectTime = -100, -100
 		fighter.finishRotation, fighter.finishPosition = nil, nil
 		fighter.crash, fighter.crashLanded, fighter.crashContactY = nil, false, nil
 		fighter.crashGroundY = nil
@@ -648,6 +653,7 @@ function BattleView:_fighter(id, index)
 		chargeShell = chargeShell, cometFlames = cometFlames, muzzleFlashes = muzzleFlashes,
 		signatureSparks = makeRing(fx, "SignatureSpark", 8, COLORS.yellow),
 		lampAnchor = lampAnchor, noseLight = noseLight, shotTime = -100, secondWindTime = -100, magnetTime = -100,
+		vampireTime = -100, ejectTime = -100, wingmen = {}, wingShown = 0,
 		magnetRing = makeRing(fx, "MagnetPull", 10, Color3.fromRGB(255, 120, 190)),
 		windRing = makeRing(fx, "SecondWind", 10, Color3.fromRGB(130, 255, 190)),
 		loadRing = makeRing(fx, "AttackLoad", 10, color),
@@ -678,6 +684,77 @@ function BattleView:_fighter(id, index)
 	end
 	self.fighters[id] = fighter
 	return fighter
+end
+
+-- A squadron's extra planes: plain copies of the leader's skin that fly in
+-- formation. They carry no pilots, trails or emitters of their own.
+function BattleView:_wingmen(fighter, count, pose, heading)
+	if count > 0 and (#fighter.wingmen == 0 or fighter.wingScale ~= fighter.shownScale) then
+		for _, wingman in ipairs(fighter.wingmen) do wingman.model:Destroy() end
+		fighter.wingmen = {}
+		for number = 1, #WING do
+			local copy = Instance.new("Model"); copy.Name = "Wingman" .. number; copy.Parent = fighter.fx
+			for _, original in ipairs(fighter.model:GetChildren()) do
+				if original:IsA("BasePart") and original.Transparency < 0.5 then
+					local piece = original:Clone()
+					for _, child in ipairs(piece:GetChildren()) do if not child:IsA("DataModelMesh") then child:Destroy() end end
+					piece.Anchored, piece.CanCollide, piece.CanTouch, piece.CanQuery = true, false, false, false
+					piece.Transparency, piece.LocalTransparencyModifier = 0, 0
+					piece.Parent = copy
+				end
+			end
+			copy.WorldPivot = fighter.model:GetPivot()
+			copy:PivotTo(PARKED)
+			fighter.wingmen[number] = { model = copy, parked = true }
+		end
+		fighter.wingScale = fighter.shownScale
+	end
+	local c, s = math.cos(heading), math.sin(heading)
+	for number, wingman in ipairs(fighter.wingmen) do
+		if number <= count then
+			local offset = WING[number]
+			wingman.model:PivotTo(pose + Vector3.new(offset.X * c - offset.Y * s, offset.X * s + offset.Y * c, 0))
+			wingman.parked = false
+		elseif not wingman.parked then
+			-- Shot down: the wingman goes up in its own puff of fire.
+			local last = wingman.model:GetPivot().Position - ORIGIN
+			self:_particles(last.X, last.Y, COLORS.fire, 36, 12, 14, 60)
+			self:_burst(last.X, last.Y, fighter.color, true)
+			wingman.model:PivotTo(PARKED)
+			wingman.parked = true
+		end
+	end
+	fighter.wingShown = count
+end
+
+-- Swap the plane for a big picture (a chicken, a pilot on a parachute), or
+-- pass nil to show the plane again.
+function BattleView:_morph(fighter, picture, size)
+	if picture and not fighter.morphGui then
+		local gui = Instance.new("BillboardGui"); gui.Name = "Morph"; gui.LightInfluence = 0
+		gui.Adornee, gui.Parent = fighter.model.PrimaryPart, fighter.model.PrimaryPart
+		local label = Instance.new("TextLabel"); label.BackgroundTransparency = 1; label.Size = UDim2.fromScale(1, 1)
+		label.TextScaled, label.Font, label.Parent = true, Enum.Font.FredokaOne, gui
+		fighter.morphGui, fighter.morphLabel = gui, label
+	end
+	if fighter.morph ~= picture then
+		fighter.morph = picture
+		local hidden = picture and 1 or 0
+		for _, piece in ipairs(fighter.model:GetDescendants()) do
+			if piece:IsA("BasePart") then piece.LocalTransparencyModifier = hidden end
+		end
+		for _, wingman in ipairs(fighter.wingmen) do
+			for _, piece in ipairs(wingman.model:GetChildren()) do piece.LocalTransparencyModifier = hidden end
+		end
+		if fighter.morphGui then fighter.morphGui.Enabled = picture ~= nil end
+		if fighter.morphLabel and picture then fighter.morphLabel.Text = picture end
+	end
+	if picture then
+		fighter.morphGui.Size = UDim2.fromScale(size, size)
+		-- A chicken flaps in a panic; a parachute sways.
+		local flap = picture == "🐔" and math.sin(self.clock * 16) * 20 or math.sin(self.clock * 2.4) * 9
+		fighter.morphLabel.Rotation = self.reducedMotion and 0 or flap
+	end
 end
 
 function BattleView:_crashPose(fighter, state, target)
@@ -967,6 +1044,26 @@ function BattleView:_events(simulation)
 					self:_burst(x, y, POWER.wind, true)
 					self:_particles(x, y, POWER.wind, 60, 0, 0, 80)
 					self:_jolt(2.4, 0.6, 0.08, 0.3, 0.6)
+				elseif kind == "skill" and event.skillId == "Vampire" and actor then
+					-- Red drains out of the rival and into the vampire.
+					actor.vampireTime = self.clock
+					self:_particles(x, y, POWER.vampire, 46, 0, 0, 40)
+					if target and target.position then
+						self:_particles(target.position.X - ORIGIN.X, target.position.Y - ORIGIN.Y, POWER.vampire, 60, 0, 0, 95)
+					end
+					self:_burst(x, y, POWER.vampire, true)
+					self:_jolt(1.8, 0.5, 0.06, 0.25, 0.4)
+				elseif kind == "skill" and event.skillId == "Chicken" then
+					-- A poof of feathers where the plane used to be.
+					self:_particles(x, y, POWER.feather, 110, 14, 0, 100)
+					self:_burst(x, y, POWER.feather, true)
+					self:_jolt(2.6, 0.7, 0.1, 0.4, 0.7)
+				elseif kind == "skill" and event.skillId == "Eject" and actor then
+					-- The plane is gone; the pilot is not.
+					actor.ejectTime = self.clock
+					self:_particles(x, y, COLORS.fire, 80, 26, 30, 100)
+					self:_particles(x, y, COLORS.cream, 30, 0, 0, 60)
+					self:_jolt(4, 0.9, 0.14, 0.6, 0.9)
 				elseif kind == "skill" and event.skillId == "Afterburner" then
 					-- The burner lights with a bang right behind the plane.
 					self:_particles(x, y, POWER.burner, 40, 6, 24, 70)
@@ -1191,6 +1288,10 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 	local tell
 	if winner then tell = "WINNER!"
 	elseif knockedOut then tell = "K.O.!"
+	elseif type(state.combo) == "string" and numeric(simulation.elapsed, 0) < 2.5 then tell = state.combo
+	elseif self.clock - fighter.ejectTime < 1.1 then tell = "EJECT!"
+	elseif numeric(state.chickenLeft, 0) > 0 then tell = "BAWK!"
+	elseif self.clock - fighter.vampireTime < 0.8 then tell = "SLURP!"
 	elseif hitAge < 0.45 then tell = "POW!"
 	elseif blockAge < 0.45 then tell = "BOING!"
 	elseif secondWindAge < 0.85 then tell = "SECOND WIND!"
@@ -1447,7 +1548,19 @@ function BattleView:update(snapshot, dt, viewportRect)
 		else
 			fighter.finishRotation, fighter.finishPosition = nil, nil
 		end
+		local size = numeric(state.scale, 1)
+		if fighter.shownScale ~= size then
+			-- Giants, squadrons and ejected pilots change the size of the skin itself.
+			fighter.model:ScaleTo(SCALE * size)
+			for _, ghost in ipairs(fighter.afterimages) do ghost.model:ScaleTo(size) end
+			fighter.shownScale = size
+		end
 		fighter.model:PivotTo(displayPose)
+		local squad = knockedOut and 0 or math.max(0, math.min(numeric(state.squad, 0), armor) - 1)
+		self:_wingmen(fighter, squad, displayPose, numeric(state.heading, math.atan2(vy, vx)))
+		local chicken = numeric(state.chickenLeft, 0) > 0 and not knockedOut
+		self:_morph(fighter, chicken and "🐔" or (state.ejected == true and armor > 0 and "🪂") or nil,
+			(chicken and 15 or 13) * (chicken and math.max(0.7, size) or 1))
 		local propellerPhase = knockedOut and fighter.stoppedPropeller or self.clock * (moving and 52 or 16)
 		if fighter.propeller then fighter.propeller:PivotTo(displayPose * mount(fighter, "Nose") * CFrame.Angles(propellerPhase, 0, 0)) end
 		if fighter.armor and armor < fighter.armor then self:_hit(fighter, state.x, state.y) end
@@ -1543,15 +1656,17 @@ function BattleView:update(snapshot, dt, viewportRect)
 		end
 		local owner = self.fighters[state.owner or state.actor]
 		local color = owner and owner.color or PLAYER_COLORS[tonumber(state.owner) or 1] or COLORS.yellow
-		local tracer = state.source == "machinegun"
+		local tracer = state.source == "machinegun" or state.source == "pea"
 		local ball = state.source == "pinball"
+		-- A Giant's shots are as oversized as it is.
+		local big = numeric(((simulation.fighters or {})[state.owner] or {}).shotScale, 1)
 		rocket.owner = state.owner
 		local squash = (ball and not self.reducedMotion) and 1 + 0.12 * math.sin(self.clock * 30) or 1
-		rocket.ball.Size = Vector3.new(6.4 * squash, 6.4 / squash, 6.4)
+		rocket.ball.Size = Vector3.new(6.4 * squash, 6.4 / squash, 6.4) * big
 		rocket.ball.Transparency, rocket.ballCore.Transparency = ball and 0.15 or 1, ball and 0 or 1
 		rocket.body.Transparency = ball and 1 or 0
 		if ball then tracer = true end
-		rocket.body.Size = tracer and Vector3.new(3.4, 0.36, 0.36) or Vector3.new(5, 1.65, 1.65)
+		rocket.body.Size = (tracer and Vector3.new(3.4, 0.36, 0.36) or Vector3.new(5, 1.65, 1.65)) * big
 		rocket.body.Material = tracer and Enum.Material.Neon or Enum.Material.SmoothPlastic
 		rocket.body.Color = tracer and COLORS.yellow or COLORS.cream
 		rocket.nose.Transparency = tracer and 1 or 0

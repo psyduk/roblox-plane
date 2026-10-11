@@ -97,6 +97,32 @@ local function settings(input, fallback)
 	}
 end
 
+-- What a plane attacks with right now. A wild card may swap the plane into a
+-- different form for the rest of the round (an ejected pilot's pea-shooter).
+local function offenceOf(fighter)
+	return fighter.form and Skills.form[fighter.form] or Skills.offence[fighter.offenceId]
+end
+
+-- How many planes a fighter is flying: one, or a squadron with one plane per
+-- armor left.
+local function members(fighter)
+	if (fighter.squad or 0) <= 1 then return 1 end
+	return math.max(1, math.min(fighter.squad, fighter.armor))
+end
+
+-- Where each of a fighter's planes is, given the leader's position. Wingmen
+-- fly behind and to either side of the leader.
+local WING = { { -9, 8 }, { -9, -8 } }
+local function bodies(fighter, x, y, heading)
+	local list = { { x = x, y = y } }
+	local c, s = math.cos(heading), math.sin(heading)
+	for index = 2, members(fighter) do
+		local offset = WING[index - 1]
+		list[index] = { x = x + offset[1] * c - offset[2] * s, y = y + offset[1] * s + offset[2] * c }
+	end
+	return list
+end
+
 local function event(state, kind, x, y, actor, target, source, skillId)
 	state.eventSerial = state.eventSerial + 1
 	local entry = {
@@ -132,9 +158,20 @@ local api = { event = event, clamp = clamp, direction = direction,
 
 -- Add a projectile owned by this fighter. It flies straight and hits only the rival.
 function api.launch(state, fighter, projectile)
-	state._projectileSerial = state._projectileSerial + 1
-	projectile.id, projectile.owner = state._projectileSerial, fighter.id
-	state.projectiles[#state.projectiles + 1] = projectile
+	projectile.radius = (projectile.radius or 3.5) * (fighter.shotScale or 1)
+	local leaderX, leaderY = projectile.x, projectile.y
+	for index, body in ipairs(bodies(fighter, 0, 0, fighter.heading)) do
+		-- Every plane in a squadron fires the same shot from its own nose.
+		local shot = projectile
+		if index > 1 then
+			shot = {}
+			for key, value in pairs(projectile) do shot[key] = value end
+		end
+		state._projectileSerial = state._projectileSerial + 1
+		shot.id, shot.owner = state._projectileSerial, fighter.id
+		shot.x, shot.y = leaderX + body.x, leaderY + body.y
+		state.projectiles[#state.projectiles + 1] = shot
+	end
 	return projectile
 end
 
@@ -197,7 +234,7 @@ function BattleSimulation.newRound(seed, settingsA, settingsB)
 			_approachOffset = ((seed * 48271 + (seed % 2 == 0 and id or 3 - id) * 1299709) % 2147483647) / 2147483647 * 2.4 - 1.2,
 			x = -52 * side, y = 31 + random() * 13,
 			heading = heading, vx = math.cos(heading) * 29, vy = math.sin(heading) * 29,
-			armor = 3, phase = "Approach", phaseLeft = (Skills.offence[config.offenceId].approachTime or BattleSimulation.APPROACH_TIME) +
+			armor = 3, maxArmor = 3, scale = 1, speedScale = 1, shotScale = 1, squad = 0, phase = "Approach", phaseLeft = (Skills.offence[config.offenceId].approachTime or BattleSimulation.APPROACH_TIME) +
 				(configs[1].offenceId == "Meteor" and configs[2].offenceId == "Meteor" and id == seed % 2 + 1 and (0.25 + (seed * 69621 % 9999) / 9999 * 0.35) or 0),
 			windupDuration = Skills.offence[config.offenceId].windup,
 			armed = false, invulnerable = 0, attacks = 0, hits = 0,
@@ -211,6 +248,18 @@ function BattleSimulation.newRound(seed, settingsA, settingsB)
 		state.fighters[id] = fighter
 		wild(fighter, "start", state, fighter)
 		event(state, "launch", fighter.x, fighter.y, id, 0)
+	end
+	-- Name a build the first time its parts meet, so players go looking for more.
+	for id, fighter in ipairs(state.fighters) do
+		local has = { [fighter.offenceId] = true }
+		for _, wildId in ipairs(fighter.wildIds) do has[wildId] = true end
+		for _, combo in ipairs(Skills.combos) do
+			if has[combo[1]] and has[combo[2]] then
+				fighter.combo = combo[3]
+				event(state, "combo", fighter.x, fighter.y, id, 0).text = combo[3]
+				break
+			end
+		end
 	end
 	return state
 end
@@ -241,7 +290,7 @@ local function recover(state, fighter, opponent, duration)
 	fighter._approachOffset = fighter._cadence / 2147483647 * 2.4 - 1.2
 	-- Both planes circle the same way round, or they would meet head-on.
 	state.spin = fighter._cadence % 2 == 0 and 1 or -1
-	fighter.phase, fighter.phaseLeft = "Recover", ((duration or Skills.offence[fighter.offenceId].recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.88 or 1) * (fighter.tempo or 1)
+	fighter.phase, fighter.phaseLeft = "Recover", ((duration or offenceOf(fighter).recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.88 or 1) * (fighter.tempo or 1)
 	fighter._bumperRecovery = nil
 	fighter.armed = false
 	local awayX, awayY = direction(fighter.x - opponent.x, fighter.y - opponent.y, fighter.id == 1 and -1 or 1)
@@ -254,14 +303,14 @@ end
 
 local function lockTarget(fighter, opponent)
 	local distance = math.sqrt((opponent.x - fighter.x) ^ 2 + (opponent.y - fighter.y) ^ 2)
-	local offence = Skills.offence[fighter.offenceId]
+	local offence = offenceOf(fighter)
 	local lead = clamp(distance / offence.leadSpeed, 0, 0.95) * offence.leadFactor
 	fighter.lockX = clamp(opponent.x + opponent.vx * lead, -64, 64)
 	fighter.lockY = clamp(opponent.y + opponent.vy * lead, 15, 88)
 end
 
 local function beginAttack(state, fighter, opponent)
-	local offence = Skills.offence[fighter.offenceId]
+	local offence = offenceOf(fighter)
 	lockTarget(fighter, opponent)
 	fighter.phase = "Attack"
 	fighter.phaseLeft = offence.attackTime
@@ -275,11 +324,17 @@ local function beginAttack(state, fighter, opponent)
 end
 
 local function prepare(state, fighter, opponent, dt)
-	local offence = Skills.offence[fighter.offenceId]
+	local offence = offenceOf(fighter)
 	fighter.invulnerable = math.max(0, fighter.invulnerable - dt)
 	fighter.boostLeft = math.max(0, fighter.boostLeft - dt)
 	if fighter.magnetLeft then fighter.magnetLeft = math.max(0, fighter.magnetLeft - dt) end
 	fighter.phaseLeft = fighter.phaseLeft - dt
+	if (fighter.chickenLeft or 0) > 0 then
+		-- A chicken cannot attack: it flaps in circles until the spell ends.
+		fighter.chickenLeft = math.max(0, fighter.chickenLeft - dt)
+		fighter.phase, fighter.armed = "Approach", false
+		fighter.phaseLeft = math.max(fighter.phaseLeft, offence.approachTime or BattleSimulation.APPROACH_TIME)
+	end
 	local dx, dy = opponent.x - fighter.x, opponent.y - fighter.y
 	if fighter.phase == "Approach" then
 		local inPosition = offence.inPosition ~= nil and offence.inPosition(api, state, fighter, opponent, dx, dy)
@@ -343,6 +398,7 @@ local function prepare(state, fighter, opponent, dt)
 		turnRate = math.max(turnRate, 4.5)
 	end
 	if fighter.secondWind then speed, turnRate = speed * 1.12, turnRate * 1.2 end
+	speed = speed * (fighter.speedScale or 1)
 	turnRate = math.min(turnRate, BattleSimulation.MAX_TURN_RATE)
 	if fighter.phase ~= "Attack" then
 		-- Looking ahead turns the plane away from the visible edge before impact.
@@ -380,7 +436,8 @@ local function damage(state, actorId, targetId, x, y, dirX, dirY, source, skillI
 	actor.hits = actor.hits + 1
 	actor._attackHit = true
 	event(state, source == "wake" and "wake_hit" or "hit", x, y, actorId, targetId, source, skillId)
-	wild(target, "damaged", state, target)
+	wild(target, "damaged", state, target, actor)
+	wild(actor, "landed", state, actor, target)
 	return true
 end
 
@@ -391,7 +448,7 @@ local function tick(state)
 	state._bumpCooldown = math.max(0, state._bumpCooldown - dt)
 	local previous = {}
 	for id, fighter in ipairs(state.fighters) do
-		previous[id] = { id = id, x = fighter.x, y = fighter.y, vx = fighter.vx, vy = fighter.vy }
+		previous[id] = { id = id, x = fighter.x, y = fighter.y, vx = fighter.vx, vy = fighter.vy, heading = fighter.heading }
 	end
 	-- Both plans read the same pre-tick snapshot, avoiding first-player bias.
 	for id, fighter in ipairs(state.fighters) do prepare(state, fighter, previous[3 - id], dt) end
@@ -429,8 +486,22 @@ local function tick(state)
 	end
 
 	local a, b = state.fighters[1], state.fighters[2]
-	local contact = sweep(previous[1].x, previous[1].y, a.x, a.y,
-		previous[2].x, previous[2].y, b.x, b.y, a.radius + b.radius)
+	-- Any plane of one side touching any plane of the other counts.
+	local function strike(oldX, oldY, x, y, targetId, radius)
+		local target, old, best = state.fighters[targetId], previous[targetId], nil
+		local before, after = bodies(target, old.x, old.y, old.heading), bodies(target, target.x, target.y, target.heading)
+		for index, body in ipairs(after) do
+			local t = sweep(oldX, oldY, x, y, before[index].x, before[index].y, body.x, body.y, target.radius + radius)
+			if t and (not best or t < best) then best = t end
+		end
+		return best
+	end
+	local contact
+	local wasA, nowA = bodies(a, previous[1].x, previous[1].y, previous[1].heading), bodies(a, a.x, a.y, a.heading)
+	for index, body in ipairs(nowA) do
+		local t = strike(wasA[index].x, wasA[index].y, body.x, body.y, 2, a.radius)
+		if t and (not contact or t < contact) then contact = t end
+	end
 	local landed, blocked, resolved = {}, {}, {}
 	if contact then
 		-- Evaluate BOTH armed noses before applying recovery: simultaneous strikes
@@ -442,9 +513,15 @@ local function tick(state)
 			local ox = otherOld.x + (opponent.x - otherOld.x) * contact
 			local oy = otherOld.y + (opponent.y - otherOld.y) * contact
 			local forward = (ox - x) * math.cos(fighter.heading) + (oy - y) * math.sin(fighter.heading)
-			if fighter.armed and not fighter._attackHit and forward >= -EPSILON then
+			-- A squadron dives as a wall of noses, and any of a rival squadron's
+			-- planes ahead of the nose can be the one that is struck.
+			local ahead = forward >= -EPSILON or members(fighter) > 1
+			for _, body in ipairs(bodies(opponent, ox, oy, opponent.heading)) do
+				ahead = ahead or (body.x - x) * math.cos(fighter.heading) + (body.y - y) * math.sin(fighter.heading) >= -EPSILON
+			end
+			if fighter.armed and not fighter._attackHit and ahead then
 				landed[id], blocked[id] = damage(state, id, 3 - id, (x + ox) / 2, (y + oy) / 2,
-					math.cos(fighter.heading), math.sin(fighter.heading), Skills.offence[fighter.offenceId].ram)
+					math.cos(fighter.heading), math.sin(fighter.heading), offenceOf(fighter).ram)
 				resolved[id] = landed[id] or blocked[id]
 			end
 		end
@@ -470,8 +547,7 @@ local function tick(state)
 		projectile.life = projectile.life - dt
 		local targetId = 3 - projectile.owner
 		local target, old = state.fighters[targetId], previous[targetId]
-		local hit = sweep(oldX, oldY, projectile.x, projectile.y,
-			old.x, old.y, target.x, target.y, target.radius + (projectile.radius or 3.5))
+		local hit = strike(oldX, oldY, projectile.x, projectile.y, targetId, projectile.radius or 3.5)
 		if hit then
 			local nx, ny = direction(projectile.vx, projectile.vy)
 			local successful, absorbed = false, false
@@ -528,8 +604,7 @@ local function tick(state)
 		wake.armLeft = math.max(0, wake.armLeft - dt)
 		local targetId = 3 - wake.owner
 		local target, old = state.fighters[targetId], previous[targetId]
-		local hit = wake.armLeft <= 0 and wake.life > 0 and sweep(wake.x, wake.y, wake.x, wake.y,
-			old.x, old.y, target.x, target.y, target.radius + wake.radius)
+		local hit = wake.armLeft <= 0 and wake.life > 0 and strike(wake.x, wake.y, wake.x, wake.y, targetId, wake.radius)
 		if hit then
 			local nx, ny = direction(target.x - wake.x, target.y - wake.y, targetId == 1 and -1 or 1)
 			local successful, absorbed = damage(state, wake.owner, targetId, wake.x, wake.y, nx, ny, "wake", wake.skillId)
@@ -546,7 +621,7 @@ local function tick(state)
 		if resolved[id] or resolved[3 - id] then
 			recover(state, fighter, state.fighters[3 - id])
 		elseif edgeHit[id] and fighter.phase == "Attack" then
-			if Skills.offence[fighter.offenceId].ram and not fighter._attackHit then
+			if offenceOf(fighter).ram and not fighter._attackHit then
 				event(state, "miss", fighter.x, fighter.y, id, 3 - id)
 			end
 			recover(state, fighter, state.fighters[3 - id])

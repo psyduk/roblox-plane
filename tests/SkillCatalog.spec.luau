@@ -41,8 +41,9 @@ return function(Catalog)
 
 	test("the public first-test roster is equal and excludes expansion", function()
 		local wanted = { Meteor = true, Firework = true, MachineGun = true, Pinball = true,
-			Afterburner = true, SpringBumper = true, FizzyFuel = true, Magnet = true, SecondWind = true }
-		check(#Catalog.all("offence") == 4 and #Catalog.all("wild") == 5, "Approved roster changed")
+			Afterburner = true, SpringBumper = true, FizzyFuel = true, Magnet = true, SecondWind = true,
+			Squadron = true, Giant = true, Eject = true, Vampire = true, Chicken = true }
+		check(#Catalog.all("offence") == 4 and #Catalog.all("wild") == 10, "Approved roster changed")
 		for _, entry in ipairs(Catalog.all()) do
 			check(wanted[entry.id] and entry.starter, "Skill is gated or outside agreed roster")
 		end

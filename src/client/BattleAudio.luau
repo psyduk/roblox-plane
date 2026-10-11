@@ -57,14 +57,17 @@ local KINDS = {
     launch=true, windup=true, dive=true, rocket=true, hit=true, bump=true,
     bumper_block=true, wake_hit=true, afterburner=true, finish=true, knockout=true,
     burst=true, tracer_hit=true, ricochet=true, magnet=true, secondwind=true,
-    fizz=true, pinball_bounce=true,
+    fizz=true, pinball_bounce=true, vampire=true, chicken=true, eject=true, combo=true,
 }
 local function finite(value)
     return type(value)=="number" and value==value and value>-math.huge and value<math.huge
 end
 local function audibleKind(event)
     if event.kind=="skill" then
-        return ({Afterburner="afterburner",Magnet="magnet",SecondWind="secondwind",FizzyFuel="fizz"})[event.skillId]
+        return ({Afterburner="afterburner",Magnet="magnet",SecondWind="secondwind",FizzyFuel="fizz",
+            Vampire="vampire",Chicken="chicken",Eject="eject"})[event.skillId]
+    elseif event.kind=="combo" then
+        return "combo"
     elseif event.kind=="bounce" then
         return event.source=="pinball" and "pinball_bounce" or nil
     elseif event.kind=="blocked" then
@@ -330,6 +333,22 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
         -- The comeback: thunder, a rising rush and the crowd on its feet.
         voice("chime",0.22,0.9,0.6,1.9)
         shot("thunder",0.7,1.1); shot("rise",0.45,1.3); shot("cheer",0.4,1.1)
+    elseif kind=="vampire" then
+        -- A wet gulp: a low thud that slides up as the armor is drained.
+        voice("jump",0.24,0.5,0.4,1.5); voice("land",0.16,0.7,0.2,0.4)
+        shot("sub",0.45,1.6); shot("comic",0.45,0.6)
+    elseif kind=="chicken" then
+        -- A squawk and a pop: high, silly and nothing like a weapon.
+        voice("jump",0.26,2.6,0.14,1.5); voice("jump",0.2,2.1,0.22,2.9)
+        shot("whistle",0.3,0.5); shot("comic",0.55,2)
+    elseif kind=="eject" then
+        -- The plane goes up, the seat goes out, the parachute snaps open.
+        voice("jump",0.26,0.7,0.5,2.4)
+        shot("bigBlast",0.6,1.2); shot("rise",0.5,1.6); shot("whoosh",0.4,0.7)
+    elseif kind=="combo" then
+        -- A named build gets its own little announcement.
+        voice("chime",0.2,1.1,0.3,2.2)
+        shot("beep",0.3,1.4); shot("cheer",0.25,1.3)
     elseif kind=="fizz" then
         -- A shaken can: a hiss and a pop.
         voice("land",0.1,2.6,0.25,1.6)

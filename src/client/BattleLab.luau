@@ -122,7 +122,7 @@ function BattleLab.new(World,shared)
             wilds[n]={label=chip,edge=edge,scale=make("UIScale",chip,"Pulse")}
         end
         local pips={}
-        for n=1,3 do
+        for n=1,5 do
             local pip=make("Frame",frame,"Armor"..n); pip.BorderSizePixel=0; corner(pip,6)
             local edge=make("UIStroke",pip,"Edge"); edge.Thickness=3; edge.Color=NAVY
             pips[n]=pip
@@ -823,9 +823,12 @@ function BattleLab:update(dt)
             end
         end
         local pipHeight=tight and 9 or 18
-        local pipWidth=math.min(compact and 30 or (short and 44 or 62),(textWidth-12)/3)
+        -- A Giant has more armor to show and a Vampire can grow past three.
         local armor=state.armor or 3
+        local pipCount=math.clamp(math.max(3,state.maxArmor or 3,armor),3,#fighter.pips)
+        local pipWidth=math.min(compact and 30 or (short and 44 or 62),(textWidth-(pipCount-1)*6)/pipCount)
         for n,pip in ipairs(fighter.pips) do
+            pip.Visible=n<=pipCount
             local offset=(n-1)*(pipWidth+6)
             place(pip,right and textLeft+textWidth-offset-pipWidth or textLeft+offset,portrait-pipHeight+1,pipWidth,pipHeight)
             local full=n<=armor
@@ -1103,9 +1106,11 @@ function BattleLab:update(dt)
             local restY=titleHeight+(stacked and (side-1)*(rowHeight+34) or 0)
             place(item.frame,restX+(1-slide)*(side==1 and -1 or 1)*width*0.6,restY,cardWidth,rowHeight)
             item.frame.BackgroundColor3=skill and tint(skill.color) or accents[side]
-            local tagWidth=math.min(cardWidth-20,side==1 and 56 or 150)
+            -- A named build is shouted on its own card.
+            local combo=((((data.simulation or {}).fighters or {})[side]) or {}).combo
+            local tagWidth=math.min(cardWidth-20,combo and 400 or (side==1 and 56 or 150))
             place(item.name,10,6,tagWidth,18)
-            item.name.Text=side==1 and "YOU" or (string.upper(identity.name or "RIVAL")..(identity.bot and " · BOT" or ""))
+            item.name.Text=(side==1 and "YOU" or (string.upper(identity.name or "RIVAL")..(identity.bot and " · BOT" or "")))..(type(combo)=="string" and " · "..combo or "")
             local iconBox=rowHeight-30
             place(item.icon,8,26,iconBox+8,iconBox); item.icon.TextSize=iconBox*0.8; item.icon.Text=skill and skill.icon or "✈️"
             place(item.skill,iconBox+24,26,cardWidth-iconBox-32,iconBox)

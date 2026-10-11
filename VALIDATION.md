@@ -1,3 +1,43 @@
+# Wild cards that change your plane: Squadron, Giant, Eject, Vampire, Chicken — October 10, 2026 (not committed, not published)
+
+Playtest feedback: the powers do not feel different, and nothing makes a player curious about what else exists. Direction from the owner: add powers that change what the plane is or break a rule (Linear AND-233). This is the first five of nineteen.
+
+**Rules**
+- **Squadron:** three small planes, one per armor left. Every plane fires the attack and every plane can be hit.
+- **Giant:** 1.9× size, 4 armor, 0.78× speed, 1.7× shot size.
+- **Eject:** at zero armor the pilot bails out once with 1 life, a pea-shooter, a parachute-sized hitbox and half speed.
+- **Vampire:** starts with 2 armor; every hit landed adds 1 (up to 5). A parachuting pilot is never healed.
+- **Chicken:** the first hit landed turns the rival into a chicken for 3 s; a chicken cannot wind up or attack.
+- A build that matches a named pair (15 so far, such as "VAMPIRE SWARM!") is named on its reveal card.
+- The roster now has 10 wild cards. Each pick deals 5: the cards already on the plane plus a random draw from the rest.
+- The HUD shows up to 5 armor pips.
+
+**Measured (40 seeds, both seats, against every attack with no wild card)**
+
+| Card | Score | Existing cards for comparison |
+|---|---|---|
+| Squadron | 54% | Afterburner 66% |
+| Giant | 57% | Spring Bumper 63% |
+| Eject | 66% | Magnet 61% |
+| Vampire | 55% | Fizzy Fuel 61% |
+| Chicken | 61% | Second Wind 60% |
+
+Pairs checked: Eject + Vampire 66%, Eject + Giant 66%, Giant + Spring Bumper 72%, Chicken + Magnet 72%; the strongest existing pair (Afterburner + Spring Bumper) is 71%. First drafts that were out of range and were changed: Giant at 5 armor (77%), Eject with a small hitbox (83%), Eject + Vampire with healing (80%), Chicken that shortened the rival's wait (46%).
+
+**Checks run**
+- `scripts/sample_battle.py --tests-only`: 52 simulation tests (6 new) and 5 catalog tests pass.
+- `scripts/test_server.py`: 33 match, 11 client and 48 server scenarios pass.
+- Native Studio: 52 simulation, 14 view and 24 audio tests pass.
+- Three staged fights watched in local Studio at desktop size, driven by the real simulation: Squadron formation and its two tracer lines, the Giant and its oversized ball, the chicken, the parachute and pea-shot, 4 armor pips, and combo names on the reveal cards all appeared (`previews/planes-eject.jpg`).
+
+**Not verified**
+- Nothing was heard: the new sounds are existing samples re-pitched, and there is no real chicken cluck.
+- No full match through the real draft with these cards, no phone-sized check, no human opponent.
+- The combo name did not appear over the plane in the arena; only the reveal card shows it.
+- The HUD attack label still shows the plane's attack words (for example "DIVE!") after the pilot ejects.
+- Squadron with Machine Gun can put more tracers in the air than the 24 the view draws.
+- The chicken and parachute are emoji pictures in place of the plane, not models.
+
 # A loadout you keep and can swap every round — October 10, 2026 (not yet published)
 
 Playtest feedback: a young pilot could not tell which attack or wild card he had picked, or whether a pick still applied in rounds two and three. Before this change the attack was chosen once and could never change, each wild card was chosen once, and the only record of either was a small pill and emoji-only chips in the top bar.
