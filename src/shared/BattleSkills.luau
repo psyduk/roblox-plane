@@ -33,7 +33,7 @@ local PI = math.pi
 
 BattleSkills.offence.Meteor = {
 	windup = 1, aimTime = 0.4, attackTime = 1.05, attackSpeed = 65,
-	earliest = 1.45, leadSpeed = 65, leadFactor = 0.85, ram = "meteor",
+	earliest = 1.85, leadSpeed = 65, leadFactor = 0.85, ram = "meteor",
 	inPosition = function(_, _, fighter, opponent, dx)
 		return fighter.y >= opponent.y + 8 and math.abs(dx) < 68
 	end,
@@ -75,7 +75,7 @@ BattleSkills.offence.Meteor = {
 
 BattleSkills.offence.Firework = {
 	windup = 1, attackTime = 0.5, attackSpeed = 27,
-	earliest = 1.05, leadSpeed = 60, leadFactor = 0.55,
+	earliest = 1.1, leadSpeed = 60, leadFactor = 0.55,
 	inPosition = function(_, _, _, _, dx, dy)
 		return dx * dx + dy * dy < 76 * 76
 	end,
@@ -113,7 +113,7 @@ BattleSkills.offence.MachineGun = {
 
 BattleSkills.offence.Pinball = {
 	windup = 2.4, attackTime = 1.3, attackSpeed = 65,
-	earliest = 1.6, leadSpeed = 72, leadFactor = 0.45, ram = "pinball", wallRam = true,
+	earliest = 1.7, leadSpeed = 72, leadFactor = 0.45, ram = "pinball", wallRam = true,
 	-- The rebound is the hardest attack to dodge, so it comes round less often.
 	approachTime = 3.2, recoveryTime = 2.2,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 85 * 85 end,

@@ -1,3 +1,27 @@
+# Circle, then strike — October 10, 2026 (not committed, not published)
+
+The owner reported that planes kept flying at each other and colliding with nothing happening. Measured over 400 bare rounds: about 7.2 harmless bumps and 3.9 hits per round, and 2.8 of 5.4 close passes ended with no damage. The cause was the wait between attacks: a plane with nothing to fire flew straight at its rival.
+
+- **Movement:** a plane that cannot attack yet now circles its rival (both the same way round) and peels off if it gets within 24 studs. It turns in only once its attack is loaded. Planes banking away after a hit split up and down. A collision during impact protection is no longer announced as a bump.
+- **Opening:** each plane now gets its own seeded opening timing. Before, both shared one value, so the same attack always struck first.
+- **Timing retune** (`earliest`): Meteor 1.45 → 1.85, Firework 1.05 → 1.1, Pinball 1.6 → 1.7, Machine Gun unchanged at 1.0.
+- **On the plane:** a ring fills piece by piece while a plane circles and snaps full and bright when its attack is loaded.
+
+| Per round (400 bare rounds) | Before | After |
+|---|---:|---:|
+| Harmless bumps | 7.2 | 0.8 |
+| Hits | 3.9 | 4.1 |
+| Close passes with no damage | 2.8 | 1.3 |
+| Longest stretch without a hit | 8.0 s | 6.8 s |
+| Round length | 19.9 s | 18.2 s |
+
+Field scores from the standard sampler (30 seeds, 8,640 rounds): Meteor 52.0%, Firework 48.5%, Machine Gun 50.4%, Pinball 49.1% (version 9 record: 48.6 / 44.2 / 54.2 / 53.0). The widest pairing is still Machine Gun over Firework, about 65–68%. A quick wild-card pass (6 seeds, one angle) showed no full build above 65% against bare planes.
+
+- **Checks:** 44 simulation tests (3 new; the Meteor charge test is now a placed fixture that does not depend on timing values), 5 catalog, 35 match, 12 client and 48 full-server scenarios pass. In local Studio: 44 simulation and 13 view tests (1 new, the gauge) pass natively, and one guided bot round was played with the gauge visible and no script errors. [Gauge filling](previews/circle-then-strike-1-gauge.jpg), [loaded](previews/circle-then-strike-2-loaded.jpg).
+- **Not checked:** whether it feels better to a player (stills cannot show motion), a phone, two human clients, and a full wild-card balance sample.
+
+---
+
 # Version 11 publication — guided first match, October 10, 2026
 
 **Skybound Test version 11 is published**, place `86507299893768`, universe `10770074500`, from source commit **`27a71f8bf36447342f4e27adf255945bac2c3f6c`**. Studio confirmed publication and Playtester availability at **2026-10-11T01:19:15Z** (October 10, 18:19:15 PDT). [Publication proof](docs/validation/qa-2026-10-10/published-version-11.jpg), [current manifest](docs/validation/sky-battle-build.json). Access settings were unchanged; the dashboard was not rechecked. All entries below this section describe earlier candidates.

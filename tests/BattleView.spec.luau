@@ -229,5 +229,20 @@ return function(View, World, Simulation)
         assert(math.abs(view.fighters[1].crashContactY-view.groundY)<0.002,"Bounce did not settle")
         advance(snapshot(421,"Pick",3,3),0.1);assert(view.fighters[1].crash==nil,"Next draft kept old fall")
     end)
+    test("the load gauge fills while circling and lights fully only when the attack is loaded",function(view,cues,advance,snapshot)
+        local s=snapshot(430,"Fight",3,3);local f=s.simulation.fighters[1]
+        f.vx=20;f.phase,f.phaseLeft,f.circling="Approach",3,true
+        advance(s,0.1)
+        local ring=view.fighters[1].loadRing
+        local function lit() local n=0;for _,piece in ipairs(ring) do if piece.Transparency<0.8 then n=n+1 end end;return n end
+        assert(#ring==10 and lit()==0 and view.fighters[1].model:GetAttribute("AttackLoaded")==false,"An empty attack looked loaded")
+        f.phaseLeft=1.5;advance(s,0.1)
+        assert(lit()>=4 and lit()<=6,"Half-loaded gauge did not show about half")
+        f.circling=false;advance(s,0.1)
+        assert(lit()==10 and view.fighters[1].model:GetAttribute("AttackLoaded")==true,"A loaded attack did not light the whole gauge")
+        f.phase,f.phaseLeft="Windup",1;advance(s,0.1);assert(lit()==10,"Gauge went dark during the windup")
+        f.phase,f.phaseLeft="Recover",2;advance(s,0.1)
+        assert(lit()==0 and view.fighters[1].model:GetAttribute("AttackLoaded")==false,"Gauge stayed lit while banking away")
+    end)
     return string.format("BattleView: %d native presentation tests passed",passed)
 end

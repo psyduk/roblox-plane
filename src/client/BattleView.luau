@@ -406,6 +406,8 @@ function BattleView:_resetRound(roundId)
 		hide(fighter.speedLines)
 		hide(fighter.magnetRing)
 		hide(fighter.windRing)
+		hide(fighter.loadRing)
+		fighter.approachSpan = nil
 		hide(fighter.cometFlames)
 		hide(fighter.signatureSparks)
 		hide(fighter.muzzleFlashes)
@@ -626,6 +628,7 @@ function BattleView:_fighter(id, index)
 		lampAnchor = lampAnchor, noseLight = noseLight, shotTime = -100, secondWindTime = -100, magnetTime = -100,
 		magnetRing = makeRing(fx, "MagnetPull", 10, Color3.fromRGB(255, 120, 190)),
 		windRing = makeRing(fx, "SecondWind", 10, Color3.fromRGB(130, 255, 190)),
+		loadRing = makeRing(fx, "AttackLoad", 10, color),
 		scuff = scuff, debris = debris, crashLanded = false, index = index,
 	}
 	-- Smoke is positioned in world space and must never enlarge aircraft
@@ -1061,6 +1064,23 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 	if moving and state.secondWind == true then
 		ring(fighter.windRing, center, 8.4, Color3.fromRGB(130, 255, 190), 0.45, self.reducedMotion and 0 or self.clock * 0.6, 0.24)
 	else hide(fighter.windRing) end
+	-- The load gauge rides on the plane: it fills piece by piece while the
+	-- plane circles with nothing to fire, then snaps full and bright the moment
+	-- the attack is loaded. An empty ring means a pass is only a pass.
+	local loading = moving and not simulation.finished and (state.phase == "Approach" or state.phase == "Windup")
+	if loading then
+		local loaded = state.phase == "Windup" or state.circling == false
+		local span = fighter.approachSpan or 3
+		local fraction = loaded and 1 or math.clamp(1 - numeric(state.phaseLeft, span) / span, 0, 0.9)
+		local pulse = (loaded and not self.reducedMotion) and 0.5 + 0.5 * math.sin(self.clock * 14) or 0
+		ring(fighter.loadRing, center, 6.2 + pulse * 0.35, loaded and fighter.color:Lerp(Color3.new(1, 1, 1), 0.35 + pulse * 0.4) or fighter.color,
+			loaded and 0.05 or 0.35, math.pi / 2, loaded and 0.5 or 0.32)
+		local lit = math.floor(fraction * #fighter.loadRing + 0.5)
+		for index, piece in ipairs(fighter.loadRing) do
+			if index > lit then piece.Transparency = 0.88 end
+		end
+	else hide(fighter.loadRing) end
+	fighter.model:SetAttribute("AttackLoaded", loading and (state.phase == "Windup" or state.circling == false) or false)
 	local offence = self.skills and self.skills.get(fighter.offenceId)
 	local tell
 	if winner then tell = "WINNER!"
@@ -1296,6 +1316,9 @@ function BattleView:update(snapshot, dt, viewportRect)
 			or (settings and type(settings.wildIds) == "table" and settings.wildIds) or {}
 		if state.phase == "Windup" and fighter.previousPhase ~= "Windup" then
 			fighter.observedWindupDuration = math.max(0.01, numeric(state.phaseLeft, 1))
+		end
+		if state.phase == "Approach" and fighter.previousPhase ~= "Approach" then
+			fighter.approachSpan = math.max(0.1, numeric(state.phaseLeft, 3))
 		end
 		fighter.previousPhase = state.phase
 		local vx, vy = numeric(state.vx, 0), numeric(state.vy, 0)

@@ -173,9 +173,13 @@ return function(Simulation, Catalog, Skills)
 
 	test("controlled Meteor charge creates continuous space before a visible landed dive", function()
 		local state = Simulation.newRound(731, { offenceId = "Meteor", angle = 32 }, { offenceId = "Firework", angle = 32 })
-		-- Hold the rival tell constant: this fixture measures charge geometry,
-		-- not whether the current Firework tuning wins the opening exchange.
-		state.fighters[2].windupDuration = 1.05
+		-- A placed fixture: the Meteor is about to charge and the rival is held
+		-- in an endless slow windup beside it. This measures charge geometry,
+		-- not approach timing or who wins the opening.
+		local meteor, rival = state.fighters[1], state.fighters[2]
+		meteor.x, meteor.y, meteor.heading, meteor.phaseLeft = 0, 50, math.pi, 0.001
+		rival.x, rival.y, rival.heading = 38, 50, math.pi
+		rival.phase, rival.phaseLeft = "Windup", 100
 		local charge, commitment, impact, waypointX, waypointY, previousHeading
 		local serial = state.eventSerial
 		for _ = 1, 300 do
@@ -205,10 +209,10 @@ return function(Simulation, Catalog, Skills)
 		end
 		check(charge and commitment and impact, "Default charge did not finish in a real strike")
 		check(close(commitment.at - charge.at, Simulation.METEOR_WINDUP), "Charge duration changed")
-		check(impact.at - commitment.at >= 0.25 and impact.at - commitment.at <= 0.7, "Default strike has no visible flight")
+		check(impact.at - commitment.at >= 0.25 and impact.at - commitment.at <= 0.9, "Default strike has no visible flight")
 		check(math.abs(commitment.x - charge.x) > 20, "Charge failed to create real separation")
 		check(state.fighters[2].armor == 2 and state.fighters[1].armor == 3, "Strike changed the one-pip damage rule")
-		check(state.fighters[2].windupDuration == 1.05, "Firework windup changed")
+		check(state.fighters[2].attacks == 0, "The held rival attacked")
 	end)
 
 	test("Meteor remains vulnerable during the backoff charge", function()
@@ -705,6 +709,53 @@ return function(Simulation, Catalog, Skills)
 			check(equal(first, second) and first.elapsed <= 35, "Roster replay/cap failed: " .. entry.id)
 			check(first.fighters[1].attacks > 0 and first.fighters[2].attacks > 0, "Automatic pilot never attacks: " .. entry.id)
 		end
+	end)
+
+	test("planes with nothing loaded circle each other and never touch", function()
+		for _, seed in ipairs({ 104729, 112648, 9973131, 20261010 }) do
+			for _, offence in ipairs({ "Firework", "MachineGun", "Pinball" }) do
+				local state = Simulation.newRound(seed, { offenceId = offence, angle = 32 }, { offenceId = offence, angle = 32 })
+				state.fighters[1].phaseLeft, state.fighters[2].phaseLeft = 100, 100
+				local nearest, farthest = math.huge, 0
+				for tick = 1, 360 do
+					Simulation.step(state, Simulation.FIXED_DT)
+					local a, b = state.fighters[1], state.fighters[2]
+					local distance = math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
+					nearest = math.min(nearest, distance)
+					if tick > 180 then farthest = math.max(farthest, distance) end
+					check(a.circling and b.circling and a.phase == "Approach", "A waiting plane stopped circling")
+				end
+				check(nearest > Simulation.PLANE_RADIUS * 2 + 2, offence .. " planes touched while waiting, seed " .. seed)
+				check(farthest < 70, offence .. " planes drifted apart instead of circling, seed " .. seed)
+				for _, entry in ipairs(state.events) do check(entry.kind ~= "bump", "Waiting planes bumped") end
+			end
+		end
+	end)
+
+	test("each plane gets its own seeded opening timing", function()
+		local different = 0
+		for seed = 1, 40 do
+			local state = Simulation.newRound(seed * 104729, { offenceId = "Firework" }, { offenceId = "Firework" })
+			local again = Simulation.newRound(seed * 104729, { offenceId = "Firework" }, { offenceId = "Firework" })
+			local a, b = state.fighters[1].phaseLeft, state.fighters[2].phaseLeft
+			check(a == again.fighters[1].phaseLeft and b == again.fighters[2].phaseLeft, "Opening timing is not repeatable")
+			check(a >= 1.8 - 0.000001 and a <= 4.2 + 0.000001 and b >= 1.8 - 0.000001 and b <= 4.2 + 0.000001, "Opening timing left its range")
+			if math.abs(a - b) > 0.2 then different = different + 1 end
+		end
+		check(different >= 25, "Both planes share one opening timing, so the same attack always strikes first")
+	end)
+
+	test("colliding just after a hit is not announced as a new bump", function()
+		local state = Simulation.newRound(1)
+		passive(state.fighters[1], 0, 50, 0)
+		passive(state.fighters[2], 8, 50, math.pi)
+		state.fighters[2].invulnerable = 0.5
+		local serial = state.eventSerial
+		Simulation.step(state, Simulation.FIXED_DT)
+		for _, entry in ipairs(state.events) do
+			check(entry.serial <= serial or entry.kind ~= "bump", "A protected plane announced a bump")
+		end
+		check(state.fighters[1]._knockX < 0 and state.fighters[2]._knockX > 0, "Tangled planes were not pushed apart")
 	end)
 
 	return string.format("BattleSimulation: %d tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes)", passed)

@@ -22,6 +22,14 @@ BattleSimulation.PLANE_RADIUS = 5
 BattleSimulation.IMPACT_PROTECTION = 0.85
 BattleSimulation.APPROACH_TIME = 3
 BattleSimulation.RECOVERY_TIME = 2
+-- A plane that is not yet ready to attack circles its rival at this distance.
+-- Flying nose-first at the rival is saved for the attack itself, so closing in
+-- always means something is about to happen.
+BattleSimulation.STANDOFF = 34
+BattleSimulation.ORBIT_LEAD = 0.9
+BattleSimulation.ORBIT_SPEED = 28
+-- Closer than this with nothing loaded, a circling plane peels away.
+BattleSimulation.KEEP_CLEAR = 24
 BattleSimulation.MAX_WILD = 2
 BattleSimulation.METEOR_WINDUP = Skills.offence.Meteor.windup
 BattleSimulation.WAKE_LIFE = 0.9
@@ -169,7 +177,7 @@ function BattleSimulation.newRound(seed, settingsA, settingsB)
 		seed = seed, elapsed = 0, finished = false, winner = nil, reason = nil,
 		fighters = {}, projectiles = {}, wakes = {}, events = {}, eventSerial = 0,
 		pressure = 0, regulationTime = BattleSimulation.REGULATION_TIME, maxTime = BattleSimulation.MAX_TIME, _accumulator = 0, _projectileSerial = 0, _bumpCooldown = 0,
-		_wakeSerial = 0,
+		_wakeSerial = 0, spin = seed % 2 == 0 and 1 or -1,
 	}
 	updateBounds(state)
 	local configs = { settings(settingsA, "Meteor"), settings(settingsB, "Firework") }
@@ -192,6 +200,10 @@ function BattleSimulation.newRound(seed, settingsA, settingsB)
 			radius = BattleSimulation.PLANE_RADIUS, lockX = 0, lockY = 50,
 			_knockX = 0, _knockY = 0, _attackHit = false,
 		}
+		-- The opening pass gets the same seeded timing spread as every later one,
+		-- so the same attack does not always strike first.
+		-- One extra step of the cadence separates the two planes' timing.
+		fighter.phaseLeft = fighter.phaseLeft + (fighter._cadence * 16807) % 2147483647 / 2147483647 * 2.4 - 1.2
 		state.fighters[id] = fighter
 		wild(fighter, "start", state, fighter)
 		event(state, "launch", fighter.x, fighter.y, id, 0)
@@ -223,12 +235,17 @@ local function recover(state, fighter, opponent, duration)
 	-- interruptions. The seed records every pass; no accuracy/winner roll.
 	fighter._cadence = (fighter._cadence * 16807) % 2147483647
 	fighter._approachOffset = fighter._cadence / 2147483647 * 2.4 - 1.2
+	-- Both planes circle the same way round, or they would meet head-on.
+	state.spin = fighter._cadence % 2 == 0 and 1 or -1
 	fighter.phase, fighter.phaseLeft = "Recover", ((duration or Skills.offence[fighter.offenceId].recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.88 or 1)
 	fighter._bumperRecovery = nil
 	fighter.armed = false
 	local awayX, awayY = direction(fighter.x - opponent.x, fighter.y - opponent.y, fighter.id == 1 and -1 or 1)
 	fighter._recoverX = clamp(fighter.x + awayX * 32, -48, 48)
-	fighter._recoverY = clamp(fighter.y + awayY * 15 + (fighter.y < 49 and 18 or -18), 25, 77)
+	-- The higher plane banks up and the lower one down, so two planes turning
+	-- away at once open a gap instead of meeting again in the middle.
+	local above = fighter.y > opponent.y or (fighter.y == opponent.y and fighter.id == 1)
+	fighter._recoverY = clamp(fighter.y + awayY * 15 + (above and 18 or -18), 25, 77)
 end
 
 local function lockTarget(fighter, opponent)
@@ -286,6 +303,15 @@ local function prepare(state, fighter, opponent, dt)
 	local speed, turnRate = 28, 2.8
 	local wantX, wantY, wantSpeed, wantTurn
 	if fighter.phase == "Approach" then
+		fighter.circling = fighter.phaseLeft >= offence.earliest
+		if fighter.circling then
+			-- Aim for a point on the standoff ring a little way round from here.
+			local awayX, awayY = direction(-dx, -dy, fighter.id == 1 and -1 or 1)
+			local c, s = math.cos(BattleSimulation.ORBIT_LEAD), math.sin(BattleSimulation.ORBIT_LEAD) * state.spin
+			targetX = clamp(opponent.x + (awayX * c - awayY * s) * BattleSimulation.STANDOFF, state.bounds.left + 6, state.bounds.right - 6)
+			targetY = clamp(opponent.y + (awayX * s + awayY * c) * BattleSimulation.STANDOFF, state.bounds.bottom + 6, state.bounds.top - 6)
+			speed, turnRate = BattleSimulation.ORBIT_SPEED, 3.4
+		end
 		if offence.approach then
 			wantX, wantY, wantSpeed, wantTurn = offence.approach(api, state, fighter, opponent, dx, dy)
 		end
@@ -307,6 +333,12 @@ local function prepare(state, fighter, opponent, dt)
 	end
 	targetX, targetY = wantX or targetX, wantY or targetY
 	speed, turnRate = wantSpeed or speed, wantTurn or turnRate
+	if fighter.phase == "Approach" and fighter.circling and dx * dx + dy * dy < BattleSimulation.KEEP_CLEAR ^ 2 then
+		-- Too close with nothing loaded: peel off instead of brushing past.
+		local awayX, awayY = direction(-dx, -dy, fighter.id == 1 and -1 or 1)
+		targetX, targetY = fighter.x + awayX * 30, fighter.y + awayY * 30
+		turnRate = math.max(turnRate, 4.5)
+	end
 	if fighter.secondWind then speed, turnRate = speed * 1.12, turnRate * 1.2 end
 	turnRate = math.min(turnRate, BattleSimulation.MAX_TURN_RATE)
 	if fighter.phase ~= "Attack" then
@@ -418,7 +450,9 @@ local function tick(state)
 				b._knockX, b._knockY = -nx * 26, -ny * 26
 			end
 			state._bumpCooldown = 0.45
-			if not landed[1] and not landed[2] and not blocked[1] and not blocked[2] then
+			-- Planes still tangled just after a hit are part of that hit, not news.
+			if not landed[1] and not landed[2] and not blocked[1] and not blocked[2]
+				and a.invulnerable <= 0 and b.invulnerable <= 0 then
 				event(state, "bump", (a.x + b.x) / 2, (a.y + b.y) / 2, 1, 2)
 			end
 		end

@@ -600,6 +600,14 @@ BattleSimulation.PLANE_RADIUS = 5
 BattleSimulation.IMPACT_PROTECTION = 0.85
 BattleSimulation.APPROACH_TIME = 3
 BattleSimulation.RECOVERY_TIME = 2
+-- A plane that is not yet ready to attack circles its rival at this distance.
+-- Flying nose-first at the rival is saved for the attack itself, so closing in
+-- always means something is about to happen.
+BattleSimulation.STANDOFF = 34
+BattleSimulation.ORBIT_LEAD = 0.9
+BattleSimulation.ORBIT_SPEED = 28
+-- Closer than this with nothing loaded, a circling plane peels away.
+BattleSimulation.KEEP_CLEAR = 24
 BattleSimulation.MAX_WILD = 2
 BattleSimulation.METEOR_WINDUP = Skills.offence.Meteor.windup
 BattleSimulation.WAKE_LIFE = 0.9
@@ -747,7 +755,7 @@ function BattleSimulation.newRound(seed, settingsA, settingsB)
 		seed = seed, elapsed = 0, finished = false, winner = nil, reason = nil,
 		fighters = {}, projectiles = {}, wakes = {}, events = {}, eventSerial = 0,
 		pressure = 0, regulationTime = BattleSimulation.REGULATION_TIME, maxTime = BattleSimulation.MAX_TIME, _accumulator = 0, _projectileSerial = 0, _bumpCooldown = 0,
-		_wakeSerial = 0,
+		_wakeSerial = 0, spin = seed % 2 == 0 and 1 or -1,
 	}
 	updateBounds(state)
 	local configs = { settings(settingsA, "Meteor"), settings(settingsB, "Firework") }
@@ -770,6 +778,10 @@ function BattleSimulation.newRound(seed, settingsA, settingsB)
 			radius = BattleSimulation.PLANE_RADIUS, lockX = 0, lockY = 50,
 			_knockX = 0, _knockY = 0, _attackHit = false,
 		}
+		-- The opening pass gets the same seeded timing spread as every later one,
+		-- so the same attack does not always strike first.
+		-- One extra step of the cadence separates the two planes' timing.
+		fighter.phaseLeft = fighter.phaseLeft + (fighter._cadence * 16807) % 2147483647 / 2147483647 * 2.4 - 1.2
 		state.fighters[id] = fighter
 		wild(fighter, "start", state, fighter)
 		event(state, "launch", fighter.x, fighter.y, id, 0)
@@ -801,12 +813,17 @@ local function recover(state, fighter, opponent, duration)
 	-- interruptions. The seed records every pass; no accuracy/winner roll.
 	fighter._cadence = (fighter._cadence * 16807) % 2147483647
 	fighter._approachOffset = fighter._cadence / 2147483647 * 2.4 - 1.2
+	-- Both planes circle the same way round, or they would meet head-on.
+	state.spin = fighter._cadence % 2 == 0 and 1 or -1
 	fighter.phase, fighter.phaseLeft = "Recover", ((duration or Skills.offence[fighter.offenceId].recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.88 or 1)
 	fighter._bumperRecovery = nil
 	fighter.armed = false
 	local awayX, awayY = direction(fighter.x - opponent.x, fighter.y - opponent.y, fighter.id == 1 and -1 or 1)
 	fighter._recoverX = clamp(fighter.x + awayX * 32, -48, 48)
-	fighter._recoverY = clamp(fighter.y + awayY * 15 + (fighter.y &lt; 49 and 18 or -18), 25, 77)
+	-- The higher plane banks up and the lower one down, so two planes turning
+	-- away at once open a gap instead of meeting again in the middle.
+	local above = fighter.y &gt; opponent.y or (fighter.y == opponent.y and fighter.id == 1)
+	fighter._recoverY = clamp(fighter.y + awayY * 15 + (above and 18 or -18), 25, 77)
 end
 
 local function lockTarget(fighter, opponent)
@@ -864,6 +881,15 @@ local function prepare(state, fighter, opponent, dt)
 	local speed, turnRate = 28, 2.8
 	local wantX, wantY, wantSpeed, wantTurn
 	if fighter.phase == "Approach" then
+		fighter.circling = fighter.phaseLeft &gt;= offence.earliest
+		if fighter.circling then
+			-- Aim for a point on the standoff ring a little way round from here.
+			local awayX, awayY = direction(-dx, -dy, fighter.id == 1 and -1 or 1)
+			local c, s = math.cos(BattleSimulation.ORBIT_LEAD), math.sin(BattleSimulation.ORBIT_LEAD) * state.spin
+			targetX = clamp(opponent.x + (awayX * c - awayY * s) * BattleSimulation.STANDOFF, state.bounds.left + 6, state.bounds.right - 6)
+			targetY = clamp(opponent.y + (awayX * s + awayY * c) * BattleSimulation.STANDOFF, state.bounds.bottom + 6, state.bounds.top - 6)
+			speed, turnRate = BattleSimulation.ORBIT_SPEED, 3.4
+		end
 		if offence.approach then
 			wantX, wantY, wantSpeed, wantTurn = offence.approach(api, state, fighter, opponent, dx, dy)
 		end
@@ -885,6 +911,12 @@ local function prepare(state, fighter, opponent, dt)
 	end
 	targetX, targetY = wantX or targetX, wantY or targetY
 	speed, turnRate = wantSpeed or speed, wantTurn or turnRate
+	if fighter.phase == "Approach" and fighter.circling and dx * dx + dy * dy &lt; BattleSimulation.KEEP_CLEAR ^ 2 then
+		-- Too close with nothing loaded: peel off instead of brushing past.
+		local awayX, awayY = direction(-dx, -dy, fighter.id == 1 and -1 or 1)
+		targetX, targetY = fighter.x + awayX * 30, fighter.y + awayY * 30
+		turnRate = math.max(turnRate, 4.5)
+	end
 	if fighter.secondWind then speed, turnRate = speed * 1.12, turnRate * 1.2 end
 	turnRate = math.min(turnRate, BattleSimulation.MAX_TURN_RATE)
 	if fighter.phase ~= "Attack" then
@@ -996,7 +1028,9 @@ local function tick(state)
 				b._knockX, b._knockY = -nx * 26, -ny * 26
 			end
 			state._bumpCooldown = 0.45
-			if not landed[1] and not landed[2] and not blocked[1] and not blocked[2] then
+			-- Planes still tangled just after a hit are part of that hit, not news.
+			if not landed[1] and not landed[2] and not blocked[1] and not blocked[2]
+				and a.invulnerable &lt;= 0 and b.invulnerable &lt;= 0 then
 				event(state, "bump", (a.x + b.x) / 2, (a.y + b.y) / 2, 1, 2)
 			end
 		end
@@ -1150,7 +1184,7 @@ local PI = math.pi
 
 BattleSkills.offence.Meteor = {
 	windup = 1, aimTime = 0.4, attackTime = 1.05, attackSpeed = 65,
-	earliest = 1.45, leadSpeed = 65, leadFactor = 0.85, ram = "meteor",
+	earliest = 1.85, leadSpeed = 65, leadFactor = 0.85, ram = "meteor",
 	inPosition = function(_, _, fighter, opponent, dx)
 		return fighter.y &gt;= opponent.y + 8 and math.abs(dx) &lt; 68
 	end,
@@ -1192,7 +1226,7 @@ BattleSkills.offence.Meteor = {
 
 BattleSkills.offence.Firework = {
 	windup = 1, attackTime = 0.5, attackSpeed = 27,
-	earliest = 1.05, leadSpeed = 60, leadFactor = 0.55,
+	earliest = 1.1, leadSpeed = 60, leadFactor = 0.55,
 	inPosition = function(_, _, _, _, dx, dy)
 		return dx * dx + dy * dy &lt; 76 * 76
 	end,
@@ -1230,7 +1264,7 @@ BattleSkills.offence.MachineGun = {
 
 BattleSkills.offence.Pinball = {
 	windup = 2.4, attackTime = 1.3, attackSpeed = 65,
-	earliest = 1.6, leadSpeed = 72, leadFactor = 0.45, ram = "pinball", wallRam = true,
+	earliest = 1.7, leadSpeed = 72, leadFactor = 0.45, ram = "pinball", wallRam = true,
 	-- The rebound is the hardest attack to dodge, so it comes round less often.
 	approachTime = 3.2, recoveryTime = 2.2,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy &lt; 85 * 85 end,
@@ -5782,9 +5816,13 @@ return function(Simulation, Catalog, Skills)
 
 	test("controlled Meteor charge creates continuous space before a visible landed dive", function()
 		local state = Simulation.newRound(731, { offenceId = "Meteor", angle = 32 }, { offenceId = "Firework", angle = 32 })
-		-- Hold the rival tell constant: this fixture measures charge geometry,
-		-- not whether the current Firework tuning wins the opening exchange.
-		state.fighters[2].windupDuration = 1.05
+		-- A placed fixture: the Meteor is about to charge and the rival is held
+		-- in an endless slow windup beside it. This measures charge geometry,
+		-- not approach timing or who wins the opening.
+		local meteor, rival = state.fighters[1], state.fighters[2]
+		meteor.x, meteor.y, meteor.heading, meteor.phaseLeft = 0, 50, math.pi, 0.001
+		rival.x, rival.y, rival.heading = 38, 50, math.pi
+		rival.phase, rival.phaseLeft = "Windup", 100
 		local charge, commitment, impact, waypointX, waypointY, previousHeading
 		local serial = state.eventSerial
 		for _ = 1, 300 do
@@ -5814,10 +5852,10 @@ return function(Simulation, Catalog, Skills)
 		end
 		check(charge and commitment and impact, "Default charge did not finish in a real strike")
 		check(close(commitment.at - charge.at, Simulation.METEOR_WINDUP), "Charge duration changed")
-		check(impact.at - commitment.at &gt;= 0.25 and impact.at - commitment.at &lt;= 0.7, "Default strike has no visible flight")
+		check(impact.at - commitment.at &gt;= 0.25 and impact.at - commitment.at &lt;= 0.9, "Default strike has no visible flight")
 		check(math.abs(commitment.x - charge.x) &gt; 20, "Charge failed to create real separation")
 		check(state.fighters[2].armor == 2 and state.fighters[1].armor == 3, "Strike changed the one-pip damage rule")
-		check(state.fighters[2].windupDuration == 1.05, "Firework windup changed")
+		check(state.fighters[2].attacks == 0, "The held rival attacked")
 	end)
 
 	test("Meteor remains vulnerable during the backoff charge", function()
@@ -6314,6 +6352,53 @@ return function(Simulation, Catalog, Skills)
 			check(equal(first, second) and first.elapsed &lt;= 35, "Roster replay/cap failed: " .. entry.id)
 			check(first.fighters[1].attacks &gt; 0 and first.fighters[2].attacks &gt; 0, "Automatic pilot never attacks: " .. entry.id)
 		end
+	end)
+
+	test("planes with nothing loaded circle each other and never touch", function()
+		for _, seed in ipairs({ 104729, 112648, 9973131, 20261010 }) do
+			for _, offence in ipairs({ "Firework", "MachineGun", "Pinball" }) do
+				local state = Simulation.newRound(seed, { offenceId = offence, angle = 32 }, { offenceId = offence, angle = 32 })
+				state.fighters[1].phaseLeft, state.fighters[2].phaseLeft = 100, 100
+				local nearest, farthest = math.huge, 0
+				for tick = 1, 360 do
+					Simulation.step(state, Simulation.FIXED_DT)
+					local a, b = state.fighters[1], state.fighters[2]
+					local distance = math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2)
+					nearest = math.min(nearest, distance)
+					if tick &gt; 180 then farthest = math.max(farthest, distance) end
+					check(a.circling and b.circling and a.phase == "Approach", "A waiting plane stopped circling")
+				end
+				check(nearest &gt; Simulation.PLANE_RADIUS * 2 + 2, offence .. " planes touched while waiting, seed " .. seed)
+				check(farthest &lt; 70, offence .. " planes drifted apart instead of circling, seed " .. seed)
+				for _, entry in ipairs(state.events) do check(entry.kind ~= "bump", "Waiting planes bumped") end
+			end
+		end
+	end)
+
+	test("each plane gets its own seeded opening timing", function()
+		local different = 0
+		for seed = 1, 40 do
+			local state = Simulation.newRound(seed * 104729, { offenceId = "Firework" }, { offenceId = "Firework" })
+			local again = Simulation.newRound(seed * 104729, { offenceId = "Firework" }, { offenceId = "Firework" })
+			local a, b = state.fighters[1].phaseLeft, state.fighters[2].phaseLeft
+			check(a == again.fighters[1].phaseLeft and b == again.fighters[2].phaseLeft, "Opening timing is not repeatable")
+			check(a &gt;= 1.8 - 0.000001 and a &lt;= 4.2 + 0.000001 and b &gt;= 1.8 - 0.000001 and b &lt;= 4.2 + 0.000001, "Opening timing left its range")
+			if math.abs(a - b) &gt; 0.2 then different = different + 1 end
+		end
+		check(different &gt;= 25, "Both planes share one opening timing, so the same attack always strikes first")
+	end)
+
+	test("colliding just after a hit is not announced as a new bump", function()
+		local state = Simulation.newRound(1)
+		passive(state.fighters[1], 0, 50, 0)
+		passive(state.fighters[2], 8, 50, math.pi)
+		state.fighters[2].invulnerable = 0.5
+		local serial = state.eventSerial
+		Simulation.step(state, Simulation.FIXED_DT)
+		for _, entry in ipairs(state.events) do
+			check(entry.serial &lt;= serial or entry.kind ~= "bump", "A protected plane announced a bump")
+		end
+		check(state.fighters[1]._knockX &lt; 0 and state.fighters[2]._knockX &gt; 0, "Tangled planes were not pushed apart")
 	end)
 
 	return string.format("BattleSimulation: %d tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes)", passed)
@@ -8438,6 +8523,21 @@ return function(View, World, Simulation)
         assert(landed and bounced and #cues==1,"Bounce failed or repeated first contact")
         assert(math.abs(view.fighters[1].crashContactY-view.groundY)&lt;0.002,"Bounce did not settle")
         advance(snapshot(421,"Pick",3,3),0.1);assert(view.fighters[1].crash==nil,"Next draft kept old fall")
+    end)
+    test("the load gauge fills while circling and lights fully only when the attack is loaded",function(view,cues,advance,snapshot)
+        local s=snapshot(430,"Fight",3,3);local f=s.simulation.fighters[1]
+        f.vx=20;f.phase,f.phaseLeft,f.circling="Approach",3,true
+        advance(s,0.1)
+        local ring=view.fighters[1].loadRing
+        local function lit() local n=0;for _,piece in ipairs(ring) do if piece.Transparency&lt;0.8 then n=n+1 end end;return n end
+        assert(#ring==10 and lit()==0 and view.fighters[1].model:GetAttribute("AttackLoaded")==false,"An empty attack looked loaded")
+        f.phaseLeft=1.5;advance(s,0.1)
+        assert(lit()&gt;=4 and lit()&lt;=6,"Half-loaded gauge did not show about half")
+        f.circling=false;advance(s,0.1)
+        assert(lit()==10 and view.fighters[1].model:GetAttribute("AttackLoaded")==true,"A loaded attack did not light the whole gauge")
+        f.phase,f.phaseLeft="Windup",1;advance(s,0.1);assert(lit()==10,"Gauge went dark during the windup")
+        f.phase,f.phaseLeft="Recover",2;advance(s,0.1)
+        assert(lit()==0 and view.fighters[1].model:GetAttribute("AttackLoaded")==false,"Gauge stayed lit while banking away")
     end)
     return string.format("BattleView: %d native presentation tests passed",passed)
 end
@@ -13992,6 +14092,8 @@ function BattleView:_resetRound(roundId)
 		hide(fighter.speedLines)
 		hide(fighter.magnetRing)
 		hide(fighter.windRing)
+		hide(fighter.loadRing)
+		fighter.approachSpan = nil
 		hide(fighter.cometFlames)
 		hide(fighter.signatureSparks)
 		hide(fighter.muzzleFlashes)
@@ -14212,6 +14314,7 @@ function BattleView:_fighter(id, index)
 		lampAnchor = lampAnchor, noseLight = noseLight, shotTime = -100, secondWindTime = -100, magnetTime = -100,
 		magnetRing = makeRing(fx, "MagnetPull", 10, Color3.fromRGB(255, 120, 190)),
 		windRing = makeRing(fx, "SecondWind", 10, Color3.fromRGB(130, 255, 190)),
+		loadRing = makeRing(fx, "AttackLoad", 10, color),
 		scuff = scuff, debris = debris, crashLanded = false, index = index,
 	}
 	-- Smoke is positioned in world space and must never enlarge aircraft
@@ -14647,6 +14750,23 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 	if moving and state.secondWind == true then
 		ring(fighter.windRing, center, 8.4, Color3.fromRGB(130, 255, 190), 0.45, self.reducedMotion and 0 or self.clock * 0.6, 0.24)
 	else hide(fighter.windRing) end
+	-- The load gauge rides on the plane: it fills piece by piece while the
+	-- plane circles with nothing to fire, then snaps full and bright the moment
+	-- the attack is loaded. An empty ring means a pass is only a pass.
+	local loading = moving and not simulation.finished and (state.phase == "Approach" or state.phase == "Windup")
+	if loading then
+		local loaded = state.phase == "Windup" or state.circling == false
+		local span = fighter.approachSpan or 3
+		local fraction = loaded and 1 or math.clamp(1 - numeric(state.phaseLeft, span) / span, 0, 0.9)
+		local pulse = (loaded and not self.reducedMotion) and 0.5 + 0.5 * math.sin(self.clock * 14) or 0
+		ring(fighter.loadRing, center, 6.2 + pulse * 0.35, loaded and fighter.color:Lerp(Color3.new(1, 1, 1), 0.35 + pulse * 0.4) or fighter.color,
+			loaded and 0.05 or 0.35, math.pi / 2, loaded and 0.5 or 0.32)
+		local lit = math.floor(fraction * #fighter.loadRing + 0.5)
+		for index, piece in ipairs(fighter.loadRing) do
+			if index &gt; lit then piece.Transparency = 0.88 end
+		end
+	else hide(fighter.loadRing) end
+	fighter.model:SetAttribute("AttackLoaded", loading and (state.phase == "Windup" or state.circling == false) or false)
 	local offence = self.skills and self.skills.get(fighter.offenceId)
 	local tell
 	if winner then tell = "WINNER!"
@@ -14882,6 +15002,9 @@ function BattleView:update(snapshot, dt, viewportRect)
 			or (settings and type(settings.wildIds) == "table" and settings.wildIds) or {}
 		if state.phase == "Windup" and fighter.previousPhase ~= "Windup" then
 			fighter.observedWindupDuration = math.max(0.01, numeric(state.phaseLeft, 1))
+		end
+		if state.phase == "Approach" and fighter.previousPhase ~= "Approach" then
+			fighter.approachSpan = math.max(0.1, numeric(state.phaseLeft, 3))
 		end
 		fighter.previousPhase = state.phase
 		local vx, vy = numeric(state.vx, 0), numeric(state.vy, 0)
