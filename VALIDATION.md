@@ -1,4 +1,12 @@
-# Distinct, stronger powers — October 10, 2026 (not published)
+# Version 13 publication — distinct powers, October 10, 2026
+
+**Skybound Test version 13 is published**, place `86507299893768`, universe `10770074500`, at **2026-10-11T03:24:05Z** (October 10, 20:24:05 PDT), from **`fc2cb0b86897ff77f89c511fab6572f6915d41a5`**. Studio confirmed publication and Playtester availability; access settings were unchanged. [Publication proof](docs/validation/qa-2026-10-10/published-version-13.jpg), [current manifest](docs/validation/sky-battle-build.json).
+
+Fresh publication checks passed **46 simulation, 5 catalog and 48 server scenarios**, plus **84 native Studio checks** (46 simulation, 14 view, 24 audio). All 35 cloud sources matched UTF-8 FNV checksums and byte lengths after eight script updates, with zero extra scripts/diagnostic flags, four remotes and Sensor orientation. Local XML SHA-256: `cd3bf4d854a56252f1f4e43aaf51df3c93c0b2b61f156408efeede5953865a1e`; native artifact byte identity is not claimed. [Native/source/probe evidence](docs/validation/qa-2026-10-10/version-13-native.json), [server](docs/validation/qa-2026-10-10/version-13-server.txt), [simulation/catalog](docs/validation/qa-2026-10-10/version-13-simulation.txt).
+
+Actual desktop input selected/locked Pinball, completed a two-round 2–0 bot win with +75 session-only coins, and rematched into a fresh four-attack draft with 15 seconds, full armor and 0–0 score. Read-only client observation captured a visible Pinball ball and ricochet/bounce/hit events. A runtime-only server guidance override enabled this normal draft; stopping Play discarded it and the final Edit place had no overrides. No game-script errors appeared. [Match result](docs/validation/qa-2026-10-10/version-13-result-smoke.jpg). Audio tests did not play real sound. Physical phone, live multiplayer/persistence and full balance were not retested.
+
+Publication follow-ups: the balance concerns below remain open; MagnetGrip continues animating with Motion off in source review. The smoke highlighted Magnet near the pick deadline, but the final build used Afterburner; this does not establish a successful Magnet lock and warrants a focused last-second selection check. The implementation measurements below precede this publication pass.
 
 Playtest feedback was that the powers do not feel powerful or different. Measured before this change: Pinball and Meteor were both "back off, then ram at speed 65", and three of five wild cards had no visible moment (single-card lift: Afterburner 0, Fizzy Fuel +2.5, Magnet +5.5, Second Wind +9.5, Spring Bumper +15 points).
 

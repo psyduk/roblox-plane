@@ -1,0 +1,53 @@
+51 player-stats tests passed
+11 CosmeticCatalog tests passed
+BattleLab: 35 orchestration cases passed
+BattleClient: 12 command and feedback tests passed
+PASS: default PLAY queues then pairs human rivals with hidden offers
+PASS: default PLAY bot fallback timeout completes a bounded automatic match
+PASS: draft rejects bare and stale locks without silently choosing a replacement
+PASS: default queue cancellation and disconnect restore controls and allow a new match
+PASS: default mode cannot start distance racing through pads practice or Studio pairing
+PASS: default battle routing retains lobby appearance configuration and cosmetics
+PASS: human terminal awards both perspectives once and first choice never blocks rematch
+PASS: bot completed award purchases and equips in results while fight mutations are blocked
+PASS: instant departure gives neither account coins and same-server challenge plays normally
+PASS: a first-time pilot gets one guided bot match, then the normal queue
+PASS: two practice flights unlock a cosmetic and explicit equip reaches the next flight
+PASS: cosmetic commands require lobby and share a throttle across actions
+PASS: client settings cannot equip an unowned cosmetic or switch a locked trail
+PASS: forfeits and aborted survivors receive no credits
+PASS: power identity is validated and locks before launch
+PASS: each round starts with fresh power charges for both pilots
+PASS: aim locks the loadout while accepting only bounded angle changes
+PASS: configuration readiness resets for aiming and the new phase observes its guard
+PASS: plane catalog is free and server rejects unknown IDs speed spoofing and obsolete power
+PASS: human planes and chosen angles launch independently at catalog speed
+PASS: practice ghost plane is deterministic per course and changes on rematch
+PASS: unpublished Studio explicitly uses session-only stats and no analytics
+PASS: pads require two different pilots and clear seats on launch
+PASS: walking off or leaving a queue removes membership
+PASS: simultaneous duels isolate snapshots votes and settings
+PASS: configuration locks at countdown and rejects malformed commands
+PASS: disconnect cancels either preflight participant without an orphan match
+PASS: queued disconnect cannot leave a phantom opponent
+PASS: leaving a flight forfeits even when ahead and permits a new match
+PASS: disconnect during flight awards the attached opponent a win
+PASS: rematch requires both humans and clears flight ready and vote state
+PASS: results departure prevents a pending rematch and cleans abandoned matches
+PASS: PLAY pairs two searching pilots without pads
+PASS: PLAY falls back to one labelled ghost and can be cancelled in place
+PASS: PLAY joins a pilot already waiting on a pad and a leaver frees the search
+PASS: flight board names the active duel and keeps the club best
+PASS: practice has exactly one ghost and supports a one-human rematch
+PASS: unready human duel follows phase deadlines and returns both to hub
+PASS: duplicate or busy participants cannot form another match
+PASS: published earned wallet collection and equipped trail survive rejoin
+PASS: published practice statistics survive leave and rejoin
+PASS: human forfeit records a loss without an aborted best and tie preserves streak
+PASS: live load failure recovers verified durable history before merging one new outcome
+PASS: published battle reward choice mastery and saved equipment survive reconnect
+PASS: published failed award save is unconfirmed and normal retry preserves single award
+PASS: published guidance uses verified fresh and returning profiles
+PASS: unavailable returning profile cannot be mistaken for a first-time pilot
+PASS: pending profile load cannot start guidance before returning history arrives
+48 server scenarios passed (15 default battle mode; 33 explicit distance mode)
