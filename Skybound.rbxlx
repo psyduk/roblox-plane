@@ -4498,13 +4498,12 @@ local BattleLab = {}
 BattleLab.__index = BattleLab
 BattleLab.ROSTER_VERSION = "sky-battle-public-v1"
 BattleLab.QUEUE_SECONDS = 8
-BattleLab.PICK_SECONDS = 15
--- Every pick shows the whole eligible roster, so a new pilot sees all the
--- skills there are. A smaller OFFER_SIZE deals a random hand instead, and
--- the two per-match helpers below only matter then.
-BattleLab.OFFER_SIZE = 9
-BattleLab.REROLLS = 0
-BattleLab.PICK_ANYS = 0
+-- Before every round each pilot sets up a loadout: one attack, plus one
+-- wild card slot for each decisive round played. Everything already on the
+-- plane stays there unless the pilot swaps it, and every pick shows the
+-- whole roster.
+BattleLab.PICK_SECONDS = 20
+BattleLab.MAX_WILDS = 2
 -- Long enough to read who hit whom before the next pick takes the screen.
 BattleLab.ROUND_OVER_SECONDS = 3.5
 BattleLab.MATCH_SECONDS = 240
@@ -4606,25 +4605,33 @@ function BattleLab:event(player,name,m,extra)
     for key,value in pairs(extra or {}) do data[key]=value end
     self.deps.onEvent(player,name,data)
 end
-function BattleLab:eligible(m,side)
-    local result={}; local build=m.settings[side]
-    for _,id in ipairs(m.stage==1 and m.roster.offences or m.roster.wilds) do
-        if not contains(build.wildIds,id) then result[#result+1]=id end
-    end
-    return result
+function BattleLab:slots(m)
+    return math.max(0,math.min(self.MAX_WILDS,m.stage-1))
 end
-function BattleLab:offer(eligible,old)
-    local size=self.OFFER_SIZE
-    -- A full hand keeps roster order so each card is always in the same place.
-    if #eligible&lt;=size then return copy(eligible) end
-    local shuffled=copy(eligible)
-    for index=#shuffled,2,-1 do local other=self:random(index); shuffled[index],shuffled[other]=shuffled[other],shuffled[index] end
-    local result={}; for index=1,math.min(size,#shuffled) do result[index]=shuffled[index] end
-    if old and #eligible&gt;size then
-        local same=true; for _,id in ipairs(result) do if not contains(old,id) then same=false end end
-        if same then for _,id in ipairs(eligible) do if not contains(result,id) then result[#result]=id; break end end end
+-- A complete loadout is one offered attack and one distinct offered wild card
+-- for every open slot.
+function BattleLab:validBuild(m,side,offenceId,wildIds)
+    local offer,slots=m.offers[side],self:slots(m)
+    if not offer or not contains(offer.offences,offenceId) or type(wildIds)~="table" or #wildIds~=slots then return false end
+    for index=1,slots do
+        if not contains(offer.wilds,wildIds[index]) then return false end
+        for other=1,index-1 do if wildIds[other]==wildIds[index] then return false end end
     end
-    return result
+    return true
+end
+-- Fills whatever a draft still lacks: the first offered card for a pilot who
+-- ran out of time, a random one for a bot.
+function BattleLab:fillDraft(m,side,random)
+    local offer,draft=m.offers[side],m.drafts[side]
+    if not contains(offer.offences,draft.offenceId) then
+        draft.offenceId=offer.offences[random and self:random(#offer.offences) or 1]
+    end
+    while #draft.wildIds&lt;self:slots(m) do
+        local free={}
+        for _,id in ipairs(offer.wilds) do if not contains(draft.wildIds,id) then free[#free+1]=id end end
+        if #free==0 then break end
+        draft.wildIds[#draft.wildIds+1]=free[random and self:random(#free) or 1]
+    end
 end
 function BattleLab:changePhase(m,phase,endsAt)
     local elapsed=math.max(0,self.deps.now()-(m.phaseAt or self.deps.now()))
@@ -4635,18 +4642,20 @@ function BattleLab:changePhase(m,phase,endsAt)
 end
 function BattleLab:startPick(m)
     self:changePhase(m,"Pick",self.deps.now()+(m.guided and self.GUIDE_PICK_SECONDS or self.PICK_SECONDS))
-    m.selected={}; m.locked={false,false}; m.offers={}; m.offerRevision={1,1}; m.pickAnyActive={false,false}
+    m.locked={false,false}; m.offers={}; m.drafts={}; m.offerRevision={1,1}
     for side,participant in ipairs(m.participants) do
-        local eligible=self:eligible(m,side)
+        local offer={offences=copy(m.roster.offences),wilds=copy(m.roster.wilds)}
         if m.guided then
             -- The first cards a pilot ever reads: the plainest ones, in a fixed order.
-            local hand={}
+            offer.offences=copy(GUIDE.offences); offer.wilds={}
             for _,id in ipairs(GUIDE.wilds) do
-                if #hand&lt;(GUIDE.hand[m.stage] or 3) and contains(eligible,id) then hand[#hand+1]=id end
+                if #offer.wilds&lt;(GUIDE.hand[m.stage] or 3) and contains(m.roster.wilds,id) then offer.wilds[#offer.wilds+1]=id end
             end
-            m.offers[side]=hand
-        else m.offers[side]=self:offer(eligible) end
-        if not participant.player then m.selected[side]=m.offers[side][self:random(#m.offers[side])]; m.locked[side]=true end
+        end
+        m.offers[side]=offer
+        -- Each draft starts as the plane that just flew.
+        m.drafts[side]={offenceId=m.settings[side].offenceId,wildIds=copy(m.settings[side].wildIds)}
+        if not participant.player then self:fillDraft(m,side,true); m.locked[side]=true end
     end
 end
 function BattleLab:startRound(m,countdown)
@@ -4661,9 +4670,8 @@ function BattleLab:startRound(m,countdown)
 end
 function BattleLab:reveal(m)
     for side=1,2 do
-        local selected=m.selected[side] or m.offers[side][1]
-        if m.stage==1 then m.settings[side].offenceId=selected
-        else table.insert(m.settings[side].wildIds,selected) end
+        m.settings[side].offenceId=m.drafts[side].offenceId
+        m.settings[side].wildIds=copy(m.drafts[side].wildIds)
     end
     self:startRound(m)
 end
@@ -4674,7 +4682,7 @@ function BattleLab:createMatch(a,b,mode,botIdentity)
     if guided then mode="practice" end
     local m={id=self.sequence,participants={{player=a.player},{player=b and b.player}},identities={self:identity(a.player),copy(botIdentity) or self:identity(b and b.player)},
         roster=copy(a.roster),guided=guided,mode=mode or a.roster.mode,diagnostic=a.roster.mode=="experimental" or (self.deps.allowFixedSeed and finite(self.deps.fixedSeed)),startedAt=self.deps.now(),score={0,0},stage=1,
-        roundNumber=0,roundId=0,settings={{wildIds={},angle=35},{wildIds={},angle=35}},resources={{reroll=self.REROLLS,pickAny=self.PICK_ANYS},{reroll=self.REROLLS,pickAny=self.PICK_ANYS}},
+        roundNumber=0,roundId=0,settings={{wildIds={},angle=35},{wildIds={},angle=35}},
         votes={false,false},rewards={},rounds={},completedRounds=0,decisiveRounds=0,fightSeconds=0,draftSeconds=0,transitionSeconds=0,
         queueSeconds=math.max(0,self.deps.now()-a.queuedAt)}
     -- A bot never flies the pilot's own paint; two planes must read apart at a glance.
@@ -4691,7 +4699,7 @@ function BattleLab:createMatch(a,b,mode,botIdentity)
         -- Round one is dealt, not picked, so the first thing a new pilot does
         -- is watch a fight. The round winner still earns the first wild card.
         m.settings[1].offenceId=GUIDE.offences[1]; m.settings[2].offenceId=GUIDE.offences[2]
-        m.selected={}; m.locked={true,true}; m.offers={{},{}}; m.offerRevision={0,0}; m.pickAnyActive={false,false}
+        m.locked={true,true}; m.offers={}; m.drafts={}; m.offerRevision={0,0}
         self:startRound(m,self.GUIDE_INTRO_SECONDS)
     else self:startPick(m) end
     self:emitMatch(m)
@@ -4772,19 +4780,15 @@ function BattleLab:snapshot(player)
     if not session.match then return {active=true,phase="Searching",serverTime=self.deps.now(),endsAt=session.queuedAt+self.QUEUE_SECONDS,
         queuedAt=session.queuedAt,queueId=session.queueId,rosterVersion=session.roster.version,mode=session.roster.mode} end
     local m,side=session.match,session.side
-    local eligible=m.phase=="Pick" and self:eligible(m,side) or {}
-    local resources=copy(m.resources[side]); local reason
-    if resources.reroll==0 then reason="Used this match"
-    elseif #eligible&lt;=self.OFFER_SIZE then reason="All remaining cards are already offered"
-    elseif m.pickAnyActive[side] then reason="Pick Any is open" end
+    local picking=m.phase=="Pick"
     return {active=true,phase=m.phase,matchId=m.id,roundId=m.roundId,roundNumber=m.roundNumber,stage=m.stage,
-        slot=m.stage==1 and "offence" or "wild",score=pair(m.score,side),settings=pair(m.settings,side),players=pair(m.identities,side),
+        slots=self:slots(m),score=pair(m.score,side),settings=pair(m.settings,side),players=pair(m.identities,side),
         simulation=perspective(m.simulation,side),endsAt=m.endsAt,pickDeadline=m.phase=="Pick" and m.endsAt or 0,
         fightDeadline=m.phase=="Fight" and m.fightDeadline or 0,
         matchDeadline=m.startedAt+self.MATCH_SECONDS,serverTime=self.deps.now(),simulatedOpponent=m.identities[3-side].bot,
-        guided=m.guided==true,offer=m.phase=="Pick" and copy(m.offers[side]) or {},offerRevision=m.offerRevision[side],eligible=eligible,
-        selected=m.phase=="Pick" and m.selected[side] or nil,locked=pair(m.locked or {false,false},side),
-        resources=resources,pickAnyActive=m.pickAnyActive[side],rerollReason=reason,matchPoint=m.score[1]==1 or m.score[2]==1,
+        guided=m.guided==true,offer=picking and copy(m.offers[side]) or {offences={},wilds={}},offerRevision=m.offerRevision[side],
+        draft=picking and copy(m.drafts[side]) or nil,locked=pair(m.locked or {false,false},side),
+        matchPoint=m.score[1]==1 or m.score[2]==1,
         result=self:viewResult(m,m.result,side),roundResult=self:viewResult(m,m.roundResult,side),reward=copy(m.rewards[side]),
         rematchVotes=pair(m.votes,side),rivalGone=m.participants[3-side].gone==true,
         rematchStatus=m.participants[3-side].gone and "unavailable" or m.votes[side] and "waiting" or "ready",
@@ -4960,20 +4964,19 @@ function BattleLab:command(player,payload)
             end
         elseif m.phase=="Pick" and time&lt;m.endsAt and payload.stage==m.stage and payload.offerRevision==m.offerRevision[side] and not m.locked[side]
             and payload.side==nil and payload.userId==nil and payload.playerId==nil and payload.settings==nil then
-            local eligible=self:eligible(m,side)
-            if kind=="pick" and payload.slot==(m.stage==1 and "offence" or "wild") and contains(m.offers[side],payload.skillId) then
-                m.selected[side]=payload.skillId
-            elseif kind=="lock" and payload.slot==(m.stage==1 and "offence" or "wild") and contains(m.offers[side],payload.skillId) then
-                -- Lock exactly the card the pilot saw. Only the deadline may
-                -- auto-pick: an old offer or missing selection cannot do so.
-                m.selected[side]=payload.skillId; m.locked[side]=true
+            local draft,offer,index=m.drafts[side],m.offers[side],payload.index
+            if kind=="pick" and payload.slot=="offence" and contains(offer.offences,payload.skillId) then
+                draft.offenceId=payload.skillId
+            elseif kind=="pick" and payload.slot=="wild" and contains(offer.wilds,payload.skillId) and not contains(draft.wildIds,payload.skillId)
+                and type(index)=="number" and index%1==0 and index&gt;=1 and index&lt;=self:slots(m) and index&lt;=#draft.wildIds+1 then
+                draft.wildIds[index]=payload.skillId
+            elseif kind=="lock" and self:validBuild(m,side,payload.offenceId,payload.wildIds) then
+                -- Lock exactly the loadout the pilot saw. Only the deadline
+                -- may fill a gap: an incomplete or stale lock cannot.
+                draft.offenceId=payload.offenceId; draft.wildIds={}
+                for slot=1,self:slots(m) do draft.wildIds[slot]=payload.wildIds[slot] end
+                m.locked[side]=true
                 if m.locked[1] and m.locked[2] then self:reveal(m) end
-            elseif kind=="reroll" and m.resources[side].reroll&gt;0 and #eligible&gt;self.OFFER_SIZE and not m.pickAnyActive[side] then
-                m.offers[side]=self:offer(eligible,m.offers[side]); m.resources[side].reroll=0; m.selected[side]=nil
-                m.offerRevision[side]=m.offerRevision[side]+1
-            elseif kind=="pickAny" and m.resources[side].pickAny&gt;0 then
-                m.resources[side].pickAny=0; m.pickAnyActive[side]=true; m.offers[side]=eligible; m.selected[side]=nil
-                m.offerRevision[side]=m.offerRevision[side]+1
             end
         end
         self:emitMatch(m)
@@ -5000,7 +5003,7 @@ function BattleLab:step(dt)
         if m.phase~="MatchOver" and time&gt;=m.startedAt+self.MATCH_SECONDS then
             self:terminal(m,m.score[1]==m.score[2] and 0 or m.score[1]&gt;m.score[2] and 1 or 2,"wall_cap")
         elseif m.phase=="Pick" and time&gt;=m.endsAt then
-            for side=1,2 do if not m.locked[side] then m.selected[side]=m.offers[side][1]; m.locked[side]=true end end
+            for side=1,2 do if not m.locked[side] then self:fillDraft(m,side,false); m.locked[side]=true end end
             self:reveal(m)
         elseif m.phase=="Countdown" and time&gt;=m.endsAt then
             self:changePhase(m,"Fight"); m.accumulator=0; m.fightDeadline=time+35
@@ -6544,9 +6547,8 @@ return function(BattleLab, Skills)
         t.lab=BattleLab.new(deps)
         -- These cases step through transitions with a two-second round pause.
         t.lab.ROUND_OVER_SECONDS=2
-        -- The dealt-hand draft stays covered here; the public default deals
-        -- the whole roster and is checked on its own below.
-        if not options.publicDraft then t.lab.PICK_SECONDS=10;t.lab.OFFER_SIZE=3;t.lab.REROLLS=1;t.lab.PICK_ANYS=1 end
+        -- These cases use a ten-second pick; the public clock is checked below.
+        if not options.publicDraft then t.lab.PICK_SECONDS=10 end
         function t.player(id)
             local p={UserId=id,Name="Pilot"..id,DisplayName="Pilot"..id}
             function p:GetAttribute(key)if key=="SkyboundColor"then return id end return nil end
@@ -6556,7 +6558,15 @@ return function(BattleLab, Skills)
             local s=t.lab:snapshot(p);local payload=extra or {}
             payload.kind=kind;if payload.matchId==nil then payload.matchId=s.matchId end;if payload.stage==nil then payload.stage=s.stage end
             if payload.offerRevision==nil then payload.offerRevision=s.offerRevision end
-            if kind=="lock" then payload.slot=payload.slot or s.slot;payload.skillId=payload.skillId or s.selected or s.offer[1] end
+            -- A friendly lock sends the draft as it stands, with any gap filled
+            -- by the first offered card that is not already on the plane.
+            if kind=="lock" and s.draft and payload.offenceId==nil and payload.wildIds==nil then
+                payload.offenceId=s.draft.offenceId or s.offer.offences[1];payload.wildIds={}
+                for _,id in ipairs(s.draft.wildIds)do payload.wildIds[#payload.wildIds+1]=id end
+                for _,id in ipairs(s.offer.wilds)do
+                    if #payload.wildIds&lt;s.slots and not table.find(payload.wildIds,id)then payload.wildIds[#payload.wildIds+1]=id end
+                end
+            end
             t.lab:command(p,payload)
         end
         function t.advance(seconds)
@@ -6567,7 +6577,7 @@ return function(BattleLab, Skills)
             local a,b=t.player(1),t.player(2);t.send(a,"enter");t.send(b,"enter");return a,b,t.lab.sessions[1].match
         end
         function t.lock(p)
-            local s=t.lab:snapshot(p);t.send(p,"pick",{slot=s.slot,skillId=s.offer[1]});t.send(p,"lock")
+            t.send(p,"lock")
         end
         function t.fight(a,b)
             t.lock(a);if b then t.lock(b)end;t.advance(2.5)
@@ -6592,71 +6602,54 @@ return function(BattleLab, Skills)
         assert(t.lab:snapshot(a).phase=="Searching");t.send(a,"exit");t.advance(10);assert(not t.lab:snapshot(a).active)
         t.send(a,"enter");t.advance(8.1);local s=t.lab:snapshot(a)
         assert(s.phase=="Pick" and s.simulatedOpponent and s.players[2].bot and s.players[2].name=="Comet")
-        assert(s.resources.reroll==1 and s.resources.pickAny==1)
+        assert(s.slots==0 and s.draft.offenceId==nil and #s.offer.offences==4)
     end)
-    test("offers and selection stay private until simultaneous reveal",function()
+    test("offers and drafts stay private until simultaneous reveal",function()
         local t=harness();local a,b,m=t.pair();local sa=t.lab:snapshot(a);local sb=t.lab:snapshot(b)
-        assert(#sa.offer==3 and #sb.offer==3 and sa.offers==nil and sa.settings[2].offenceId==nil)
-        t.send(a,"pick",{slot="offence",skillId=sa.offer[2]});t.send(a,"lock")
-        sb=t.lab:snapshot(b);assert(sb.settings[2].offenceId==nil and sb.selected==nil and sb.locked[2])
+        assert(#sa.offer.offences==4 and #sb.offer.offences==4 and sa.offers==nil and sa.drafts==nil and sa.settings[2].offenceId==nil)
+        t.send(a,"pick",{slot="offence",skillId=sa.offer.offences[2]});assert(t.lab:snapshot(a).draft.offenceId==sa.offer.offences[2])
+        t.send(a,"lock")
+        sb=t.lab:snapshot(b);assert(sb.settings[2].offenceId==nil and sb.draft.offenceId==nil and sb.locked[2])
         t.lock(b);sa=t.lab:snapshot(a);sb=t.lab:snapshot(b)
-        assert(sa.phase=="Countdown" and sa.settings[1].offenceId==sb.settings[2].offenceId)
+        assert(sa.phase=="Countdown" and sa.draft==nil and sa.settings[1].offenceId==sb.settings[2].offenceId)
+        assert(sa.settings[1].offenceId==sa.offer.offences[2] or sa.settings[1].offenceId=="Firework")
         assert(sa.settings[1].offenceId==sa.simulation.fighters[1].settings.offenceId)
         assert(sb.players[1].userId==2 and sb.players[2].userId==1)
     end)
-    test("reject outside-offer inactive wrong-kind cross-player stale and wrong-phase commands",function()
-        local t=harness();local a,b,m=t.pair();local s=t.lab:snapshot(a)
-        local outside;for _,id in ipairs(s.eligible)do local found=false;for _,o in ipairs(s.offer)do if o==id then found=true end end;if not found then outside=id end end
-        for _,extra in ipairs({{slot="offence",skillId=outside},{slot="wild",skillId=s.offer[1]},
-            {slot="offence",skillId="Copycat"},{slot="offence",skillId="Afterburner"},
-            {slot="offence",skillId=s.offer[1],side=2},{slot="offence",skillId=s.offer[1],userId=2},
-            {slot="offence",skillId=s.offer[1],matchId=999},{slot="offence",skillId=s.offer[1],stage=2}})do
-            t.advance(.1);t.send(a,"pick",extra);assert(t.lab:snapshot(a).selected==nil)
+    test("reject inactive wrong-kind wrong-slot cross-player stale and wrong-phase commands",function()
+        local t=harness();local a,b,m=t.pair();local s=t.lab:snapshot(a);local first=s.offer.offences[1]
+        for _,extra in ipairs({{slot="offence",skillId="Copycat"},{slot="offence",skillId="Afterburner"},
+            {slot="wild",index=1,skillId="Afterburner"},{slot="wild",skillId=first},
+            {slot="offence",skillId=first,side=2},{slot="offence",skillId=first,userId=2},
+            {slot="offence",skillId=first,matchId=999},{slot="offence",skillId=first,stage=2}})do
+            t.advance(.1);t.send(a,"pick",extra);assert(t.lab:snapshot(a).draft.offenceId==nil and #m.drafts[1].wildIds==0)
         end
-        t.lock(a);local chosen=m.selected[1];t.advance(.1);t.send(a,"pick",{slot="offence",skillId=s.offer[3]});assert(m.selected[1]==chosen)
-        t.lock(b);t.advance(.1);t.send(a,"pickAny");assert(m.resources[1].pickAny==1)
+        t.lock(a);local chosen=m.drafts[1].offenceId;t.advance(.1);t.send(a,"pick",{slot="offence",skillId=s.offer.offences[3]});assert(m.drafts[1].offenceId==chosen)
+        t.lock(b);t.advance(.1)
         t.send(a,"configure",{settings={{offenceId="Copycat"},{offenceId="Copycat"}}});assert(m.settings[1].offenceId==chosen)
+        t.send(a,"pick",{slot="offence",skillId=s.offer.offences[3]});assert(m.settings[1].offenceId==chosen and m.phase=="Countdown")
     end)
-    test("the public draft deals the whole roster in order with nothing to reroll",function()
+    test("the public draft shows the whole roster in order before every round",function()
         local t=harness({publicDraft=true});local a,b,m=t.pair();local s=t.lab:snapshot(a)
-        assert(table.concat(s.offer,",")=="Meteor,Firework,MachineGun,Pinball" and s.resources.reroll==0 and s.resources.pickAny==0)
-        t.send(a,"reroll");t.send(a,"pickAny");assert(t.lab:snapshot(a).offerRevision==s.offerRevision)
-        t.advance(14.9);assert(m.phase=="Pick");t.advance(.2);assert(m.phase~="Pick","The 15-second deadline did not lock")
+        assert(table.concat(s.offer.offences,",")=="Meteor,Firework,MachineGun,Pinball" and #s.offer.wilds==5 and s.slots==0)
+        t.advance(19.9);assert(m.phase=="Pick");t.advance(.2);assert(m.phase~="Pick","The 20-second deadline did not lock")
         t.advance(2.5);assert(m.phase=="Fight");t.finish(m,1);t.advance(3.6);s=t.lab:snapshot(a)
-        assert(s.phase=="Pick" and #s.offer==5 and s.offer[1]=="Afterburner","Wild pick hid part of the roster")
+        assert(s.phase=="Pick" and s.slots==1 and #s.offer.wilds==5 and s.offer.wilds[1]=="Afterburner","Wild pick hid part of the roster")
+        assert(#s.offer.offences==4 and s.draft.offenceId=="Meteor" and #s.draft.wildIds==0,"The second pick did not start from the plane that flew")
     end)
-    test("reroll changes set once and Pick Any consumes once for the entire match",function()
-        local t=harness();local a,b,m=t.pair();local old=t.lab:snapshot(a).offer;t.send(a,"reroll")
-        local s=t.lab:snapshot(a);local changed=false
-        for _,id in ipairs(s.offer)do local found=false;for _,o in ipairs(old)do if o==id then found=true end end;if not found then changed=true end end
-        assert(changed and s.resources.reroll==0 and s.selected==nil)
-        local nextOffer=table.concat(s.offer,",");t.send(a,"reroll");assert(table.concat(t.lab:snapshot(a).offer,",")==nextOffer)
-        t.send(a,"pickAny");assert(#t.lab:snapshot(a).offer==4 and t.lab:snapshot(a).resources.pickAny==0)
-        t.fight(a,b);t.finish(m,0,"timeout");t.advance(4.7)
-        assert(m.phase=="Fight" and m.stage==1 and m.resources[1].reroll==0 and m.resources[1].pickAny==0)
-    end)
-    test("stale offer and bare locks never auto-pick a replacement card",function()
-        local t=harness();local a,b,m=t.pair();local old=t.lab:snapshot(a)
+    test("bare partial and stale locks never fill a gap",function()
+        local t=harness();local a,b,m=t.pair()
         -- Raw commands intentionally bypass the friendly packet helper.
-        t.lab:command(a,{kind="lock",matchId=m.id,stage=1})
-        assert(not m.locked[1] and m.selected[1]==nil,"Bare lock auto-picked")
-        t.send(a,"reroll");local current=t.lab:snapshot(a)
-        assert(current.offerRevision==old.offerRevision+1)
-        local removed;for _,id in ipairs(old.offer)do if not table.find(current.offer,id)then removed=id end end
-        assert(removed)
-        t.advance(.1)
-        t.lab:command(a,{kind="pick",matchId=m.id,stage=1,slot="offence",skillId=removed,offerRevision=old.offerRevision})
-        t.lab:command(a,{kind="lock",matchId=m.id,stage=1,slot="offence",skillId=removed,offerRevision=old.offerRevision})
-        assert(not m.locked[1] and m.selected[1]==nil,"Stale offer locked a different card")
-        -- Even a card shared by both offers needs the current revision.
-        t.advance(.1)
-        t.lab:command(a,{kind="lock",matchId=m.id,stage=1,slot="offence",skillId=current.offer[1],offerRevision=old.offerRevision})
-        t.lab:command(a,{kind="lock",matchId=m.id,stage=1,slot="offence",offerRevision=current.offerRevision})
-        t.lab:command(a,{kind="lock",matchId=m.id,stage=1,slot="offence",skillId=removed,offerRevision=current.offerRevision})
-        assert(not m.locked[1] and m.selected[1]==nil,"Invalid lock fell back to the first offer")
+        for _,packet in ipairs({{},{offenceId="Meteor"},{offenceId="Copycat",wildIds={}},{wildIds={}},
+            {offenceId="Meteor",wildIds={"Afterburner"}},{offenceId="Meteor",wildIds="Afterburner"},
+            {offenceId="Meteor",wildIds={},offerRevision=2},{offenceId="Meteor",wildIds={},stage=2}})do
+            packet.kind="lock";packet.matchId=m.id;packet.stage=packet.stage or 1;packet.offerRevision=packet.offerRevision or 1
+            t.advance(.1);t.lab:command(a,packet)
+            assert(not m.locked[1] and m.drafts[1].offenceId==nil,"A broken lock was accepted")
+        end
         t.advance(.2)
-        t.send(a,"lock",{slot="offence",skillId=current.offer[2]});t.lock(b)
-        assert(m.phase=="Countdown" and m.settings[1].offenceId==current.offer[2],"Explicit current card not preserved")
+        t.send(a,"lock",{offenceId="Firework",wildIds={}});t.lock(b)
+        assert(m.phase=="Countdown" and m.settings[1].offenceId=="Firework","Explicit loadout not preserved")
     end)
     test("terminal armor win explains the deciding round instead of the rival's last hit",function()
         local t=harness();local a,b,m=t.pair();t.fight(a,b)
@@ -6679,31 +6672,14 @@ return function(BattleLab, Skills)
             assert(string.find(t.lab:facts(m,{winner=1,reason=reason,decidingRoundReason="timeout"},1)[1],"completed round wins",1,true))
         end
     end)
-    test("Pick Any revisions reject queued old selections and stale resource requests",function()
-        local t=harness();local a,b,m=t.pair();local old=t.lab:snapshot(a)
-        t.send(a,"pickAny");local current=t.lab:snapshot(a)
-        assert(current.offerRevision==old.offerRevision+1)
-        t.send(a,"pick",{slot=old.slot,skillId=old.offer[1],offerRevision=old.offerRevision})
-        t.send(a,"lock",{slot=old.slot,skillId=old.offer[1],offerRevision=old.offerRevision})
-        t.send(a,"reroll",{offerRevision=old.offerRevision})
-        assert(not m.locked[1] and m.selected[1]==nil and m.resources[1].reroll==1)
-        t.advance(.1);t.send(a,"lock",{skillId=current.offer[#current.offer]});t.lock(b)
-        assert(m.settings[1].offenceId==current.offer[#current.offer])
-    end)
-    test("eligible pools below equal and above three and disabled reroll does not consume",function()
-        for count=2,4 do
-            local roster={version="test",offences={"Meteor","Firework","MachineGun","Pinball"},wilds={"Afterburner","SpringBumper"}}
-            while #roster.offences&gt;count do table.remove(roster.offences)end
-            local t=harness({allowExperimental=true,resolveRoster=function()return roster end})
-            local a,b=t.pair();local s=t.lab:snapshot(a);assert(#s.offer==math.min(3,count))
-            t.send(a,"reroll");assert(t.lab:snapshot(a).resources.reroll==(count&gt;3 and 0 or 1))
-        end
-    end)
-    test("timeout takes first offer and late picks cannot change the committed round",function()
-        local t=harness();local a,b,m=t.pair();local s=t.lab:snapshot(a);local first=s.offer[1]
-        t.send(a,"pick",{slot="offence",skillId=s.offer[2]});t.advance(10.1)
-        assert(m.phase=="Countdown" and m.settings[1].offenceId==first)
-        t.send(a,"pick",{slot="offence",skillId=s.offer[3]});assert(m.settings[1].offenceId==first)
+    test("timeout keeps a tapped card fills gaps with the first offer and ignores late picks",function()
+        local t=harness();local a,b,m=t.pair();local s=t.lab:snapshot(a)
+        t.send(a,"pick",{slot="offence",skillId=s.offer.offences[2]});t.advance(10.1)
+        assert(m.phase=="Countdown" and m.settings[1].offenceId==s.offer.offences[2] and m.settings[2].offenceId==s.offer.offences[1])
+        t.send(a,"pick",{slot="offence",skillId=s.offer.offences[3]});assert(m.settings[1].offenceId==s.offer.offences[2])
+        t.advance(2.5);t.finish(m,1);t.advance(2.1);assert(m.phase=="Pick" and m.stage==2)
+        t.advance(10.1);assert(m.phase=="Countdown" and m.settings[1].offenceId==s.offer.offences[2])
+        assert(#m.settings[1].wildIds==1 and m.settings[1].wildIds[1]==m.roster.wilds[1],"The deadline did not add the first wild card")
     end)
     test("2-0 ends immediately and draft advances both players after decisive rounds",function()
         local t=harness();local a,b,m=t.pair();t.fight(a,b);t.finish(m,1);t.advance(2.1)
@@ -6714,15 +6690,38 @@ return function(BattleLab, Skills)
         assert(#t.terminal==2 and t.lab:snapshot(b).result.winner==2)
         t.advance(10);assert(#t.terminal==2)
     end)
-    test("2-1 accumulates distinct second wild cards and rejects previous-stage packets",function()
+    test("2-1 keeps the plane between rounds while any slot can be swapped",function()
         local t=harness();local a,b,m=t.pair();t.fight(a,b);t.finish(m,1);t.advance(2.1);t.fight(a,b);t.finish(m,2);t.advance(2.1)
         assert(m.stage==3 and m.score[1]==1 and m.score[2]==1)
-        local first=m.settings[1].wildIds[1]
-        for _,id in ipairs(t.lab:snapshot(a).eligible)do assert(id~=first)end
-        t.send(a,"pick",{stage=2,slot="wild",skillId=t.lab:snapshot(a).offer[1]});assert(m.selected[1]==nil)
-        t.send(a,"pick",{slot="wild",skillId=first});assert(m.selected[1]==nil)
-        t.fight(a,b);assert(#m.settings[1].wildIds==2 and m.settings[1].wildIds[2]~=first)
+        local attack,first=m.settings[1].offenceId,m.settings[1].wildIds[1]
+        local s=t.lab:snapshot(a)
+        assert(s.slots==2 and s.draft.offenceId==attack and #s.draft.wildIds==1 and s.draft.wildIds[1]==first,"The plane was not carried into the pick")
+        assert(#s.offer.wilds==5 and #s.offer.offences==4)
+        t.send(a,"pick",{stage=2,slot="wild",index=2,skillId="Magnet"});assert(#m.drafts[1].wildIds==1)
+        t.send(a,"pick",{slot="wild",index=2,skillId=first});assert(#m.drafts[1].wildIds==1,"One wild card filled two slots")
+        t.send(a,"pick",{slot="wild",index=3,skillId="Magnet"});t.send(a,"pick",{slot="wild",index=0,skillId="Magnet"})
+        t.send(a,"pick",{slot="wild",index=1.5,skillId="Magnet"});assert(#m.drafts[1].wildIds==1 and m.drafts[1].wildIds[1]==first)
+        t.advance(.5);t.send(a,"lock",{offenceId=attack,wildIds={first,first}});assert(not m.locked[1],"A doubled wild card locked")
+        t.send(a,"lock",{offenceId=attack,wildIds={first}});assert(not m.locked[1],"A short loadout locked")
+        -- Swap the attack and the old wild card, then add a new one.
+        local swap=attack=="Pinball" and "Meteor" or "Pinball"
+        local one=first=="Magnet" and "FizzyFuel" or "Magnet";local two=first=="SecondWind" and "FizzyFuel" or "SecondWind"
+        t.advance(.5);t.send(a,"pick",{slot="offence",skillId=swap});t.send(a,"pick",{slot="wild",index=1,skillId=one})
+        t.send(a,"pick",{slot="wild",index=2,skillId=two});s=t.lab:snapshot(a)
+        assert(s.draft.offenceId==swap and s.draft.wildIds[1]==one and s.draft.wildIds[2]==two)
+        assert(m.settings[1].offenceId==attack,"A draft changed the plane before the reveal")
+        t.fight(a,b)
+        assert(m.settings[1].offenceId==swap and m.settings[1].wildIds[1]==one and m.settings[1].wildIds[2]==two and #m.settings[1].wildIds==2)
+        assert(#m.settings[2].wildIds==2 and m.settings[2].wildIds[1]~=m.settings[2].wildIds[2])
         t.finish(m,2);assert(m.phase=="MatchOver" and m.score[2]==2)
+    end)
+    test("a bot keeps its plane and adds one wild card each round",function()
+        local t=harness();local a=t.player(1);t.send(a,"enter");t.advance(8.1)
+        local m=t.lab.sessions[1].match;t.fight(a);local attack=m.settings[2].offenceId
+        t.finish(m,1);t.advance(2.1);t.fight(a);local first=m.settings[2].wildIds[1]
+        assert(m.settings[2].offenceId==attack and #m.settings[2].wildIds==1)
+        t.finish(m,2);t.advance(2.1);t.fight(a)
+        assert(m.settings[2].offenceId==attack and m.settings[2].wildIds[1]==first and #m.settings[2].wildIds==2 and m.settings[2].wildIds[2]~=first)
     end)
     test("draw gives no point no pick and a new seed; five drawn rounds end honestly",function()
         local t=harness();local a,b,m=t.pair();t.fight(a,b)
@@ -6767,7 +6766,7 @@ return function(BattleLab, Skills)
         local t=harness();local a,b,m=t.pair();t.fight(a,b);t.finish(m,1);t.advance(2.1);t.fight(a,b);t.finish(m,1)
         t.send(a,"rematch");assert(m.phase=="MatchOver" and t.lab:snapshot(a).rematchVotes[1])
         t.send(b,"rematch");local nextMatch=t.lab.sessions[1].match
-        assert(nextMatch.id~=m.id and nextMatch.phase=="Pick" and nextMatch.settings[1].offenceId==nil and nextMatch.resources[1].reroll==1)
+        assert(nextMatch.id~=m.id and nextMatch.phase=="Pick" and nextMatch.settings[1].offenceId==nil and nextMatch.drafts[1].offenceId==nil)
         t.send(a,"lock",{matchId=m.id,stage=1});assert(not nextMatch.locked[1])
     end)
     test("declined rematch stays terminal with unavailable rival and allows requeue",function()
@@ -6806,8 +6805,8 @@ return function(BattleLab, Skills)
     end)
     test("snapshot mutation cannot change the server offer build roster or simulation",function()
         local t=harness();local a,b,m=t.pair();local s=t.lab:snapshot(a)
-        s.offer[1]="Copycat";s.eligible[1]="Copycat";s.resources.reroll=99;s.settings[1].wildIds[1]="Copycat"
-        assert(m.offers[1][1]~="Copycat" and m.resources[1].reroll==1 and #m.settings[1].wildIds==0)
+        s.offer.offences[1]="Copycat";s.draft.offenceId="Copycat";s.draft.wildIds[1]="Copycat";s.settings[1].wildIds[1]="Copycat"
+        assert(m.offers[1].offences[1]~="Copycat" and m.drafts[1].offenceId==nil and #m.drafts[1].wildIds==0 and #m.settings[1].wildIds==0)
         t.fight(a,b);s=t.lab:snapshot(a);s.simulation.fighters[1].armor=99;assert(m.simulation.fighters[1].armor==3)
     end)
     test("challenge explicitly accepts into one isolated shared-roster match",function()
@@ -6893,18 +6892,22 @@ return function(BattleLab, Skills)
         t.advance(4.9);assert(m.phase=="Countdown");t.advance(.2);assert(m.phase=="Fight")
         t.finish(m,0,"timeout");t.advance(2.1);assert(m.phase=="Countdown" and m.stage==1,"A drawn first round asked for a pick")
         t.advance(2.5);t.finish(m,2);t.advance(2.1);s=t.lab:snapshot(a)
-        assert(s.phase=="Pick" and s.slot=="wild" and table.concat(s.offer,",")=="SpringBumper,Afterburner")
+        assert(s.phase=="Pick" and s.slots==1 and table.concat(s.offer.wilds,",")=="SpringBumper,Afterburner")
+        assert(table.concat(s.offer.offences,",")=="Meteor,Firework" and s.draft.offenceId=="Meteor" and #s.draft.wildIds==0)
         assert(s.locked[2] and s.pickDeadline-s.serverTime&gt;39)
-        t.send(a,"lock",{slot="wild",skillId="Magnet"});assert(not t.lab:snapshot(a).locked[1],"A card outside the guided hand was accepted")
-        t.send(a,"lock",{slot="wild",skillId="Afterburner"});assert(m.phase=="Countdown" and m.settings[1].wildIds[1]=="Afterburner")
+        t.send(a,"lock",{offenceId="Meteor",wildIds={"Magnet"}});assert(not t.lab:snapshot(a).locked[1],"A card outside the guided hand was accepted")
+        t.send(a,"lock",{offenceId="Pinball",wildIds={"Afterburner"}});assert(not t.lab:snapshot(a).locked[1],"An attack outside the guided hand was accepted")
+        t.send(a,"lock",{offenceId="Meteor",wildIds={"Afterburner"}});assert(m.phase=="Countdown" and m.settings[1].wildIds[1]=="Afterburner")
+        assert(m.settings[2].offenceId=="Firework" and #m.settings[2].wildIds==1)
         t.advance(2.5);t.finish(m,1);t.advance(2.1);s=t.lab:snapshot(a)
-        assert(#s.offer==3 and s.offer[1]=="SpringBumper" and s.offer[3]=="Magnet","The second guided hand was not three unused cards")
-        t.lock(a);t.advance(2.5);t.finish(m,1)
+        assert(table.concat(s.offer.wilds,",")=="SpringBumper,Afterburner,FizzyFuel" and s.slots==2 and s.draft.wildIds[1]=="Afterburner","The second guided hand was wrong")
+        t.lock(a);assert(table.concat(m.settings[1].wildIds,",")=="Afterburner,SpringBumper")
+        t.advance(2.5);t.finish(m,1)
         assert(m.phase=="MatchOver" and t.terminal[1].result.mode=="practice" and t.terminal[1].result.outcome=="win")
         local accepted;for _,e in ipairs(t.events)do if e.name=="match_accepted" then accepted=e end end
         assert(accepted.data.guided==true and accepted.data.mode=="practice")
         first[1]=nil;t.send(a,"rematch");local again=t.lab.sessions[1].match;s=t.lab:snapshot(a)
-        assert(again~=m and s.phase=="Pick" and not s.guided and s.mode=="public" and #s.offer==4,"The rematch was guided again")
+        assert(again~=m and s.phase=="Pick" and not s.guided and s.mode=="public" and #s.offer.offences==4,"The rematch was guided again")
     end)
     test("guidance never applies to challenges, returning pilots or test rosters",function()
         local t=harness({publicDraft=true,firstMatch=function(p)return p.UserId==1 end})
@@ -8684,46 +8687,53 @@ return function(Client,Skills)
     local function test(name,callback)
         local commands={}
         local ui=setmetatable({skills=Skills,audio={ui=function() end},data={active=true,phase="Pick",matchId=10,stage=1,
-            slot="offence",offerRevision=1,offer={"Meteor","MachineGun","Pinball"},eligible={"Meteor","Firework","MachineGun","Pinball"},locked={false,false},resources={reroll=1,pickAny=1}}},Client)
+            slots=0,offerRevision=1,offer={offences={"Meteor","MachineGun","Pinball"},wilds={"Afterburner","SpringBumper","Magnet"}},
+            draft={wildIds={}},locked={false,false}}},Client)
         function ui:send(kind,payload) commands[#commands+1]={kind=kind,payload=payload} end
         local ok,problem=pcall(callback,ui,commands);assert(ok,name..": "..tostring(problem));passed=passed+1
     end
     test("ordinary selection sends only the local offered skill, never rival settings",function(ui,commands)
         ui:choose("Firework");assert(#commands==0,"Off-offer choice sent")
+        ui:choose("Afterburner");assert(#commands==0,"A wild card filled the attack slot")
+        ui:fight();assert(#commands==0,"An empty loadout locked")
         ui:choose("Meteor");ui:fight()
         assert(#commands==2 and commands[1].kind=="pick" and commands[2].kind=="lock")
         assert(commands[1].payload.skillId=="Meteor" and commands[1].payload.slot=="offence")
-        assert(commands[2].payload.skillId=="Meteor" and commands[2].payload.slot=="offence","Lock omitted the visible choice")
-        assert(commands[1].payload.settings==nil,"Client supplied builds")
+        assert(commands[2].payload.offenceId=="Meteor" and #commands[2].payload.wildIds==0,"Lock omitted the visible loadout")
+        assert(commands[1].payload.settings==nil and commands[2].payload.settings==nil,"Client supplied builds")
     end)
     test("locked or inactive drafts cannot send new picks",function(ui,commands)
-        ui.data.locked[1]=true;ui:choose("Meteor");ui:fight();assert(#commands==0)
+        ui.data.locked[1]=true;ui:choose("Meteor");ui:fight();ui:focusSlot(0);assert(#commands==0)
         ui.data.locked[1]=false;ui.data.phase="Fight";ui:choose("Meteor");assert(#commands==0)
     end)
-    test("Pick Any uses only the server eligible roster",function(ui,commands)
-        ui.data.pickAnyActive=true;ui:choose("Firework");assert(#commands==1)
-        ui:choose("Copycat");assert(#commands==1,"Inactive skill sent")
+    test("a later pick opens on the new slot and keeps the plane that flew",function(ui,commands)
+        ui.data.stage=2;ui.data.slots=1;ui.data.draft={offenceId="Meteor",wildIds={}}
+        local draft=ui:loadout()
+        assert(draft.offenceId=="Meteor" and ui.focus==1,"The pick did not open on the empty wild slot")
+        ui:fight();assert(#commands==0,"A plane with an empty slot locked")
+        ui:choose("Meteor");assert(#commands==0,"An attack filled a wild slot")
+        ui:choose("Magnet")
+        assert(commands[1].kind=="pick" and commands[1].payload.slot=="wild" and commands[1].payload.index==1 and commands[1].payload.skillId=="Magnet")
+        ui:choose("SpringBumper");assert(#commands==2 and ui.draft.wildIds[1]=="SpringBumper","A second tap did not swap the card")
+        ui:focusSlot(2);assert(ui.focus==1,"A slot that is not open took focus")
+        ui:focusSlot(0);assert(ui.focus==0);ui:choose("Pinball");ui:choose("Pinball")
+        assert(#commands==3 and commands[3].payload.slot=="offence","The attack was not swapped once")
+        ui:fight()
+        local lock=commands[4].payload
+        assert(commands[4].kind=="lock" and lock.offenceId=="Pinball" and #lock.wildIds==1 and lock.wildIds[1]=="SpringBumper")
+        assert(lock.wildIds~=ui.draft.wildIds,"The lock shared the live draft table")
     end)
-    test("pending reroll freezes cards and lock through old snapshots until acknowledgement",function(ui,commands)
-        ui:choose("Pinball");ui:changeOffer("reroll")
-        assert(ui.pendingOfferChange and ui.pendingSelection==nil and #commands==2)
-        ui:choose("Pinball");ui:fight();ui:changeOffer("pickAny");ui:changeOffer("reroll")
-        assert(#commands==2,"Old cards or repeated resources stayed interactive")
-        local old=ui.data;ui:syncDraft(old,old)
-        assert(ui.pendingOfferChange,"Old snapshot reopened draft")
-        local fresh=table.clone(old);fresh.offerRevision=2;fresh.offer={"Meteor","MachineGun","Firework"}
-        ui:syncDraft(old,fresh);ui.data=fresh
-        assert(not ui.pendingOfferChange and ui.pendingSelection==nil)
-        ui:choose("Firework");ui:fight()
-        assert(#commands==4 and commands[4].payload.skillId=="Firework","Replacement choice was not locked explicitly")
-    end)
-    test("pending Pick Any clears on deadline phase change or acknowledged prior lock",function(ui,commands)
-        ui:changeOffer("pickAny");assert(ui.pendingOfferChange)
-        local old=ui.data;local fresh=table.clone(old);fresh.phase="Countdown"
-        ui:syncDraft(old,fresh);assert(not ui.pendingOfferChange)
-        ui:changeOffer("pickAny");assert(ui.pendingOfferChange)
-        fresh.phase="Pick";fresh.locked={true,false};ui:syncDraft(old,fresh)
-        assert(not ui.pendingOfferChange,"A lock acknowledged before resource request left updating cards stuck")
+    test("the third pick keeps the first wild card and never doubles one",function(ui,commands)
+        ui.data.stage=3;ui.data.slots=2;ui.data.draft={offenceId="Meteor",wildIds={"Magnet"}}
+        ui:loadout();assert(ui.focus==2 and ui.draftHeld==1)
+        ui:choose("Magnet");assert(#commands==0,"One wild card filled both slots")
+        ui:choose("Afterburner");ui:focusSlot(1);ui:choose("Afterburner");assert(#commands==1,"A held card swapped into the other slot")
+        ui:choose("SpringBumper");ui:fight()
+        local lock=commands[3].payload
+        assert(lock.offenceId=="Meteor" and lock.wildIds[1]=="SpringBumper" and lock.wildIds[2]=="Afterburner")
+        -- A new stage starts again from the server's plane, not the old draft.
+        ui.data.stage=4;ui.data.draft={offenceId="Pinball",wildIds={"Magnet","Afterburner"}}
+        assert(ui:loadout().offenceId=="Pinball" and ui.focus==0 and ui:loadoutReady())
     end)
     test("real outbox preserves explicit choice and revision while spacing queued packets",function(ui)
         local sent={};ui.send=Client.send;ui.outbox={};ui.sending=true;ui.lastSend=-math.huge
@@ -8738,7 +8748,7 @@ return function(Client,Skills)
         assert(#sent==3 and sent[1].payload.kind=="pick" and sent[2].payload.kind=="lock")
         for index=1,2 do
             local p=sent[index].payload
-            assert(p.skillId=="Pinball" and p.offerRevision==1 and p.matchId==10 and p.stage==1)
+            assert((index==1 and p.skillId or p.offenceId)=="Pinball" and p.offerRevision==1 and p.matchId==10 and p.stage==1)
         end
         assert(sent[2].at-sent[1].at&gt;=.079 and sent[3].at-sent[2].at&gt;=.079,"Outbox pacing bypassed")
     end)
@@ -12846,7 +12856,8 @@ function BattleLab.new(World,shared)
     self.coachScale=make("UIScale",self.coach,"Pop")
     self.experimental=label(self.panel,"ExperimentalRoster",11,GOLD); self.experimental.Text="EXPERIMENTAL ROSTER"
     self.experimental.BackgroundColor3=NAVY; self.experimental.BackgroundTransparency=0.08; corner(self.experimental,8)
-    -- The draft: three big illustrated cards, one tap to choose, one to lock.
+    -- The draft: big illustrated cards for one slot of the plane at a time,
+    -- one tap to choose, one to lock.
     self.picker=make("ScrollingFrame",self.panel,"Picker"); self.picker.BackgroundTransparency=1; self.picker.BorderSizePixel=0
     self.picker.ScrollBarThickness=3; self.picker.CanvasSize=UDim2.fromOffset(0,0); self.picker.ScrollingDirection=Enum.ScrollingDirection.Y
     self.pickTitle=label(self.picker,"Title",40,WHITE,Enum.Font.FredokaOne); self.pickTitle.TextWrapped=false; outline(self.pickTitle,4)
@@ -12874,9 +12885,18 @@ function BattleLab.new(World,shared)
         icon.Text=spec.icon
         self.powerCards[spec.id]={button=card,spec=spec,edge=edge,tag=tag,icon=icon,word=word,name=name,promise=promise,scale=scale,color=tint(spec.color)}
     end
-    self.reroll=button(self.picker,"Reroll","",function() self:changeOffer("reroll") end)
-    self.pickAny=button(self.picker,"PickAny","",function() self:changeOffer("pickAny") end)
-    self.resourceHint=label(self.picker,"ResourceHint",11,MUTED); outline(self.resourceHint,2)
+    -- The loadout bar says what is on the plane: one tile for the attack and
+    -- one for each wild card slot. Tapping a tile picks the slot to change.
+    self.slotTiles={}
+    for slot=0,2 do
+        local tile=make("TextButton",self.picker,"Slot"..slot)
+        tile.Text=""; tile.AutoButtonColor=false; tile.BorderSizePixel=0; tile.Selectable=true; corner(tile,12)
+        local edge=make("UIStroke",tile,"Edge"); edge.ApplyStrokeMode=Enum.ApplyStrokeMode.Border
+        local caption=label(tile,"Caption",10,WHITE); caption.TextWrapped=false
+        local value=label(tile,"Value",15,WHITE,Enum.Font.FredokaOne); value.TextWrapped=false
+        tile.Activated:Connect(function() self:focusSlot(slot) end)
+        self.slotTiles[slot]={button=tile,edge=edge,caption=caption,value=value,scale=make("UIScale",tile,"Pop")}
+    end
     self.fightButton=button(self.picker,"Lock","LOCK IN",function() self:fight() end)
     self.fightButton.BackgroundColor3=GREEN; self.fightButton.Font=Enum.Font.FredokaOne
     self.fightButton.Edge.Color=WHITE; self.fightButton.Edge.Transparency=0.1; self.fightButton.Edge.Thickness=3
@@ -12990,7 +13010,6 @@ function BattleLab:receive(data)
         if self.cosmeticPending then self.audio:ui(feedback.ok and "purchase" or "error"); self.cosmeticPending=nil end
         self.cosmeticMessage=feedback.message; self.cosmeticMessageAt=os.clock()
     end
-    self:syncDraft(old,data)
     if data.phase=="Countdown" and (not old or old.roundId~=data.roundId or old.phase~="Countdown") then
         self.sameBuildReplay=old and old.matchId==data.matchId and self.revealedStage==data.stage
         self.revealedStage=data.stage; self.revealedAt=os.clock()
@@ -13013,13 +13032,6 @@ function BattleLab:receive(data)
     elseif self.view then self.view:destroy(); self.view=nil end
     self.panel.Visible=self.active
     Players.LocalPlayer:SetAttribute("BattleLabPhase",self.active and data.phase or "Inactive")
-end
-function BattleLab:syncDraft(old,data)
-    if not old or old.matchId~=data.matchId or old.stage~=data.stage or old.offerRevision~=data.offerRevision or data.phase~="Pick" or (data.locked and data.locked[1]) then
-        self.pendingSelection=nil; self.pendingOfferChange=nil
-    elseif data.selected==self.pendingSelection then self.pendingSelection=nil end
-    local eligible=data.pickAnyActive and data.eligible or data.offer
-    if self.pendingSelection and not table.find(eligible or {},self.pendingSelection) then self.pendingSelection=nil end
 end
 function BattleLab:send(kind,payload)
     payload=payload or {}; payload.kind=kind
@@ -13045,34 +13057,50 @@ function BattleLab:clockSeconds(serverTime)
     -- Simulation catch-up is bounded after a stall; the round deadline is not.
     return math.max(0,math.ceil((deadline or serverTime)-serverTime))
 end
-function BattleLab:changeOffer(kind)
+-- The pilot's working loadout for this pick. It starts as the plane that just
+-- flew and opens on the slot that still needs a card.
+function BattleLab:loadout()
+    local data=self.data or {}
+    local key=tostring(data.matchId)..":"..tostring(data.stage)
+    if self.draftKey~=key or not self.draft then
+        local source=data.draft or {}
+        self.draftKey=key; self.draft={offenceId=source.offenceId,wildIds=table.clone(source.wildIds or {})}
+        self.draftHeld=#self.draft.wildIds
+        self.focus=(self.draft.offenceId and self.draftHeld&lt;(data.slots or 0)) and self.draftHeld+1 or 0
+    end
+    return self.draft
+end
+function BattleLab:loadoutReady()
+    local draft=self:loadout()
+    return draft.offenceId~=nil and #draft.wildIds==((self.data or {}).slots or 0)
+end
+-- Slot 0 is the attack; slots 1 and 2 are the wild cards.
+function BattleLab:focusSlot(slot)
     local data=self.data
-    if self.pendingOfferChange or not data or data.phase~="Pick" or (data.locked and data.locked[1]) then return end
-    local resources=data.resources or {}
-    if kind=="reroll" then
-        if (resources.reroll or 0)&lt;=0 or #(data.eligible or {})&lt;=3 or data.pickAnyActive then return end
-    elseif kind=="pickAny" then
-        if (resources.pickAny or 0)&lt;=0 or data.pickAnyActive then return end
-    else return end
-    -- Keep the old cards inert until the replacement offer is acknowledged.
-    -- A normal snapshot of the old revision must not reopen them.
-    self.pendingOfferChange=true; self.pendingSelection=nil
-    self.audio:ui("select"); self:send(kind)
+    if not data or data.phase~="Pick" or (data.locked and data.locked[1]) then return end
+    local draft=self:loadout()
+    if slot&lt;0 or slot&gt;(data.slots or 0) or slot&gt;#draft.wildIds+1 or slot==self.focus then return end
+    self.focus=slot; self.audio:ui("tap")
 end
 function BattleLab:choose(skillId)
     local data=self.data
-    if self.pendingOfferChange or not data or data.phase~="Pick" or (data.locked and data.locked[1]) then return end
-    local choices=data.pickAnyActive and data.eligible or data.offer
-    if not table.find(choices or {},skillId) then return end
-    self.pendingSelection=skillId; self.pickedAt=os.clock(); self.audio:ui(false)
-    self:send("pick",{slot=data.slot,skillId=skillId})
+    if not data or data.phase~="Pick" or (data.locked and data.locked[1]) then return end
+    local draft=self:loadout(); local offer=data.offer or {}
+    if self.focus==0 then
+        if not table.find(offer.offences or {},skillId) or draft.offenceId==skillId then return end
+        draft.offenceId=skillId; self:send("pick",{slot="offence",skillId=skillId})
+    else
+        -- A wild card already on the plane cannot fill a second slot.
+        if not table.find(offer.wilds or {},skillId) or table.find(draft.wildIds,skillId) then return end
+        draft.wildIds[self.focus]=skillId; self:send("pick",{slot="wild",index=self.focus,skillId=skillId})
+    end
+    self.pickedAt=os.clock(); self.audio:ui(false)
 end
 function BattleLab:fight()
     local data=self.data
-    if self.pendingOfferChange or not data or data.phase~="Pick" or (data.locked and data.locked[1]) then return end
-    local selected=self.pendingSelection or data.selected
-    if not selected or not table.find(data.pickAnyActive and data.eligible or data.offer or {},selected) then return end
-    self.audio:ui(true); self:send("lock",{slot=data.slot,skillId=selected})
+    if not data or data.phase~="Pick" or (data.locked and data.locked[1]) or not self:loadoutReady() then return end
+    -- The lock carries the whole loadout the pilot is looking at.
+    self.audio:ui(true); self:send("lock",{offenceId=self.draft.offenceId,wildIds=table.clone(self.draft.wildIds)})
 end
 function BattleLab:rematch()
     local data=self.data
@@ -13275,7 +13303,7 @@ function BattleLab:showResult(data,accents,width,height,top,compact,short)
         place(self.resultHint,x,y,content,24); self.resultHint.TextSize=compact and 13 or 16
         self.resultHint.Text=winner==0 and "Same builds. Going again!"
             or (data.guided and ((data.stage or 1)&lt;=1 and "Next: pick a trick for your plane!" or "Next: pick one more trick!")
-                or "Next up: both pilots add a wild card")
+                or "Next up: add a wild card. Swap anything you like!")
         local plateWidth=math.min(width-16,math.max(3*statWidth+48,compact and 0 or 560))
         place(self.roundPlate,(width-plateWidth)/2,lineTop-8,plateWidth,y+30-lineTop+8)
         self.roundPlateEdge.Color=outcome=="draw" and WHITE or accents[winner]
@@ -13428,7 +13456,7 @@ function BattleLab:update(dt)
     self.mute.Text=muted and "🔇" or "🔊"
     self.motion.TextTransparency=self.reducedMotion and 0.6 or 0
     local portrait=headerHeight-18
-    local plateWidth=math.min(340,(width-124)/2)
+    local plateWidth=math.min(460,(width-124)/2)
     -- Phones in either orientation get the tight plate; text sizes follow width.
     local tight=compact or short
     for i,fighter in ipairs(self.fighters) do
@@ -13448,7 +13476,10 @@ function BattleLab:update(dt)
         fighter.name.Text=string.upper(identity.name or (i==1 and player.DisplayName or "???"))..(identity.bot and " · BOT" or "")
         -- Row two is the build: the offence as a paint-coloured pill, then a
         -- round chip for each wild card as it is drafted.
-        local build=builds[i] or {}; local offence=self.skills.get(build.offenceId or "")
+        local build=builds[i] or {}
+        -- While picking, the pilot's own plate shows the plane being built.
+        if pick and i==1 then build=self:loadout() end
+        local offence=self.skills.get(build.offenceId or "")
         local rowTwo=tight and 19 or 31; local rowHeight=tight and 14 or 19
         local powerWidth=math.min(textWidth,tight and 86 or 112)
         place(fighter.power,right and textLeft+textWidth-powerWidth or textLeft,rowTwo,powerWidth,rowHeight)
@@ -13475,20 +13506,25 @@ function BattleLab:update(dt)
         if striking then fighter.power.BackgroundColor3=accents[i]:Lerp(WHITE,self.reducedMotion and 0.5 or 0.5+0.5*math.sin(now*24)) end
         fighter.powerText.TextColor3=(fill&lt;0.5 and not striking) and WHITE or NAVY
         local chipSize=rowHeight+4
+        -- A wild card carries its name whenever the plate has room for two.
+        local nameWidth=math.min(132,(textWidth-powerWidth-10)/2-5)
+        local named=nameWidth&gt;=78
         for n,chip in ipairs(fighter.wilds) do
             local wild=self.skills.get((build.wildIds or {})[n] or "")
             -- With no room beside the pill, the chips ride on the portrait's rim.
-            local badge=textWidth&lt;powerWidth+2*(chipSize+5)
+            local badge=not named and textWidth&lt;powerWidth+2*(chipSize+5)
             chip.label.Visible=wild~=nil
             if chip.label.Visible then
-                local offset=powerWidth+5+(n-1)*(chipSize+5)
+                local chipWidth=named and nameWidth or chipSize
+                local offset=powerWidth+5+(n-1)*(chipWidth+5)
                 if badge then
                     local step=(n-1)*(chipSize+2)-2
                     place(chip.label,right and plateWidth-chipSize-step or step,portrait-chipSize+6,chipSize,chipSize)
                 else
-                    place(chip.label,right and textLeft+textWidth-offset-chipSize or textLeft+offset,rowTwo-2,chipSize,chipSize)
+                    place(chip.label,right and textLeft+textWidth-offset-chipWidth or textLeft+offset,rowTwo-2,chipWidth,chipSize)
                 end
-                chip.label.Text=wild.icon; chip.label.TextSize=chipSize*0.58
+                chip.label.Text=named and wild.icon.." "..string.upper(wild.name) or wild.icon
+                chip.label.TextSize=named and math.clamp((chipWidth-8)/(utf8.len(chip.label.Text)*0.62),8,chipSize*0.58) or chipSize*0.58
                 -- A chip jumps and glows the moment its wild card does something,
                 -- and a spent Spring Bumper goes dark.
                 local fired=math.max(0,1-(now-(((self.wildTimes or {})[i] or {})[wild.id] or -100))/0.9)
@@ -13497,7 +13533,7 @@ function BattleLab:update(dt)
                 if wild.id=="SecondWind" and fighting and state.secondWind==true then fired=math.max(fired,0.45) end
                 chip.edge.Color=accents[i]:Lerp(GOLD,fired); chip.edge.Thickness=2+fired*2
                 chip.label.BackgroundColor3=NAVY:Lerp(WHITE,fired*0.8); chip.label.TextTransparency=spent and 0.6 or 0
-                chip.scale.Scale=self.reducedMotion and 1 or 1+0.6*fired*fired
+                chip.scale.Scale=self.reducedMotion and 1 or 1+(named and 0.22 or 0.6)*fired*fired
             end
         end
         local pipHeight=tight and 9 or 18
@@ -13606,25 +13642,58 @@ function BattleLab:update(dt)
         local panel=math.min(width-24,880); local x=(width-panel)/2; local y=2
         local titleHeight=short and 30 or 50
         place(self.pickTitle,x,y,panel,titleHeight); self.pickTitle.TextSize=math.min(short and 24 or (compact and 28 or 40),panel*0.085)
-        self.pickTitle.Text=locked and "LOCKED IN!" or (data.slot=="offence" and "PICK YOUR ATTACK"
-            or (data.guided and ((data.stage or 2)&lt;=2 and "PICK A WILD CARD" or "PICK ONE MORE") or "ADD A WILD CARD"))
+        local draft=self:loadout(); local slots=data.slots or 0; local offer=data.offer or {}
+        local focus=self.focus or 0
+        local complete=draft.offenceId~=nil and #draft.wildIds==slots
+        local held=focus==0 and draft.offenceId or draft.wildIds[focus]
+        self.pickTitle.Text=locked and "LOCKED IN!" or (focus==0 and (slots==0 and "PICK YOUR ATTACK" or "CHANGE YOUR ATTACK?")
+            or (focus&lt;=(self.draftHeld or 0) and "CHANGE THIS WILD CARD?"
+                or (data.guided and ((data.stage or 2)&lt;=2 and "PICK A WILD CARD" or "PICK ONE MORE") or "ADD A WILD CARD")))
         self.pickTitle.TextColor3=locked and GOLD or WHITE
         y=y+titleHeight
         self.pickHint.Visible=not landscapeDraft
         place(self.pickHint,x,y,panel,short and 18 or (compact and 32 or 22)); self.pickHint.TextSize=short and 11 or (compact and 12 or 14)
         self.pickHint.Text=locked and (rivalLocked and "Both locked. Revealing together…" or "Waiting for your rival. Picks stay hidden until both lock.")
-            or data.guided and ((data.stage or 2)&lt;=2 and "A wild card gives your plane a trick. Tap one, then tap LOCK IN!"
-                or "Your plane keeps both tricks. Tap one, then tap LOCK IN!")
-            or ((data.slot~="offence" and self.lastRound and self.lastRound.matchId==data.matchId and not self.lastRound.draw)
-                and "Last round: "..self.lastRound.text.." Add a trick to change the next one."
-                or "Your plane fights on its own. Win 2 rounds to win the match!")
+            or (slots==0 and "Your plane fights on its own. Win 2 rounds to win the match!"
+                or focus==0 and "Tap another attack to swap, or keep the one you have."
+                or focus&lt;=(self.draftHeld or 0) and "Tap another wild card to swap, or keep the one you have."
+                or data.guided and ((data.stage or 2)&lt;=2 and "A wild card gives your plane a trick. Tap one, then tap LOCK IN!"
+                    or "Your plane keeps both tricks. Tap one, then tap LOCK IN!")
+                or "Your plane keeps everything on it. Tap a slot above the cards to swap it.")
         y=y+(landscapeDraft and 2 or short and 22 or (compact and 36 or 30))
-        local resources=data.resources or {}; local reroll=(resources.reroll or 0)&gt;0; local any=(resources.pickAny or 0)&gt;0
-        -- Reroll and Pick Any only take up room in a match that deals them.
-        local helpers=reroll or any or data.pickAnyActive==true
-        local bottom=landscapeDraft and 54 or (short and 116 or 138)-(helpers and 0 or (short and 61 or 66))
+        -- The loadout bar appears once there is more than the attack to show.
+        local tiles=slots&gt;0 and slots+1 or 0
+        local barHeight=tiles&gt;0 and (short and 36 or 48) or 0
+        local tileWidth=tiles&gt;0 and math.min(250,(panel-(tiles-1)*8)/tiles) or 0
+        local barLeft=x+(panel-(tiles*tileWidth+(tiles-1)*8))/2
+        for slot,tile in pairs(self.slotTiles) do
+            tile.button.Visible=slot&lt;tiles
+            if slot&lt;tiles then
+                local skill=self.skills.get((slot==0 and draft.offenceId or draft.wildIds[slot]) or "")
+                local focused=slot==focus and not locked
+                place(tile.button,barLeft+slot*(tileWidth+8),y,tileWidth,barHeight)
+                tile.button.BackgroundColor3=skill and tint(skill.color):Lerp(NAVY,focused and 0 or 0.55) or NAVY
+                tile.edge.Color=focused and GOLD or MUTED; tile.edge.Thickness=focused and 4 or 2
+                tile.edge.Transparency=focused and 0 or 0.5
+                tile.button.Active=not locked; tile.button.Selectable=not locked
+                local ink=(skill and focused) and NAVY or WHITE
+                local captionHeight=short and 12 or 15
+                place(tile.caption,4,3,tileWidth-8,captionHeight); tile.caption.TextSize=short and 9 or 11
+                tile.caption.TextColor3=ink; tile.caption.TextTransparency=0.15
+                tile.caption.Text=(slot==0 and "ATTACK" or (tileWidth&lt;130 and "WILD " or "WILD CARD ")..tostring(slot))
+                    ..((focused or locked or tileWidth&lt;170) and "" or " · TAP TO SWAP")
+                place(tile.value,4,captionHeight+2,tileWidth-8,barHeight-captionHeight-5)
+                tile.value.Text=skill and skill.icon.." "..string.upper(skill.name) or "＋ PICK ONE"
+                tile.value.TextColor3=skill and ink or GOLD
+                tile.value.TextSize=math.clamp((tileWidth-8)/((utf8.len(tile.value.Text) or 12)*0.62),9,short and 16 or 20)
+                -- An empty slot breathes until it gets its card.
+                tile.scale.Scale=(skill or locked or self.reducedMotion) and 1 or 1+0.03*math.sin(now*6)
+            end
+        end
+        y=y+barHeight+(tiles&gt;0 and 6 or 0)
+        local bottom=landscapeDraft and 54 or (short and 55 or 72)
         local listHeight=landscapeDraft and math.max(0,area-y-bottom) or math.max(62,area-y-bottom)
-        local choices=data.pickAnyActive and data.eligible or data.offer or {}
+        local choices=(focus==0 and offer.offences or offer.wilds) or {}
         local stackedCards=compact and not landscapeDraft
         -- One row while each card keeps a readable width, then even rows.
         local fit=math.max(1,math.floor(panel/((landscapeDraft and 120 or 150)+12)))
@@ -13641,19 +13710,21 @@ function BattleLab:update(dt)
         local listTop=y+((not stackedCards and used&lt;listHeight) and (listHeight-used)/2 or 0)
         place(self.cardList,x,listTop,panel,math.min(listHeight,used+12))
         local cardWidth=(panel-(cols-1)*gap-12)/cols
-        local selected=self.pendingSelection or data.selected
-        local offerKey=tostring(data.matchId)..":"..tostring(data.stage)..":"..tostring(data.offerRevision)..":"..tostring(data.pickAnyActive)
+        local selected=held
+        local offerKey=tostring(data.matchId)..":"..tostring(data.stage)..":"..tostring(focus)
         if self.offerKey~=offerKey then self.offerKey=offerKey; self.offerAt=now end
         for _,card in pairs(self.powerCards) do card.button.Visible=false end
         for index,id in ipairs(choices) do
             local card=self.powerCards[id]
             if card then
                 local chosen=selected==id; card.button.Visible=true
+                -- A wild card in the other slot is already on the plane.
+                local taken=focus&gt;0 and not chosen and table.find(draft.wildIds,id)~=nil
                 local row,col=math.floor((index-1)/cols),(index-1)%cols
                 place(card.button,6+col*(cardWidth+gap),6+row*(cardHeight+gap),cardWidth,cardHeight)
-                card.button.BackgroundColor3=(chosen or not selected) and card.color or card.color:Lerp(NAVY,0.45)
+                card.button.BackgroundColor3=taken and card.color:Lerp(NAVY,0.75) or ((chosen or not selected) and card.color or card.color:Lerp(NAVY,0.45))
                 card.edge.Color=chosen and GOLD or NAVY; card.edge.Thickness=chosen and 6 or 4
-                card.button.Active=not locked and not self.pendingOfferChange; card.button.Selectable=card.button.Active
+                card.button.Active=not locked and not taken; card.button.Selectable=card.button.Active
                 -- Cards deal in one after another; the chosen one pops forward.
                 local deal=self.reducedMotion and 1 or popIn((now-self.offerAt-(index-1)*0.07)/0.26)
                 local bounce=chosen and math.max(0,1-(now-(self.pickedAt or 0))/0.2) or 0
@@ -13663,9 +13734,11 @@ function BattleLab:update(dt)
                 card.tag.Visible=roomy; card.word.Visible=roomy and cardWidth&gt;=190; card.promise.Visible=true
                 -- A stacked card has no tag, so its trigger leads the promise.
                 card.promise.Text=(stackedCards and card.spec.when) and (card.spec.when..": "..card.spec.promise) or card.spec.promise
+                -- Only a roomy card has a tag to say why it cannot be tapped.
+                if taken and not roomy then card.promise.Text="Already on your plane." end
                 if roomy then
                     place(card.tag,12,10,math.min(cardWidth-24,card.spec.when and 160 or 132),22)
-                    card.tag.Text=chosen and "✓ YOUR PICK" or (card.spec.when or "TAP TO PICK")
+                    card.tag.Text=chosen and "✓ YOUR PICK" or (taken and "ON YOUR PLANE" or (card.spec.when or "TAP TO PICK"))
                     card.tag.TextSize=cardWidth&lt;150 and 9 or 12
                     card.tag.BackgroundTransparency=chosen and 0 or 0.45
                     place(card.icon,0,34,cardWidth,cardHeight*0.36); card.icon.TextSize=math.clamp(cardHeight*0.3,28,84)
@@ -13701,32 +13774,16 @@ function BattleLab:update(dt)
         end
         self.cardList.CanvasSize=UDim2.fromOffset(0,(stackedCards or used&gt;listHeight) and used+12 or 0)
         y=y+listHeight+(landscapeDraft and 4 or 8)
-        local canReroll=reroll and not locked and not self.pendingOfferChange and #((data.eligible) or {})&gt;3 and not data.pickAnyActive
-        self.reroll.Text=reroll and "🎲 Reroll · 1 free" or "Reroll used"
-        self.pickAny.Text=data.pickAnyActive and "All cards shown" or (any and "🃏 Pick Any · 1 free" or "Pick Any used")
-        enabled(self.reroll,canReroll); enabled(self.pickAny,any and not locked and not self.pendingOfferChange and not data.pickAnyActive)
-        self.reroll.TextSize=short and 13 or 15; self.pickAny.TextSize=short and 13 or 15
-        self.resourceHint.Visible=helpers and not landscapeDraft
-        self.reroll.Visible=helpers; self.pickAny.Visible=helpers
-        local ready=not locked and not self.pendingOfferChange and selected~=nil
+        local ready=not locked and complete
         if landscapeDraft then
-            local actionWidth=(panel-16)/3
-            place(self.reroll,x,y,actionWidth,44); place(self.pickAny,x+actionWidth+8,y,actionWidth,44)
-            if helpers then place(self.fightButton,x+2*(actionWidth+8),y,actionWidth,44)
-            else place(self.fightButton,(width-math.min(panel,360))/2,y,math.min(panel,360),44) end
+            place(self.fightButton,(width-math.min(panel,360))/2,y,math.min(panel,360),44)
             self.fightButton.TextSize=20
         else
-            local side=math.min((panel-8)/2,220); local lockWidth=math.min(panel,440)
-            if helpers then
-                place(self.reroll,width/2-side-4,y,side,40); place(self.pickAny,width/2+4,y,side,40); y=y+43
-                place(self.resourceHint,x,y,panel,short and 16 or 20); self.resourceHint.TextSize=short and 10 or 11
-                self.resourceHint.Text=self.pendingOfferChange and "Updating your cards…" or data.rerollReason or "One of each per match · Same skill access for every pilot"
-                y=y+(short and 18 or 23)
-            end
+            local lockWidth=math.min(panel,440)
             place(self.fightButton,(width-lockWidth)/2,y,lockWidth,short and 46 or 58)
             self.fightButton.TextSize=(short and 22 or 30)+((ready and not self.reducedMotion) and 2*math.sin(now*5) or 0)
         end
-        self.fightButton.Text=self.pendingOfferChange and "UPDATING CARDS…" or locked and "WAITING FOR RIVAL…" or (selected and "LOCK IN!" or landscapeDraft and "CHOOSE A CARD" or "TAP A CARD")
+        self.fightButton.Text=locked and "WAITING FOR RIVAL…" or (complete and "LOCK IN!" or landscapeDraft and "CHOOSE A CARD" or "TAP A CARD")
         self.fightButton.BackgroundColor3=ready and GREEN or Color3.fromRGB(58,96,84)
         enabled(self.fightButton,ready)
         self.picker.CanvasSize=UDim2.fromOffset(0,landscapeDraft and 0 or (y+(short and 50 or 62)&gt;area and y+(short and 50 or 62) or 0))
@@ -13745,13 +13802,17 @@ function BattleLab:update(dt)
         -- On a short screen the status pill already makes the call.
         self.revealTitle.Visible=not short; place(self.revealTitle,0,0,revealWidth,titleHeight)
         self.revealTitle.Text=self.sameBuildReplay and "DRAW · SAME BUILDS!" or (data.matchPoint and "MATCH POINT!"
-            or ((data.guided and data.stage==1) and "YOUR FIRST BATTLE!" or "PICKS REVEALED!"))
+            or ((data.guided and data.stage==1) and "YOUR FIRST BATTLE!" or "PLANES REVEALED!"))
         self.revealTitle.TextSize=short and 20 or 30
         local slide=self.reducedMotion and 1 or popIn((now-(self.revealedAt or 0))/0.32)
         for side,item in ipairs(self.reveals) do
             local identity=identities[side] or {}; local build=builds[side] or {}
-            local id=data.stage==1 and build.offenceId or (build.wildIds or {})[math.max(1,(data.stage or 2)-1)]
-            local skill=not self.sameBuildReplay and self.skills.get(id or "") or nil
+            -- Each side shows its whole plane: the attack by name, then its wild cards.
+            local skill=self.skills.get(build.offenceId or "")
+            local extras={}
+            for _,wildId in ipairs(build.wildIds or {}) do
+                local wild=self.skills.get(wildId); if wild then extras[#extras+1]=wild.icon end
+            end
             local restX=stacked and 0 or (side-1)*(cardWidth+middle)
             local restY=titleHeight+(stacked and (side-1)*(rowHeight+34) or 0)
             place(item.frame,restX+(1-slide)*(side==1 and -1 or 1)*width*0.6,restY,cardWidth,rowHeight)
@@ -13760,9 +13821,10 @@ function BattleLab:update(dt)
             place(item.name,10,6,tagWidth,18)
             item.name.Text=side==1 and "YOU" or (string.upper(identity.name or "RIVAL")..(identity.bot and " · BOT" or ""))
             local iconBox=rowHeight-30
-            place(item.icon,8,26,iconBox+8,iconBox); item.icon.TextSize=iconBox*0.8; item.icon.Text=skill and skill.icon or "🔁"
+            place(item.icon,8,26,iconBox+8,iconBox); item.icon.TextSize=iconBox*0.8; item.icon.Text=skill and skill.icon or "✈️"
             place(item.skill,iconBox+24,26,cardWidth-iconBox-32,iconBox)
-            item.skill.TextSize=math.min(short and 20 or 30,(cardWidth-iconBox-32)*0.13); item.skill.Text=skill and string.upper(skill.name) or "SAME BUILD"
+            item.skill.Text=(skill and string.upper(skill.name) or "PLANE")..(#extras&gt;0 and "  + "..table.concat(extras," ") or "")
+            item.skill.TextSize=math.min(short and 20 or 30,(cardWidth-iconBox-32)*0.13,(cardWidth-iconBox-32)/((utf8.len(item.skill.Text) or 12)*0.62))
         end
         self.revealVs.Visible=slide&gt;0.6
         if stacked then place(self.revealVs,0,titleHeight+rowHeight,revealWidth,34); self.revealVs.TextSize=26

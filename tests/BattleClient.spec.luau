@@ -4,46 +4,53 @@ return function(Client,Skills)
     local function test(name,callback)
         local commands={}
         local ui=setmetatable({skills=Skills,audio={ui=function() end},data={active=true,phase="Pick",matchId=10,stage=1,
-            slot="offence",offerRevision=1,offer={"Meteor","MachineGun","Pinball"},eligible={"Meteor","Firework","MachineGun","Pinball"},locked={false,false},resources={reroll=1,pickAny=1}}},Client)
+            slots=0,offerRevision=1,offer={offences={"Meteor","MachineGun","Pinball"},wilds={"Afterburner","SpringBumper","Magnet"}},
+            draft={wildIds={}},locked={false,false}}},Client)
         function ui:send(kind,payload) commands[#commands+1]={kind=kind,payload=payload} end
         local ok,problem=pcall(callback,ui,commands);assert(ok,name..": "..tostring(problem));passed=passed+1
     end
     test("ordinary selection sends only the local offered skill, never rival settings",function(ui,commands)
         ui:choose("Firework");assert(#commands==0,"Off-offer choice sent")
+        ui:choose("Afterburner");assert(#commands==0,"A wild card filled the attack slot")
+        ui:fight();assert(#commands==0,"An empty loadout locked")
         ui:choose("Meteor");ui:fight()
         assert(#commands==2 and commands[1].kind=="pick" and commands[2].kind=="lock")
         assert(commands[1].payload.skillId=="Meteor" and commands[1].payload.slot=="offence")
-        assert(commands[2].payload.skillId=="Meteor" and commands[2].payload.slot=="offence","Lock omitted the visible choice")
-        assert(commands[1].payload.settings==nil,"Client supplied builds")
+        assert(commands[2].payload.offenceId=="Meteor" and #commands[2].payload.wildIds==0,"Lock omitted the visible loadout")
+        assert(commands[1].payload.settings==nil and commands[2].payload.settings==nil,"Client supplied builds")
     end)
     test("locked or inactive drafts cannot send new picks",function(ui,commands)
-        ui.data.locked[1]=true;ui:choose("Meteor");ui:fight();assert(#commands==0)
+        ui.data.locked[1]=true;ui:choose("Meteor");ui:fight();ui:focusSlot(0);assert(#commands==0)
         ui.data.locked[1]=false;ui.data.phase="Fight";ui:choose("Meteor");assert(#commands==0)
     end)
-    test("Pick Any uses only the server eligible roster",function(ui,commands)
-        ui.data.pickAnyActive=true;ui:choose("Firework");assert(#commands==1)
-        ui:choose("Copycat");assert(#commands==1,"Inactive skill sent")
+    test("a later pick opens on the new slot and keeps the plane that flew",function(ui,commands)
+        ui.data.stage=2;ui.data.slots=1;ui.data.draft={offenceId="Meteor",wildIds={}}
+        local draft=ui:loadout()
+        assert(draft.offenceId=="Meteor" and ui.focus==1,"The pick did not open on the empty wild slot")
+        ui:fight();assert(#commands==0,"A plane with an empty slot locked")
+        ui:choose("Meteor");assert(#commands==0,"An attack filled a wild slot")
+        ui:choose("Magnet")
+        assert(commands[1].kind=="pick" and commands[1].payload.slot=="wild" and commands[1].payload.index==1 and commands[1].payload.skillId=="Magnet")
+        ui:choose("SpringBumper");assert(#commands==2 and ui.draft.wildIds[1]=="SpringBumper","A second tap did not swap the card")
+        ui:focusSlot(2);assert(ui.focus==1,"A slot that is not open took focus")
+        ui:focusSlot(0);assert(ui.focus==0);ui:choose("Pinball");ui:choose("Pinball")
+        assert(#commands==3 and commands[3].payload.slot=="offence","The attack was not swapped once")
+        ui:fight()
+        local lock=commands[4].payload
+        assert(commands[4].kind=="lock" and lock.offenceId=="Pinball" and #lock.wildIds==1 and lock.wildIds[1]=="SpringBumper")
+        assert(lock.wildIds~=ui.draft.wildIds,"The lock shared the live draft table")
     end)
-    test("pending reroll freezes cards and lock through old snapshots until acknowledgement",function(ui,commands)
-        ui:choose("Pinball");ui:changeOffer("reroll")
-        assert(ui.pendingOfferChange and ui.pendingSelection==nil and #commands==2)
-        ui:choose("Pinball");ui:fight();ui:changeOffer("pickAny");ui:changeOffer("reroll")
-        assert(#commands==2,"Old cards or repeated resources stayed interactive")
-        local old=ui.data;ui:syncDraft(old,old)
-        assert(ui.pendingOfferChange,"Old snapshot reopened draft")
-        local fresh=table.clone(old);fresh.offerRevision=2;fresh.offer={"Meteor","MachineGun","Firework"}
-        ui:syncDraft(old,fresh);ui.data=fresh
-        assert(not ui.pendingOfferChange and ui.pendingSelection==nil)
-        ui:choose("Firework");ui:fight()
-        assert(#commands==4 and commands[4].payload.skillId=="Firework","Replacement choice was not locked explicitly")
-    end)
-    test("pending Pick Any clears on deadline phase change or acknowledged prior lock",function(ui,commands)
-        ui:changeOffer("pickAny");assert(ui.pendingOfferChange)
-        local old=ui.data;local fresh=table.clone(old);fresh.phase="Countdown"
-        ui:syncDraft(old,fresh);assert(not ui.pendingOfferChange)
-        ui:changeOffer("pickAny");assert(ui.pendingOfferChange)
-        fresh.phase="Pick";fresh.locked={true,false};ui:syncDraft(old,fresh)
-        assert(not ui.pendingOfferChange,"A lock acknowledged before resource request left updating cards stuck")
+    test("the third pick keeps the first wild card and never doubles one",function(ui,commands)
+        ui.data.stage=3;ui.data.slots=2;ui.data.draft={offenceId="Meteor",wildIds={"Magnet"}}
+        ui:loadout();assert(ui.focus==2 and ui.draftHeld==1)
+        ui:choose("Magnet");assert(#commands==0,"One wild card filled both slots")
+        ui:choose("Afterburner");ui:focusSlot(1);ui:choose("Afterburner");assert(#commands==1,"A held card swapped into the other slot")
+        ui:choose("SpringBumper");ui:fight()
+        local lock=commands[3].payload
+        assert(lock.offenceId=="Meteor" and lock.wildIds[1]=="SpringBumper" and lock.wildIds[2]=="Afterburner")
+        -- A new stage starts again from the server's plane, not the old draft.
+        ui.data.stage=4;ui.data.draft={offenceId="Pinball",wildIds={"Magnet","Afterburner"}}
+        assert(ui:loadout().offenceId=="Pinball" and ui.focus==0 and ui:loadoutReady())
     end)
     test("real outbox preserves explicit choice and revision while spacing queued packets",function(ui)
         local sent={};ui.send=Client.send;ui.outbox={};ui.sending=true;ui.lastSend=-math.huge
@@ -58,7 +65,7 @@ return function(Client,Skills)
         assert(#sent==3 and sent[1].payload.kind=="pick" and sent[2].payload.kind=="lock")
         for index=1,2 do
             local p=sent[index].payload
-            assert(p.skillId=="Pinball" and p.offerRevision==1 and p.matchId==10 and p.stage==1)
+            assert((index==1 and p.skillId or p.offenceId)=="Pinball" and p.offerRevision==1 and p.matchId==10 and p.stage==1)
         end
         assert(sent[2].at-sent[1].at>=.079 and sent[3].at-sent[2].at>=.079,"Outbox pacing bypassed")
     end)

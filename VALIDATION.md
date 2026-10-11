@@ -1,3 +1,25 @@
+# A loadout you keep and can swap every round — October 10, 2026 (not yet published)
+
+Playtest feedback: a young pilot could not tell which attack or wild card he had picked, or whether a pick still applied in rounds two and three. Before this change the attack was chosen once and could never change, each wild card was chosen once, and the only record of either was a small pill and emoji-only chips in the top bar.
+
+**Rules**
+- Before every round each pilot sets up a whole plane: **one attack, plus one wild card slot for each decisive round played** (none in round one, one after the first decisive round, two after the second).
+- Everything already on the plane stays there. **Any slot can be swapped before any round**, attack included, and one wild card cannot fill two slots.
+- Each pick starts from the plane that just flew, so a pilot who only wants the new card taps it and locks, as before. The pick clock is 20 s (was 15 s).
+- A pilot who runs out of time keeps whatever they tapped; only empty slots are filled, with the first offered card. (Before, the deadline replaced a tapped card with the first one.)
+- A drawn round still replays at once with the same planes. A bot keeps its plane and adds one random wild card per round.
+- The guided first match is unchanged in shape; its later picks offer Meteor/Firework and the same small wild card hands.
+- The unused random-hand draft (reroll, Pick Any, hand size) was removed from server, client and tests.
+
+**Screen**
+- The pick screen has a **loadout bar**: a named tile for the attack and for each wild card slot. The tile being changed is lit; the others say "TAP TO SWAP". The cards below belong to the lit slot, and a wild card in the other slot is dimmed and marked as already on the plane.
+- The pilot's own plate in the top bar shows the plane as it is being built.
+- In the top bar, **wild cards now show their names** next to the attack whenever the plate has room (desktop and a phone on its side); an upright phone keeps the icon badges.
+- The countdown reveal shows each pilot's whole plane (attack name plus wild card icons) and is titled "PLANES REVEALED!".
+
+- **Checks:** 33 match cases (4 obsolete random-hand cases removed; new or rewritten cases for carrying the plane, swapping every slot, doubled and short loadouts, the deadline, the bot and the guided hands), 11 client cases (2 new), 48 server scenarios, simulation and catalog suites unchanged and passing. In local Studio the 33 match and 11 client cases pass natively. Two live bot matches (desktop and 812×375) and one guided match were played through the new picker, including an attack swap in round two, with no script errors. The two-slot round-three screen was driven with a server-sent snapshot at desktop, 812×375 and 390×780. [Adding a wild card](previews/loadout-1-add-wild-card.jpg), [round three](previews/loadout-2-round-three-swap.jpg), [upright phone](previews/loadout-3-phone-portrait.jpg), [phone on its side](previews/loadout-4-phone-landscape.jpg), [names in the fight](previews/loadout-5-fight-hud.jpg).
+- **Not checked:** a real round-three pick in a live match (both live matches ended 2–0), a real phone, two human clients, and whether free attack swaps change which attacks win (the sampler measures fixed builds only). Scripted taps on the slot tiles were sometimes dropped by Studio's input injection (press with no release in the event log); when both events arrived the tile always responded.
+
 # Version 13 publication — distinct powers, October 10, 2026
 
 **Skybound Test version 13 is published**, place `86507299893768`, universe `10770074500`, at **2026-10-11T03:24:05Z** (October 10, 20:24:05 PDT), from **`fc2cb0b86897ff77f89c511fab6572f6915d41a5`**. Studio confirmed publication and Playtester availability; access settings were unchanged. [Publication proof](docs/validation/qa-2026-10-10/published-version-13.jpg), [current manifest](docs/validation/sky-battle-build.json).

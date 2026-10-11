@@ -28,9 +28,8 @@ return function(BattleLab, Skills)
         t.lab=BattleLab.new(deps)
         -- These cases step through transitions with a two-second round pause.
         t.lab.ROUND_OVER_SECONDS=2
-        -- The dealt-hand draft stays covered here; the public default deals
-        -- the whole roster and is checked on its own below.
-        if not options.publicDraft then t.lab.PICK_SECONDS=10;t.lab.OFFER_SIZE=3;t.lab.REROLLS=1;t.lab.PICK_ANYS=1 end
+        -- These cases use a ten-second pick; the public clock is checked below.
+        if not options.publicDraft then t.lab.PICK_SECONDS=10 end
         function t.player(id)
             local p={UserId=id,Name="Pilot"..id,DisplayName="Pilot"..id}
             function p:GetAttribute(key)if key=="SkyboundColor"then return id end return nil end
@@ -40,7 +39,15 @@ return function(BattleLab, Skills)
             local s=t.lab:snapshot(p);local payload=extra or {}
             payload.kind=kind;if payload.matchId==nil then payload.matchId=s.matchId end;if payload.stage==nil then payload.stage=s.stage end
             if payload.offerRevision==nil then payload.offerRevision=s.offerRevision end
-            if kind=="lock" then payload.slot=payload.slot or s.slot;payload.skillId=payload.skillId or s.selected or s.offer[1] end
+            -- A friendly lock sends the draft as it stands, with any gap filled
+            -- by the first offered card that is not already on the plane.
+            if kind=="lock" and s.draft and payload.offenceId==nil and payload.wildIds==nil then
+                payload.offenceId=s.draft.offenceId or s.offer.offences[1];payload.wildIds={}
+                for _,id in ipairs(s.draft.wildIds)do payload.wildIds[#payload.wildIds+1]=id end
+                for _,id in ipairs(s.offer.wilds)do
+                    if #payload.wildIds<s.slots and not table.find(payload.wildIds,id)then payload.wildIds[#payload.wildIds+1]=id end
+                end
+            end
             t.lab:command(p,payload)
         end
         function t.advance(seconds)
@@ -51,7 +58,7 @@ return function(BattleLab, Skills)
             local a,b=t.player(1),t.player(2);t.send(a,"enter");t.send(b,"enter");return a,b,t.lab.sessions[1].match
         end
         function t.lock(p)
-            local s=t.lab:snapshot(p);t.send(p,"pick",{slot=s.slot,skillId=s.offer[1]});t.send(p,"lock")
+            t.send(p,"lock")
         end
         function t.fight(a,b)
             t.lock(a);if b then t.lock(b)end;t.advance(2.5)
@@ -76,71 +83,54 @@ return function(BattleLab, Skills)
         assert(t.lab:snapshot(a).phase=="Searching");t.send(a,"exit");t.advance(10);assert(not t.lab:snapshot(a).active)
         t.send(a,"enter");t.advance(8.1);local s=t.lab:snapshot(a)
         assert(s.phase=="Pick" and s.simulatedOpponent and s.players[2].bot and s.players[2].name=="Comet")
-        assert(s.resources.reroll==1 and s.resources.pickAny==1)
+        assert(s.slots==0 and s.draft.offenceId==nil and #s.offer.offences==4)
     end)
-    test("offers and selection stay private until simultaneous reveal",function()
+    test("offers and drafts stay private until simultaneous reveal",function()
         local t=harness();local a,b,m=t.pair();local sa=t.lab:snapshot(a);local sb=t.lab:snapshot(b)
-        assert(#sa.offer==3 and #sb.offer==3 and sa.offers==nil and sa.settings[2].offenceId==nil)
-        t.send(a,"pick",{slot="offence",skillId=sa.offer[2]});t.send(a,"lock")
-        sb=t.lab:snapshot(b);assert(sb.settings[2].offenceId==nil and sb.selected==nil and sb.locked[2])
+        assert(#sa.offer.offences==4 and #sb.offer.offences==4 and sa.offers==nil and sa.drafts==nil and sa.settings[2].offenceId==nil)
+        t.send(a,"pick",{slot="offence",skillId=sa.offer.offences[2]});assert(t.lab:snapshot(a).draft.offenceId==sa.offer.offences[2])
+        t.send(a,"lock")
+        sb=t.lab:snapshot(b);assert(sb.settings[2].offenceId==nil and sb.draft.offenceId==nil and sb.locked[2])
         t.lock(b);sa=t.lab:snapshot(a);sb=t.lab:snapshot(b)
-        assert(sa.phase=="Countdown" and sa.settings[1].offenceId==sb.settings[2].offenceId)
+        assert(sa.phase=="Countdown" and sa.draft==nil and sa.settings[1].offenceId==sb.settings[2].offenceId)
+        assert(sa.settings[1].offenceId==sa.offer.offences[2] or sa.settings[1].offenceId=="Firework")
         assert(sa.settings[1].offenceId==sa.simulation.fighters[1].settings.offenceId)
         assert(sb.players[1].userId==2 and sb.players[2].userId==1)
     end)
-    test("reject outside-offer inactive wrong-kind cross-player stale and wrong-phase commands",function()
-        local t=harness();local a,b,m=t.pair();local s=t.lab:snapshot(a)
-        local outside;for _,id in ipairs(s.eligible)do local found=false;for _,o in ipairs(s.offer)do if o==id then found=true end end;if not found then outside=id end end
-        for _,extra in ipairs({{slot="offence",skillId=outside},{slot="wild",skillId=s.offer[1]},
-            {slot="offence",skillId="Copycat"},{slot="offence",skillId="Afterburner"},
-            {slot="offence",skillId=s.offer[1],side=2},{slot="offence",skillId=s.offer[1],userId=2},
-            {slot="offence",skillId=s.offer[1],matchId=999},{slot="offence",skillId=s.offer[1],stage=2}})do
-            t.advance(.1);t.send(a,"pick",extra);assert(t.lab:snapshot(a).selected==nil)
+    test("reject inactive wrong-kind wrong-slot cross-player stale and wrong-phase commands",function()
+        local t=harness();local a,b,m=t.pair();local s=t.lab:snapshot(a);local first=s.offer.offences[1]
+        for _,extra in ipairs({{slot="offence",skillId="Copycat"},{slot="offence",skillId="Afterburner"},
+            {slot="wild",index=1,skillId="Afterburner"},{slot="wild",skillId=first},
+            {slot="offence",skillId=first,side=2},{slot="offence",skillId=first,userId=2},
+            {slot="offence",skillId=first,matchId=999},{slot="offence",skillId=first,stage=2}})do
+            t.advance(.1);t.send(a,"pick",extra);assert(t.lab:snapshot(a).draft.offenceId==nil and #m.drafts[1].wildIds==0)
         end
-        t.lock(a);local chosen=m.selected[1];t.advance(.1);t.send(a,"pick",{slot="offence",skillId=s.offer[3]});assert(m.selected[1]==chosen)
-        t.lock(b);t.advance(.1);t.send(a,"pickAny");assert(m.resources[1].pickAny==1)
+        t.lock(a);local chosen=m.drafts[1].offenceId;t.advance(.1);t.send(a,"pick",{slot="offence",skillId=s.offer.offences[3]});assert(m.drafts[1].offenceId==chosen)
+        t.lock(b);t.advance(.1)
         t.send(a,"configure",{settings={{offenceId="Copycat"},{offenceId="Copycat"}}});assert(m.settings[1].offenceId==chosen)
+        t.send(a,"pick",{slot="offence",skillId=s.offer.offences[3]});assert(m.settings[1].offenceId==chosen and m.phase=="Countdown")
     end)
-    test("the public draft deals the whole roster in order with nothing to reroll",function()
+    test("the public draft shows the whole roster in order before every round",function()
         local t=harness({publicDraft=true});local a,b,m=t.pair();local s=t.lab:snapshot(a)
-        assert(table.concat(s.offer,",")=="Meteor,Firework,MachineGun,Pinball" and s.resources.reroll==0 and s.resources.pickAny==0)
-        t.send(a,"reroll");t.send(a,"pickAny");assert(t.lab:snapshot(a).offerRevision==s.offerRevision)
-        t.advance(14.9);assert(m.phase=="Pick");t.advance(.2);assert(m.phase~="Pick","The 15-second deadline did not lock")
+        assert(table.concat(s.offer.offences,",")=="Meteor,Firework,MachineGun,Pinball" and #s.offer.wilds==5 and s.slots==0)
+        t.advance(19.9);assert(m.phase=="Pick");t.advance(.2);assert(m.phase~="Pick","The 20-second deadline did not lock")
         t.advance(2.5);assert(m.phase=="Fight");t.finish(m,1);t.advance(3.6);s=t.lab:snapshot(a)
-        assert(s.phase=="Pick" and #s.offer==5 and s.offer[1]=="Afterburner","Wild pick hid part of the roster")
+        assert(s.phase=="Pick" and s.slots==1 and #s.offer.wilds==5 and s.offer.wilds[1]=="Afterburner","Wild pick hid part of the roster")
+        assert(#s.offer.offences==4 and s.draft.offenceId=="Meteor" and #s.draft.wildIds==0,"The second pick did not start from the plane that flew")
     end)
-    test("reroll changes set once and Pick Any consumes once for the entire match",function()
-        local t=harness();local a,b,m=t.pair();local old=t.lab:snapshot(a).offer;t.send(a,"reroll")
-        local s=t.lab:snapshot(a);local changed=false
-        for _,id in ipairs(s.offer)do local found=false;for _,o in ipairs(old)do if o==id then found=true end end;if not found then changed=true end end
-        assert(changed and s.resources.reroll==0 and s.selected==nil)
-        local nextOffer=table.concat(s.offer,",");t.send(a,"reroll");assert(table.concat(t.lab:snapshot(a).offer,",")==nextOffer)
-        t.send(a,"pickAny");assert(#t.lab:snapshot(a).offer==4 and t.lab:snapshot(a).resources.pickAny==0)
-        t.fight(a,b);t.finish(m,0,"timeout");t.advance(4.7)
-        assert(m.phase=="Fight" and m.stage==1 and m.resources[1].reroll==0 and m.resources[1].pickAny==0)
-    end)
-    test("stale offer and bare locks never auto-pick a replacement card",function()
-        local t=harness();local a,b,m=t.pair();local old=t.lab:snapshot(a)
+    test("bare partial and stale locks never fill a gap",function()
+        local t=harness();local a,b,m=t.pair()
         -- Raw commands intentionally bypass the friendly packet helper.
-        t.lab:command(a,{kind="lock",matchId=m.id,stage=1})
-        assert(not m.locked[1] and m.selected[1]==nil,"Bare lock auto-picked")
-        t.send(a,"reroll");local current=t.lab:snapshot(a)
-        assert(current.offerRevision==old.offerRevision+1)
-        local removed;for _,id in ipairs(old.offer)do if not table.find(current.offer,id)then removed=id end end
-        assert(removed)
-        t.advance(.1)
-        t.lab:command(a,{kind="pick",matchId=m.id,stage=1,slot="offence",skillId=removed,offerRevision=old.offerRevision})
-        t.lab:command(a,{kind="lock",matchId=m.id,stage=1,slot="offence",skillId=removed,offerRevision=old.offerRevision})
-        assert(not m.locked[1] and m.selected[1]==nil,"Stale offer locked a different card")
-        -- Even a card shared by both offers needs the current revision.
-        t.advance(.1)
-        t.lab:command(a,{kind="lock",matchId=m.id,stage=1,slot="offence",skillId=current.offer[1],offerRevision=old.offerRevision})
-        t.lab:command(a,{kind="lock",matchId=m.id,stage=1,slot="offence",offerRevision=current.offerRevision})
-        t.lab:command(a,{kind="lock",matchId=m.id,stage=1,slot="offence",skillId=removed,offerRevision=current.offerRevision})
-        assert(not m.locked[1] and m.selected[1]==nil,"Invalid lock fell back to the first offer")
+        for _,packet in ipairs({{},{offenceId="Meteor"},{offenceId="Copycat",wildIds={}},{wildIds={}},
+            {offenceId="Meteor",wildIds={"Afterburner"}},{offenceId="Meteor",wildIds="Afterburner"},
+            {offenceId="Meteor",wildIds={},offerRevision=2},{offenceId="Meteor",wildIds={},stage=2}})do
+            packet.kind="lock";packet.matchId=m.id;packet.stage=packet.stage or 1;packet.offerRevision=packet.offerRevision or 1
+            t.advance(.1);t.lab:command(a,packet)
+            assert(not m.locked[1] and m.drafts[1].offenceId==nil,"A broken lock was accepted")
+        end
         t.advance(.2)
-        t.send(a,"lock",{slot="offence",skillId=current.offer[2]});t.lock(b)
-        assert(m.phase=="Countdown" and m.settings[1].offenceId==current.offer[2],"Explicit current card not preserved")
+        t.send(a,"lock",{offenceId="Firework",wildIds={}});t.lock(b)
+        assert(m.phase=="Countdown" and m.settings[1].offenceId=="Firework","Explicit loadout not preserved")
     end)
     test("terminal armor win explains the deciding round instead of the rival's last hit",function()
         local t=harness();local a,b,m=t.pair();t.fight(a,b)
@@ -163,31 +153,14 @@ return function(BattleLab, Skills)
             assert(string.find(t.lab:facts(m,{winner=1,reason=reason,decidingRoundReason="timeout"},1)[1],"completed round wins",1,true))
         end
     end)
-    test("Pick Any revisions reject queued old selections and stale resource requests",function()
-        local t=harness();local a,b,m=t.pair();local old=t.lab:snapshot(a)
-        t.send(a,"pickAny");local current=t.lab:snapshot(a)
-        assert(current.offerRevision==old.offerRevision+1)
-        t.send(a,"pick",{slot=old.slot,skillId=old.offer[1],offerRevision=old.offerRevision})
-        t.send(a,"lock",{slot=old.slot,skillId=old.offer[1],offerRevision=old.offerRevision})
-        t.send(a,"reroll",{offerRevision=old.offerRevision})
-        assert(not m.locked[1] and m.selected[1]==nil and m.resources[1].reroll==1)
-        t.advance(.1);t.send(a,"lock",{skillId=current.offer[#current.offer]});t.lock(b)
-        assert(m.settings[1].offenceId==current.offer[#current.offer])
-    end)
-    test("eligible pools below equal and above three and disabled reroll does not consume",function()
-        for count=2,4 do
-            local roster={version="test",offences={"Meteor","Firework","MachineGun","Pinball"},wilds={"Afterburner","SpringBumper"}}
-            while #roster.offences>count do table.remove(roster.offences)end
-            local t=harness({allowExperimental=true,resolveRoster=function()return roster end})
-            local a,b=t.pair();local s=t.lab:snapshot(a);assert(#s.offer==math.min(3,count))
-            t.send(a,"reroll");assert(t.lab:snapshot(a).resources.reroll==(count>3 and 0 or 1))
-        end
-    end)
-    test("timeout takes first offer and late picks cannot change the committed round",function()
-        local t=harness();local a,b,m=t.pair();local s=t.lab:snapshot(a);local first=s.offer[1]
-        t.send(a,"pick",{slot="offence",skillId=s.offer[2]});t.advance(10.1)
-        assert(m.phase=="Countdown" and m.settings[1].offenceId==first)
-        t.send(a,"pick",{slot="offence",skillId=s.offer[3]});assert(m.settings[1].offenceId==first)
+    test("timeout keeps a tapped card fills gaps with the first offer and ignores late picks",function()
+        local t=harness();local a,b,m=t.pair();local s=t.lab:snapshot(a)
+        t.send(a,"pick",{slot="offence",skillId=s.offer.offences[2]});t.advance(10.1)
+        assert(m.phase=="Countdown" and m.settings[1].offenceId==s.offer.offences[2] and m.settings[2].offenceId==s.offer.offences[1])
+        t.send(a,"pick",{slot="offence",skillId=s.offer.offences[3]});assert(m.settings[1].offenceId==s.offer.offences[2])
+        t.advance(2.5);t.finish(m,1);t.advance(2.1);assert(m.phase=="Pick" and m.stage==2)
+        t.advance(10.1);assert(m.phase=="Countdown" and m.settings[1].offenceId==s.offer.offences[2])
+        assert(#m.settings[1].wildIds==1 and m.settings[1].wildIds[1]==m.roster.wilds[1],"The deadline did not add the first wild card")
     end)
     test("2-0 ends immediately and draft advances both players after decisive rounds",function()
         local t=harness();local a,b,m=t.pair();t.fight(a,b);t.finish(m,1);t.advance(2.1)
@@ -198,15 +171,38 @@ return function(BattleLab, Skills)
         assert(#t.terminal==2 and t.lab:snapshot(b).result.winner==2)
         t.advance(10);assert(#t.terminal==2)
     end)
-    test("2-1 accumulates distinct second wild cards and rejects previous-stage packets",function()
+    test("2-1 keeps the plane between rounds while any slot can be swapped",function()
         local t=harness();local a,b,m=t.pair();t.fight(a,b);t.finish(m,1);t.advance(2.1);t.fight(a,b);t.finish(m,2);t.advance(2.1)
         assert(m.stage==3 and m.score[1]==1 and m.score[2]==1)
-        local first=m.settings[1].wildIds[1]
-        for _,id in ipairs(t.lab:snapshot(a).eligible)do assert(id~=first)end
-        t.send(a,"pick",{stage=2,slot="wild",skillId=t.lab:snapshot(a).offer[1]});assert(m.selected[1]==nil)
-        t.send(a,"pick",{slot="wild",skillId=first});assert(m.selected[1]==nil)
-        t.fight(a,b);assert(#m.settings[1].wildIds==2 and m.settings[1].wildIds[2]~=first)
+        local attack,first=m.settings[1].offenceId,m.settings[1].wildIds[1]
+        local s=t.lab:snapshot(a)
+        assert(s.slots==2 and s.draft.offenceId==attack and #s.draft.wildIds==1 and s.draft.wildIds[1]==first,"The plane was not carried into the pick")
+        assert(#s.offer.wilds==5 and #s.offer.offences==4)
+        t.send(a,"pick",{stage=2,slot="wild",index=2,skillId="Magnet"});assert(#m.drafts[1].wildIds==1)
+        t.send(a,"pick",{slot="wild",index=2,skillId=first});assert(#m.drafts[1].wildIds==1,"One wild card filled two slots")
+        t.send(a,"pick",{slot="wild",index=3,skillId="Magnet"});t.send(a,"pick",{slot="wild",index=0,skillId="Magnet"})
+        t.send(a,"pick",{slot="wild",index=1.5,skillId="Magnet"});assert(#m.drafts[1].wildIds==1 and m.drafts[1].wildIds[1]==first)
+        t.advance(.5);t.send(a,"lock",{offenceId=attack,wildIds={first,first}});assert(not m.locked[1],"A doubled wild card locked")
+        t.send(a,"lock",{offenceId=attack,wildIds={first}});assert(not m.locked[1],"A short loadout locked")
+        -- Swap the attack and the old wild card, then add a new one.
+        local swap=attack=="Pinball" and "Meteor" or "Pinball"
+        local one=first=="Magnet" and "FizzyFuel" or "Magnet";local two=first=="SecondWind" and "FizzyFuel" or "SecondWind"
+        t.advance(.5);t.send(a,"pick",{slot="offence",skillId=swap});t.send(a,"pick",{slot="wild",index=1,skillId=one})
+        t.send(a,"pick",{slot="wild",index=2,skillId=two});s=t.lab:snapshot(a)
+        assert(s.draft.offenceId==swap and s.draft.wildIds[1]==one and s.draft.wildIds[2]==two)
+        assert(m.settings[1].offenceId==attack,"A draft changed the plane before the reveal")
+        t.fight(a,b)
+        assert(m.settings[1].offenceId==swap and m.settings[1].wildIds[1]==one and m.settings[1].wildIds[2]==two and #m.settings[1].wildIds==2)
+        assert(#m.settings[2].wildIds==2 and m.settings[2].wildIds[1]~=m.settings[2].wildIds[2])
         t.finish(m,2);assert(m.phase=="MatchOver" and m.score[2]==2)
+    end)
+    test("a bot keeps its plane and adds one wild card each round",function()
+        local t=harness();local a=t.player(1);t.send(a,"enter");t.advance(8.1)
+        local m=t.lab.sessions[1].match;t.fight(a);local attack=m.settings[2].offenceId
+        t.finish(m,1);t.advance(2.1);t.fight(a);local first=m.settings[2].wildIds[1]
+        assert(m.settings[2].offenceId==attack and #m.settings[2].wildIds==1)
+        t.finish(m,2);t.advance(2.1);t.fight(a)
+        assert(m.settings[2].offenceId==attack and m.settings[2].wildIds[1]==first and #m.settings[2].wildIds==2 and m.settings[2].wildIds[2]~=first)
     end)
     test("draw gives no point no pick and a new seed; five drawn rounds end honestly",function()
         local t=harness();local a,b,m=t.pair();t.fight(a,b)
@@ -251,7 +247,7 @@ return function(BattleLab, Skills)
         local t=harness();local a,b,m=t.pair();t.fight(a,b);t.finish(m,1);t.advance(2.1);t.fight(a,b);t.finish(m,1)
         t.send(a,"rematch");assert(m.phase=="MatchOver" and t.lab:snapshot(a).rematchVotes[1])
         t.send(b,"rematch");local nextMatch=t.lab.sessions[1].match
-        assert(nextMatch.id~=m.id and nextMatch.phase=="Pick" and nextMatch.settings[1].offenceId==nil and nextMatch.resources[1].reroll==1)
+        assert(nextMatch.id~=m.id and nextMatch.phase=="Pick" and nextMatch.settings[1].offenceId==nil and nextMatch.drafts[1].offenceId==nil)
         t.send(a,"lock",{matchId=m.id,stage=1});assert(not nextMatch.locked[1])
     end)
     test("declined rematch stays terminal with unavailable rival and allows requeue",function()
@@ -290,8 +286,8 @@ return function(BattleLab, Skills)
     end)
     test("snapshot mutation cannot change the server offer build roster or simulation",function()
         local t=harness();local a,b,m=t.pair();local s=t.lab:snapshot(a)
-        s.offer[1]="Copycat";s.eligible[1]="Copycat";s.resources.reroll=99;s.settings[1].wildIds[1]="Copycat"
-        assert(m.offers[1][1]~="Copycat" and m.resources[1].reroll==1 and #m.settings[1].wildIds==0)
+        s.offer.offences[1]="Copycat";s.draft.offenceId="Copycat";s.draft.wildIds[1]="Copycat";s.settings[1].wildIds[1]="Copycat"
+        assert(m.offers[1].offences[1]~="Copycat" and m.drafts[1].offenceId==nil and #m.drafts[1].wildIds==0 and #m.settings[1].wildIds==0)
         t.fight(a,b);s=t.lab:snapshot(a);s.simulation.fighters[1].armor=99;assert(m.simulation.fighters[1].armor==3)
     end)
     test("challenge explicitly accepts into one isolated shared-roster match",function()
@@ -377,18 +373,22 @@ return function(BattleLab, Skills)
         t.advance(4.9);assert(m.phase=="Countdown");t.advance(.2);assert(m.phase=="Fight")
         t.finish(m,0,"timeout");t.advance(2.1);assert(m.phase=="Countdown" and m.stage==1,"A drawn first round asked for a pick")
         t.advance(2.5);t.finish(m,2);t.advance(2.1);s=t.lab:snapshot(a)
-        assert(s.phase=="Pick" and s.slot=="wild" and table.concat(s.offer,",")=="SpringBumper,Afterburner")
+        assert(s.phase=="Pick" and s.slots==1 and table.concat(s.offer.wilds,",")=="SpringBumper,Afterburner")
+        assert(table.concat(s.offer.offences,",")=="Meteor,Firework" and s.draft.offenceId=="Meteor" and #s.draft.wildIds==0)
         assert(s.locked[2] and s.pickDeadline-s.serverTime>39)
-        t.send(a,"lock",{slot="wild",skillId="Magnet"});assert(not t.lab:snapshot(a).locked[1],"A card outside the guided hand was accepted")
-        t.send(a,"lock",{slot="wild",skillId="Afterburner"});assert(m.phase=="Countdown" and m.settings[1].wildIds[1]=="Afterburner")
+        t.send(a,"lock",{offenceId="Meteor",wildIds={"Magnet"}});assert(not t.lab:snapshot(a).locked[1],"A card outside the guided hand was accepted")
+        t.send(a,"lock",{offenceId="Pinball",wildIds={"Afterburner"}});assert(not t.lab:snapshot(a).locked[1],"An attack outside the guided hand was accepted")
+        t.send(a,"lock",{offenceId="Meteor",wildIds={"Afterburner"}});assert(m.phase=="Countdown" and m.settings[1].wildIds[1]=="Afterburner")
+        assert(m.settings[2].offenceId=="Firework" and #m.settings[2].wildIds==1)
         t.advance(2.5);t.finish(m,1);t.advance(2.1);s=t.lab:snapshot(a)
-        assert(#s.offer==3 and s.offer[1]=="SpringBumper" and s.offer[3]=="Magnet","The second guided hand was not three unused cards")
-        t.lock(a);t.advance(2.5);t.finish(m,1)
+        assert(table.concat(s.offer.wilds,",")=="SpringBumper,Afterburner,FizzyFuel" and s.slots==2 and s.draft.wildIds[1]=="Afterburner","The second guided hand was wrong")
+        t.lock(a);assert(table.concat(m.settings[1].wildIds,",")=="Afterburner,SpringBumper")
+        t.advance(2.5);t.finish(m,1)
         assert(m.phase=="MatchOver" and t.terminal[1].result.mode=="practice" and t.terminal[1].result.outcome=="win")
         local accepted;for _,e in ipairs(t.events)do if e.name=="match_accepted" then accepted=e end end
         assert(accepted.data.guided==true and accepted.data.mode=="practice")
         first[1]=nil;t.send(a,"rematch");local again=t.lab.sessions[1].match;s=t.lab:snapshot(a)
-        assert(again~=m and s.phase=="Pick" and not s.guided and s.mode=="public" and #s.offer==4,"The rematch was guided again")
+        assert(again~=m and s.phase=="Pick" and not s.guided and s.mode=="public" and #s.offer.offences==4,"The rematch was guided again")
     end)
     test("guidance never applies to challenges, returning pilots or test rosters",function()
         local t=harness({publicDraft=true,firstMatch=function(p)return p.UserId==1 end})

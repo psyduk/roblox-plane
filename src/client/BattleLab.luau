@@ -142,7 +142,8 @@ function BattleLab.new(World,shared)
     self.coachScale=make("UIScale",self.coach,"Pop")
     self.experimental=label(self.panel,"ExperimentalRoster",11,GOLD); self.experimental.Text="EXPERIMENTAL ROSTER"
     self.experimental.BackgroundColor3=NAVY; self.experimental.BackgroundTransparency=0.08; corner(self.experimental,8)
-    -- The draft: three big illustrated cards, one tap to choose, one to lock.
+    -- The draft: big illustrated cards for one slot of the plane at a time,
+    -- one tap to choose, one to lock.
     self.picker=make("ScrollingFrame",self.panel,"Picker"); self.picker.BackgroundTransparency=1; self.picker.BorderSizePixel=0
     self.picker.ScrollBarThickness=3; self.picker.CanvasSize=UDim2.fromOffset(0,0); self.picker.ScrollingDirection=Enum.ScrollingDirection.Y
     self.pickTitle=label(self.picker,"Title",40,WHITE,Enum.Font.FredokaOne); self.pickTitle.TextWrapped=false; outline(self.pickTitle,4)
@@ -170,9 +171,18 @@ function BattleLab.new(World,shared)
         icon.Text=spec.icon
         self.powerCards[spec.id]={button=card,spec=spec,edge=edge,tag=tag,icon=icon,word=word,name=name,promise=promise,scale=scale,color=tint(spec.color)}
     end
-    self.reroll=button(self.picker,"Reroll","",function() self:changeOffer("reroll") end)
-    self.pickAny=button(self.picker,"PickAny","",function() self:changeOffer("pickAny") end)
-    self.resourceHint=label(self.picker,"ResourceHint",11,MUTED); outline(self.resourceHint,2)
+    -- The loadout bar says what is on the plane: one tile for the attack and
+    -- one for each wild card slot. Tapping a tile picks the slot to change.
+    self.slotTiles={}
+    for slot=0,2 do
+        local tile=make("TextButton",self.picker,"Slot"..slot)
+        tile.Text=""; tile.AutoButtonColor=false; tile.BorderSizePixel=0; tile.Selectable=true; corner(tile,12)
+        local edge=make("UIStroke",tile,"Edge"); edge.ApplyStrokeMode=Enum.ApplyStrokeMode.Border
+        local caption=label(tile,"Caption",10,WHITE); caption.TextWrapped=false
+        local value=label(tile,"Value",15,WHITE,Enum.Font.FredokaOne); value.TextWrapped=false
+        tile.Activated:Connect(function() self:focusSlot(slot) end)
+        self.slotTiles[slot]={button=tile,edge=edge,caption=caption,value=value,scale=make("UIScale",tile,"Pop")}
+    end
     self.fightButton=button(self.picker,"Lock","LOCK IN",function() self:fight() end)
     self.fightButton.BackgroundColor3=GREEN; self.fightButton.Font=Enum.Font.FredokaOne
     self.fightButton.Edge.Color=WHITE; self.fightButton.Edge.Transparency=0.1; self.fightButton.Edge.Thickness=3
@@ -286,7 +296,6 @@ function BattleLab:receive(data)
         if self.cosmeticPending then self.audio:ui(feedback.ok and "purchase" or "error"); self.cosmeticPending=nil end
         self.cosmeticMessage=feedback.message; self.cosmeticMessageAt=os.clock()
     end
-    self:syncDraft(old,data)
     if data.phase=="Countdown" and (not old or old.roundId~=data.roundId or old.phase~="Countdown") then
         self.sameBuildReplay=old and old.matchId==data.matchId and self.revealedStage==data.stage
         self.revealedStage=data.stage; self.revealedAt=os.clock()
@@ -309,13 +318,6 @@ function BattleLab:receive(data)
     elseif self.view then self.view:destroy(); self.view=nil end
     self.panel.Visible=self.active
     Players.LocalPlayer:SetAttribute("BattleLabPhase",self.active and data.phase or "Inactive")
-end
-function BattleLab:syncDraft(old,data)
-    if not old or old.matchId~=data.matchId or old.stage~=data.stage or old.offerRevision~=data.offerRevision or data.phase~="Pick" or (data.locked and data.locked[1]) then
-        self.pendingSelection=nil; self.pendingOfferChange=nil
-    elseif data.selected==self.pendingSelection then self.pendingSelection=nil end
-    local eligible=data.pickAnyActive and data.eligible or data.offer
-    if self.pendingSelection and not table.find(eligible or {},self.pendingSelection) then self.pendingSelection=nil end
 end
 function BattleLab:send(kind,payload)
     payload=payload or {}; payload.kind=kind
@@ -341,34 +343,50 @@ function BattleLab:clockSeconds(serverTime)
     -- Simulation catch-up is bounded after a stall; the round deadline is not.
     return math.max(0,math.ceil((deadline or serverTime)-serverTime))
 end
-function BattleLab:changeOffer(kind)
+-- The pilot's working loadout for this pick. It starts as the plane that just
+-- flew and opens on the slot that still needs a card.
+function BattleLab:loadout()
+    local data=self.data or {}
+    local key=tostring(data.matchId)..":"..tostring(data.stage)
+    if self.draftKey~=key or not self.draft then
+        local source=data.draft or {}
+        self.draftKey=key; self.draft={offenceId=source.offenceId,wildIds=table.clone(source.wildIds or {})}
+        self.draftHeld=#self.draft.wildIds
+        self.focus=(self.draft.offenceId and self.draftHeld<(data.slots or 0)) and self.draftHeld+1 or 0
+    end
+    return self.draft
+end
+function BattleLab:loadoutReady()
+    local draft=self:loadout()
+    return draft.offenceId~=nil and #draft.wildIds==((self.data or {}).slots or 0)
+end
+-- Slot 0 is the attack; slots 1 and 2 are the wild cards.
+function BattleLab:focusSlot(slot)
     local data=self.data
-    if self.pendingOfferChange or not data or data.phase~="Pick" or (data.locked and data.locked[1]) then return end
-    local resources=data.resources or {}
-    if kind=="reroll" then
-        if (resources.reroll or 0)<=0 or #(data.eligible or {})<=3 or data.pickAnyActive then return end
-    elseif kind=="pickAny" then
-        if (resources.pickAny or 0)<=0 or data.pickAnyActive then return end
-    else return end
-    -- Keep the old cards inert until the replacement offer is acknowledged.
-    -- A normal snapshot of the old revision must not reopen them.
-    self.pendingOfferChange=true; self.pendingSelection=nil
-    self.audio:ui("select"); self:send(kind)
+    if not data or data.phase~="Pick" or (data.locked and data.locked[1]) then return end
+    local draft=self:loadout()
+    if slot<0 or slot>(data.slots or 0) or slot>#draft.wildIds+1 or slot==self.focus then return end
+    self.focus=slot; self.audio:ui("tap")
 end
 function BattleLab:choose(skillId)
     local data=self.data
-    if self.pendingOfferChange or not data or data.phase~="Pick" or (data.locked and data.locked[1]) then return end
-    local choices=data.pickAnyActive and data.eligible or data.offer
-    if not table.find(choices or {},skillId) then return end
-    self.pendingSelection=skillId; self.pickedAt=os.clock(); self.audio:ui(false)
-    self:send("pick",{slot=data.slot,skillId=skillId})
+    if not data or data.phase~="Pick" or (data.locked and data.locked[1]) then return end
+    local draft=self:loadout(); local offer=data.offer or {}
+    if self.focus==0 then
+        if not table.find(offer.offences or {},skillId) or draft.offenceId==skillId then return end
+        draft.offenceId=skillId; self:send("pick",{slot="offence",skillId=skillId})
+    else
+        -- A wild card already on the plane cannot fill a second slot.
+        if not table.find(offer.wilds or {},skillId) or table.find(draft.wildIds,skillId) then return end
+        draft.wildIds[self.focus]=skillId; self:send("pick",{slot="wild",index=self.focus,skillId=skillId})
+    end
+    self.pickedAt=os.clock(); self.audio:ui(false)
 end
 function BattleLab:fight()
     local data=self.data
-    if self.pendingOfferChange or not data or data.phase~="Pick" or (data.locked and data.locked[1]) then return end
-    local selected=self.pendingSelection or data.selected
-    if not selected or not table.find(data.pickAnyActive and data.eligible or data.offer or {},selected) then return end
-    self.audio:ui(true); self:send("lock",{slot=data.slot,skillId=selected})
+    if not data or data.phase~="Pick" or (data.locked and data.locked[1]) or not self:loadoutReady() then return end
+    -- The lock carries the whole loadout the pilot is looking at.
+    self.audio:ui(true); self:send("lock",{offenceId=self.draft.offenceId,wildIds=table.clone(self.draft.wildIds)})
 end
 function BattleLab:rematch()
     local data=self.data
@@ -571,7 +589,7 @@ function BattleLab:showResult(data,accents,width,height,top,compact,short)
         place(self.resultHint,x,y,content,24); self.resultHint.TextSize=compact and 13 or 16
         self.resultHint.Text=winner==0 and "Same builds. Going again!"
             or (data.guided and ((data.stage or 1)<=1 and "Next: pick a trick for your plane!" or "Next: pick one more trick!")
-                or "Next up: both pilots add a wild card")
+                or "Next up: add a wild card. Swap anything you like!")
         local plateWidth=math.min(width-16,math.max(3*statWidth+48,compact and 0 or 560))
         place(self.roundPlate,(width-plateWidth)/2,lineTop-8,plateWidth,y+30-lineTop+8)
         self.roundPlateEdge.Color=outcome=="draw" and WHITE or accents[winner]
@@ -724,7 +742,7 @@ function BattleLab:update(dt)
     self.mute.Text=muted and "🔇" or "🔊"
     self.motion.TextTransparency=self.reducedMotion and 0.6 or 0
     local portrait=headerHeight-18
-    local plateWidth=math.min(340,(width-124)/2)
+    local plateWidth=math.min(460,(width-124)/2)
     -- Phones in either orientation get the tight plate; text sizes follow width.
     local tight=compact or short
     for i,fighter in ipairs(self.fighters) do
@@ -744,7 +762,10 @@ function BattleLab:update(dt)
         fighter.name.Text=string.upper(identity.name or (i==1 and player.DisplayName or "???"))..(identity.bot and " · BOT" or "")
         -- Row two is the build: the offence as a paint-coloured pill, then a
         -- round chip for each wild card as it is drafted.
-        local build=builds[i] or {}; local offence=self.skills.get(build.offenceId or "")
+        local build=builds[i] or {}
+        -- While picking, the pilot's own plate shows the plane being built.
+        if pick and i==1 then build=self:loadout() end
+        local offence=self.skills.get(build.offenceId or "")
         local rowTwo=tight and 19 or 31; local rowHeight=tight and 14 or 19
         local powerWidth=math.min(textWidth,tight and 86 or 112)
         place(fighter.power,right and textLeft+textWidth-powerWidth or textLeft,rowTwo,powerWidth,rowHeight)
@@ -771,20 +792,25 @@ function BattleLab:update(dt)
         if striking then fighter.power.BackgroundColor3=accents[i]:Lerp(WHITE,self.reducedMotion and 0.5 or 0.5+0.5*math.sin(now*24)) end
         fighter.powerText.TextColor3=(fill<0.5 and not striking) and WHITE or NAVY
         local chipSize=rowHeight+4
+        -- A wild card carries its name whenever the plate has room for two.
+        local nameWidth=math.min(132,(textWidth-powerWidth-10)/2-5)
+        local named=nameWidth>=78
         for n,chip in ipairs(fighter.wilds) do
             local wild=self.skills.get((build.wildIds or {})[n] or "")
             -- With no room beside the pill, the chips ride on the portrait's rim.
-            local badge=textWidth<powerWidth+2*(chipSize+5)
+            local badge=not named and textWidth<powerWidth+2*(chipSize+5)
             chip.label.Visible=wild~=nil
             if chip.label.Visible then
-                local offset=powerWidth+5+(n-1)*(chipSize+5)
+                local chipWidth=named and nameWidth or chipSize
+                local offset=powerWidth+5+(n-1)*(chipWidth+5)
                 if badge then
                     local step=(n-1)*(chipSize+2)-2
                     place(chip.label,right and plateWidth-chipSize-step or step,portrait-chipSize+6,chipSize,chipSize)
                 else
-                    place(chip.label,right and textLeft+textWidth-offset-chipSize or textLeft+offset,rowTwo-2,chipSize,chipSize)
+                    place(chip.label,right and textLeft+textWidth-offset-chipWidth or textLeft+offset,rowTwo-2,chipWidth,chipSize)
                 end
-                chip.label.Text=wild.icon; chip.label.TextSize=chipSize*0.58
+                chip.label.Text=named and wild.icon.." "..string.upper(wild.name) or wild.icon
+                chip.label.TextSize=named and math.clamp((chipWidth-8)/(utf8.len(chip.label.Text)*0.62),8,chipSize*0.58) or chipSize*0.58
                 -- A chip jumps and glows the moment its wild card does something,
                 -- and a spent Spring Bumper goes dark.
                 local fired=math.max(0,1-(now-(((self.wildTimes or {})[i] or {})[wild.id] or -100))/0.9)
@@ -793,7 +819,7 @@ function BattleLab:update(dt)
                 if wild.id=="SecondWind" and fighting and state.secondWind==true then fired=math.max(fired,0.45) end
                 chip.edge.Color=accents[i]:Lerp(GOLD,fired); chip.edge.Thickness=2+fired*2
                 chip.label.BackgroundColor3=NAVY:Lerp(WHITE,fired*0.8); chip.label.TextTransparency=spent and 0.6 or 0
-                chip.scale.Scale=self.reducedMotion and 1 or 1+0.6*fired*fired
+                chip.scale.Scale=self.reducedMotion and 1 or 1+(named and 0.22 or 0.6)*fired*fired
             end
         end
         local pipHeight=tight and 9 or 18
@@ -902,25 +928,58 @@ function BattleLab:update(dt)
         local panel=math.min(width-24,880); local x=(width-panel)/2; local y=2
         local titleHeight=short and 30 or 50
         place(self.pickTitle,x,y,panel,titleHeight); self.pickTitle.TextSize=math.min(short and 24 or (compact and 28 or 40),panel*0.085)
-        self.pickTitle.Text=locked and "LOCKED IN!" or (data.slot=="offence" and "PICK YOUR ATTACK"
-            or (data.guided and ((data.stage or 2)<=2 and "PICK A WILD CARD" or "PICK ONE MORE") or "ADD A WILD CARD"))
+        local draft=self:loadout(); local slots=data.slots or 0; local offer=data.offer or {}
+        local focus=self.focus or 0
+        local complete=draft.offenceId~=nil and #draft.wildIds==slots
+        local held=focus==0 and draft.offenceId or draft.wildIds[focus]
+        self.pickTitle.Text=locked and "LOCKED IN!" or (focus==0 and (slots==0 and "PICK YOUR ATTACK" or "CHANGE YOUR ATTACK?")
+            or (focus<=(self.draftHeld or 0) and "CHANGE THIS WILD CARD?"
+                or (data.guided and ((data.stage or 2)<=2 and "PICK A WILD CARD" or "PICK ONE MORE") or "ADD A WILD CARD")))
         self.pickTitle.TextColor3=locked and GOLD or WHITE
         y=y+titleHeight
         self.pickHint.Visible=not landscapeDraft
         place(self.pickHint,x,y,panel,short and 18 or (compact and 32 or 22)); self.pickHint.TextSize=short and 11 or (compact and 12 or 14)
         self.pickHint.Text=locked and (rivalLocked and "Both locked. Revealing together…" or "Waiting for your rival. Picks stay hidden until both lock.")
-            or data.guided and ((data.stage or 2)<=2 and "A wild card gives your plane a trick. Tap one, then tap LOCK IN!"
-                or "Your plane keeps both tricks. Tap one, then tap LOCK IN!")
-            or ((data.slot~="offence" and self.lastRound and self.lastRound.matchId==data.matchId and not self.lastRound.draw)
-                and "Last round: "..self.lastRound.text.." Add a trick to change the next one."
-                or "Your plane fights on its own. Win 2 rounds to win the match!")
+            or (slots==0 and "Your plane fights on its own. Win 2 rounds to win the match!"
+                or focus==0 and "Tap another attack to swap, or keep the one you have."
+                or focus<=(self.draftHeld or 0) and "Tap another wild card to swap, or keep the one you have."
+                or data.guided and ((data.stage or 2)<=2 and "A wild card gives your plane a trick. Tap one, then tap LOCK IN!"
+                    or "Your plane keeps both tricks. Tap one, then tap LOCK IN!")
+                or "Your plane keeps everything on it. Tap a slot above the cards to swap it.")
         y=y+(landscapeDraft and 2 or short and 22 or (compact and 36 or 30))
-        local resources=data.resources or {}; local reroll=(resources.reroll or 0)>0; local any=(resources.pickAny or 0)>0
-        -- Reroll and Pick Any only take up room in a match that deals them.
-        local helpers=reroll or any or data.pickAnyActive==true
-        local bottom=landscapeDraft and 54 or (short and 116 or 138)-(helpers and 0 or (short and 61 or 66))
+        -- The loadout bar appears once there is more than the attack to show.
+        local tiles=slots>0 and slots+1 or 0
+        local barHeight=tiles>0 and (short and 36 or 48) or 0
+        local tileWidth=tiles>0 and math.min(250,(panel-(tiles-1)*8)/tiles) or 0
+        local barLeft=x+(panel-(tiles*tileWidth+(tiles-1)*8))/2
+        for slot,tile in pairs(self.slotTiles) do
+            tile.button.Visible=slot<tiles
+            if slot<tiles then
+                local skill=self.skills.get((slot==0 and draft.offenceId or draft.wildIds[slot]) or "")
+                local focused=slot==focus and not locked
+                place(tile.button,barLeft+slot*(tileWidth+8),y,tileWidth,barHeight)
+                tile.button.BackgroundColor3=skill and tint(skill.color):Lerp(NAVY,focused and 0 or 0.55) or NAVY
+                tile.edge.Color=focused and GOLD or MUTED; tile.edge.Thickness=focused and 4 or 2
+                tile.edge.Transparency=focused and 0 or 0.5
+                tile.button.Active=not locked; tile.button.Selectable=not locked
+                local ink=(skill and focused) and NAVY or WHITE
+                local captionHeight=short and 12 or 15
+                place(tile.caption,4,3,tileWidth-8,captionHeight); tile.caption.TextSize=short and 9 or 11
+                tile.caption.TextColor3=ink; tile.caption.TextTransparency=0.15
+                tile.caption.Text=(slot==0 and "ATTACK" or (tileWidth<130 and "WILD " or "WILD CARD ")..tostring(slot))
+                    ..((focused or locked or tileWidth<170) and "" or " · TAP TO SWAP")
+                place(tile.value,4,captionHeight+2,tileWidth-8,barHeight-captionHeight-5)
+                tile.value.Text=skill and skill.icon.." "..string.upper(skill.name) or "＋ PICK ONE"
+                tile.value.TextColor3=skill and ink or GOLD
+                tile.value.TextSize=math.clamp((tileWidth-8)/((utf8.len(tile.value.Text) or 12)*0.62),9,short and 16 or 20)
+                -- An empty slot breathes until it gets its card.
+                tile.scale.Scale=(skill or locked or self.reducedMotion) and 1 or 1+0.03*math.sin(now*6)
+            end
+        end
+        y=y+barHeight+(tiles>0 and 6 or 0)
+        local bottom=landscapeDraft and 54 or (short and 55 or 72)
         local listHeight=landscapeDraft and math.max(0,area-y-bottom) or math.max(62,area-y-bottom)
-        local choices=data.pickAnyActive and data.eligible or data.offer or {}
+        local choices=(focus==0 and offer.offences or offer.wilds) or {}
         local stackedCards=compact and not landscapeDraft
         -- One row while each card keeps a readable width, then even rows.
         local fit=math.max(1,math.floor(panel/((landscapeDraft and 120 or 150)+12)))
@@ -937,19 +996,21 @@ function BattleLab:update(dt)
         local listTop=y+((not stackedCards and used<listHeight) and (listHeight-used)/2 or 0)
         place(self.cardList,x,listTop,panel,math.min(listHeight,used+12))
         local cardWidth=(panel-(cols-1)*gap-12)/cols
-        local selected=self.pendingSelection or data.selected
-        local offerKey=tostring(data.matchId)..":"..tostring(data.stage)..":"..tostring(data.offerRevision)..":"..tostring(data.pickAnyActive)
+        local selected=held
+        local offerKey=tostring(data.matchId)..":"..tostring(data.stage)..":"..tostring(focus)
         if self.offerKey~=offerKey then self.offerKey=offerKey; self.offerAt=now end
         for _,card in pairs(self.powerCards) do card.button.Visible=false end
         for index,id in ipairs(choices) do
             local card=self.powerCards[id]
             if card then
                 local chosen=selected==id; card.button.Visible=true
+                -- A wild card in the other slot is already on the plane.
+                local taken=focus>0 and not chosen and table.find(draft.wildIds,id)~=nil
                 local row,col=math.floor((index-1)/cols),(index-1)%cols
                 place(card.button,6+col*(cardWidth+gap),6+row*(cardHeight+gap),cardWidth,cardHeight)
-                card.button.BackgroundColor3=(chosen or not selected) and card.color or card.color:Lerp(NAVY,0.45)
+                card.button.BackgroundColor3=taken and card.color:Lerp(NAVY,0.75) or ((chosen or not selected) and card.color or card.color:Lerp(NAVY,0.45))
                 card.edge.Color=chosen and GOLD or NAVY; card.edge.Thickness=chosen and 6 or 4
-                card.button.Active=not locked and not self.pendingOfferChange; card.button.Selectable=card.button.Active
+                card.button.Active=not locked and not taken; card.button.Selectable=card.button.Active
                 -- Cards deal in one after another; the chosen one pops forward.
                 local deal=self.reducedMotion and 1 or popIn((now-self.offerAt-(index-1)*0.07)/0.26)
                 local bounce=chosen and math.max(0,1-(now-(self.pickedAt or 0))/0.2) or 0
@@ -959,9 +1020,11 @@ function BattleLab:update(dt)
                 card.tag.Visible=roomy; card.word.Visible=roomy and cardWidth>=190; card.promise.Visible=true
                 -- A stacked card has no tag, so its trigger leads the promise.
                 card.promise.Text=(stackedCards and card.spec.when) and (card.spec.when..": "..card.spec.promise) or card.spec.promise
+                -- Only a roomy card has a tag to say why it cannot be tapped.
+                if taken and not roomy then card.promise.Text="Already on your plane." end
                 if roomy then
                     place(card.tag,12,10,math.min(cardWidth-24,card.spec.when and 160 or 132),22)
-                    card.tag.Text=chosen and "✓ YOUR PICK" or (card.spec.when or "TAP TO PICK")
+                    card.tag.Text=chosen and "✓ YOUR PICK" or (taken and "ON YOUR PLANE" or (card.spec.when or "TAP TO PICK"))
                     card.tag.TextSize=cardWidth<150 and 9 or 12
                     card.tag.BackgroundTransparency=chosen and 0 or 0.45
                     place(card.icon,0,34,cardWidth,cardHeight*0.36); card.icon.TextSize=math.clamp(cardHeight*0.3,28,84)
@@ -997,32 +1060,16 @@ function BattleLab:update(dt)
         end
         self.cardList.CanvasSize=UDim2.fromOffset(0,(stackedCards or used>listHeight) and used+12 or 0)
         y=y+listHeight+(landscapeDraft and 4 or 8)
-        local canReroll=reroll and not locked and not self.pendingOfferChange and #((data.eligible) or {})>3 and not data.pickAnyActive
-        self.reroll.Text=reroll and "🎲 Reroll · 1 free" or "Reroll used"
-        self.pickAny.Text=data.pickAnyActive and "All cards shown" or (any and "🃏 Pick Any · 1 free" or "Pick Any used")
-        enabled(self.reroll,canReroll); enabled(self.pickAny,any and not locked and not self.pendingOfferChange and not data.pickAnyActive)
-        self.reroll.TextSize=short and 13 or 15; self.pickAny.TextSize=short and 13 or 15
-        self.resourceHint.Visible=helpers and not landscapeDraft
-        self.reroll.Visible=helpers; self.pickAny.Visible=helpers
-        local ready=not locked and not self.pendingOfferChange and selected~=nil
+        local ready=not locked and complete
         if landscapeDraft then
-            local actionWidth=(panel-16)/3
-            place(self.reroll,x,y,actionWidth,44); place(self.pickAny,x+actionWidth+8,y,actionWidth,44)
-            if helpers then place(self.fightButton,x+2*(actionWidth+8),y,actionWidth,44)
-            else place(self.fightButton,(width-math.min(panel,360))/2,y,math.min(panel,360),44) end
+            place(self.fightButton,(width-math.min(panel,360))/2,y,math.min(panel,360),44)
             self.fightButton.TextSize=20
         else
-            local side=math.min((panel-8)/2,220); local lockWidth=math.min(panel,440)
-            if helpers then
-                place(self.reroll,width/2-side-4,y,side,40); place(self.pickAny,width/2+4,y,side,40); y=y+43
-                place(self.resourceHint,x,y,panel,short and 16 or 20); self.resourceHint.TextSize=short and 10 or 11
-                self.resourceHint.Text=self.pendingOfferChange and "Updating your cards…" or data.rerollReason or "One of each per match · Same skill access for every pilot"
-                y=y+(short and 18 or 23)
-            end
+            local lockWidth=math.min(panel,440)
             place(self.fightButton,(width-lockWidth)/2,y,lockWidth,short and 46 or 58)
             self.fightButton.TextSize=(short and 22 or 30)+((ready and not self.reducedMotion) and 2*math.sin(now*5) or 0)
         end
-        self.fightButton.Text=self.pendingOfferChange and "UPDATING CARDS…" or locked and "WAITING FOR RIVAL…" or (selected and "LOCK IN!" or landscapeDraft and "CHOOSE A CARD" or "TAP A CARD")
+        self.fightButton.Text=locked and "WAITING FOR RIVAL…" or (complete and "LOCK IN!" or landscapeDraft and "CHOOSE A CARD" or "TAP A CARD")
         self.fightButton.BackgroundColor3=ready and GREEN or Color3.fromRGB(58,96,84)
         enabled(self.fightButton,ready)
         self.picker.CanvasSize=UDim2.fromOffset(0,landscapeDraft and 0 or (y+(short and 50 or 62)>area and y+(short and 50 or 62) or 0))
@@ -1041,13 +1088,17 @@ function BattleLab:update(dt)
         -- On a short screen the status pill already makes the call.
         self.revealTitle.Visible=not short; place(self.revealTitle,0,0,revealWidth,titleHeight)
         self.revealTitle.Text=self.sameBuildReplay and "DRAW · SAME BUILDS!" or (data.matchPoint and "MATCH POINT!"
-            or ((data.guided and data.stage==1) and "YOUR FIRST BATTLE!" or "PICKS REVEALED!"))
+            or ((data.guided and data.stage==1) and "YOUR FIRST BATTLE!" or "PLANES REVEALED!"))
         self.revealTitle.TextSize=short and 20 or 30
         local slide=self.reducedMotion and 1 or popIn((now-(self.revealedAt or 0))/0.32)
         for side,item in ipairs(self.reveals) do
             local identity=identities[side] or {}; local build=builds[side] or {}
-            local id=data.stage==1 and build.offenceId or (build.wildIds or {})[math.max(1,(data.stage or 2)-1)]
-            local skill=not self.sameBuildReplay and self.skills.get(id or "") or nil
+            -- Each side shows its whole plane: the attack by name, then its wild cards.
+            local skill=self.skills.get(build.offenceId or "")
+            local extras={}
+            for _,wildId in ipairs(build.wildIds or {}) do
+                local wild=self.skills.get(wildId); if wild then extras[#extras+1]=wild.icon end
+            end
             local restX=stacked and 0 or (side-1)*(cardWidth+middle)
             local restY=titleHeight+(stacked and (side-1)*(rowHeight+34) or 0)
             place(item.frame,restX+(1-slide)*(side==1 and -1 or 1)*width*0.6,restY,cardWidth,rowHeight)
@@ -1056,9 +1107,10 @@ function BattleLab:update(dt)
             place(item.name,10,6,tagWidth,18)
             item.name.Text=side==1 and "YOU" or (string.upper(identity.name or "RIVAL")..(identity.bot and " · BOT" or ""))
             local iconBox=rowHeight-30
-            place(item.icon,8,26,iconBox+8,iconBox); item.icon.TextSize=iconBox*0.8; item.icon.Text=skill and skill.icon or "🔁"
+            place(item.icon,8,26,iconBox+8,iconBox); item.icon.TextSize=iconBox*0.8; item.icon.Text=skill and skill.icon or "✈️"
             place(item.skill,iconBox+24,26,cardWidth-iconBox-32,iconBox)
-            item.skill.TextSize=math.min(short and 20 or 30,(cardWidth-iconBox-32)*0.13); item.skill.Text=skill and string.upper(skill.name) or "SAME BUILD"
+            item.skill.Text=(skill and string.upper(skill.name) or "PLANE")..(#extras>0 and "  + "..table.concat(extras," ") or "")
+            item.skill.TextSize=math.min(short and 20 or 30,(cardWidth-iconBox-32)*0.13,(cardWidth-iconBox-32)/((utf8.len(item.skill.Text) or 12)*0.62))
         end
         self.revealVs.Visible=slide>0.6
         if stacked then place(self.revealVs,0,titleHeight+rowHeight,revealWidth,34); self.revealVs.TextSize=26

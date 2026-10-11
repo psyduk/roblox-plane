@@ -4,13 +4,12 @@ local BattleLab = {}
 BattleLab.__index = BattleLab
 BattleLab.ROSTER_VERSION = "sky-battle-public-v1"
 BattleLab.QUEUE_SECONDS = 8
-BattleLab.PICK_SECONDS = 15
--- Every pick shows the whole eligible roster, so a new pilot sees all the
--- skills there are. A smaller OFFER_SIZE deals a random hand instead, and
--- the two per-match helpers below only matter then.
-BattleLab.OFFER_SIZE = 9
-BattleLab.REROLLS = 0
-BattleLab.PICK_ANYS = 0
+-- Before every round each pilot sets up a loadout: one attack, plus one
+-- wild card slot for each decisive round played. Everything already on the
+-- plane stays there unless the pilot swaps it, and every pick shows the
+-- whole roster.
+BattleLab.PICK_SECONDS = 20
+BattleLab.MAX_WILDS = 2
 -- Long enough to read who hit whom before the next pick takes the screen.
 BattleLab.ROUND_OVER_SECONDS = 3.5
 BattleLab.MATCH_SECONDS = 240
@@ -112,25 +111,33 @@ function BattleLab:event(player,name,m,extra)
     for key,value in pairs(extra or {}) do data[key]=value end
     self.deps.onEvent(player,name,data)
 end
-function BattleLab:eligible(m,side)
-    local result={}; local build=m.settings[side]
-    for _,id in ipairs(m.stage==1 and m.roster.offences or m.roster.wilds) do
-        if not contains(build.wildIds,id) then result[#result+1]=id end
-    end
-    return result
+function BattleLab:slots(m)
+    return math.max(0,math.min(self.MAX_WILDS,m.stage-1))
 end
-function BattleLab:offer(eligible,old)
-    local size=self.OFFER_SIZE
-    -- A full hand keeps roster order so each card is always in the same place.
-    if #eligible<=size then return copy(eligible) end
-    local shuffled=copy(eligible)
-    for index=#shuffled,2,-1 do local other=self:random(index); shuffled[index],shuffled[other]=shuffled[other],shuffled[index] end
-    local result={}; for index=1,math.min(size,#shuffled) do result[index]=shuffled[index] end
-    if old and #eligible>size then
-        local same=true; for _,id in ipairs(result) do if not contains(old,id) then same=false end end
-        if same then for _,id in ipairs(eligible) do if not contains(result,id) then result[#result]=id; break end end end
+-- A complete loadout is one offered attack and one distinct offered wild card
+-- for every open slot.
+function BattleLab:validBuild(m,side,offenceId,wildIds)
+    local offer,slots=m.offers[side],self:slots(m)
+    if not offer or not contains(offer.offences,offenceId) or type(wildIds)~="table" or #wildIds~=slots then return false end
+    for index=1,slots do
+        if not contains(offer.wilds,wildIds[index]) then return false end
+        for other=1,index-1 do if wildIds[other]==wildIds[index] then return false end end
     end
-    return result
+    return true
+end
+-- Fills whatever a draft still lacks: the first offered card for a pilot who
+-- ran out of time, a random one for a bot.
+function BattleLab:fillDraft(m,side,random)
+    local offer,draft=m.offers[side],m.drafts[side]
+    if not contains(offer.offences,draft.offenceId) then
+        draft.offenceId=offer.offences[random and self:random(#offer.offences) or 1]
+    end
+    while #draft.wildIds<self:slots(m) do
+        local free={}
+        for _,id in ipairs(offer.wilds) do if not contains(draft.wildIds,id) then free[#free+1]=id end end
+        if #free==0 then break end
+        draft.wildIds[#draft.wildIds+1]=free[random and self:random(#free) or 1]
+    end
 end
 function BattleLab:changePhase(m,phase,endsAt)
     local elapsed=math.max(0,self.deps.now()-(m.phaseAt or self.deps.now()))
@@ -141,18 +148,20 @@ function BattleLab:changePhase(m,phase,endsAt)
 end
 function BattleLab:startPick(m)
     self:changePhase(m,"Pick",self.deps.now()+(m.guided and self.GUIDE_PICK_SECONDS or self.PICK_SECONDS))
-    m.selected={}; m.locked={false,false}; m.offers={}; m.offerRevision={1,1}; m.pickAnyActive={false,false}
+    m.locked={false,false}; m.offers={}; m.drafts={}; m.offerRevision={1,1}
     for side,participant in ipairs(m.participants) do
-        local eligible=self:eligible(m,side)
+        local offer={offences=copy(m.roster.offences),wilds=copy(m.roster.wilds)}
         if m.guided then
             -- The first cards a pilot ever reads: the plainest ones, in a fixed order.
-            local hand={}
+            offer.offences=copy(GUIDE.offences); offer.wilds={}
             for _,id in ipairs(GUIDE.wilds) do
-                if #hand<(GUIDE.hand[m.stage] or 3) and contains(eligible,id) then hand[#hand+1]=id end
+                if #offer.wilds<(GUIDE.hand[m.stage] or 3) and contains(m.roster.wilds,id) then offer.wilds[#offer.wilds+1]=id end
             end
-            m.offers[side]=hand
-        else m.offers[side]=self:offer(eligible) end
-        if not participant.player then m.selected[side]=m.offers[side][self:random(#m.offers[side])]; m.locked[side]=true end
+        end
+        m.offers[side]=offer
+        -- Each draft starts as the plane that just flew.
+        m.drafts[side]={offenceId=m.settings[side].offenceId,wildIds=copy(m.settings[side].wildIds)}
+        if not participant.player then self:fillDraft(m,side,true); m.locked[side]=true end
     end
 end
 function BattleLab:startRound(m,countdown)
@@ -167,9 +176,8 @@ function BattleLab:startRound(m,countdown)
 end
 function BattleLab:reveal(m)
     for side=1,2 do
-        local selected=m.selected[side] or m.offers[side][1]
-        if m.stage==1 then m.settings[side].offenceId=selected
-        else table.insert(m.settings[side].wildIds,selected) end
+        m.settings[side].offenceId=m.drafts[side].offenceId
+        m.settings[side].wildIds=copy(m.drafts[side].wildIds)
     end
     self:startRound(m)
 end
@@ -180,7 +188,7 @@ function BattleLab:createMatch(a,b,mode,botIdentity)
     if guided then mode="practice" end
     local m={id=self.sequence,participants={{player=a.player},{player=b and b.player}},identities={self:identity(a.player),copy(botIdentity) or self:identity(b and b.player)},
         roster=copy(a.roster),guided=guided,mode=mode or a.roster.mode,diagnostic=a.roster.mode=="experimental" or (self.deps.allowFixedSeed and finite(self.deps.fixedSeed)),startedAt=self.deps.now(),score={0,0},stage=1,
-        roundNumber=0,roundId=0,settings={{wildIds={},angle=35},{wildIds={},angle=35}},resources={{reroll=self.REROLLS,pickAny=self.PICK_ANYS},{reroll=self.REROLLS,pickAny=self.PICK_ANYS}},
+        roundNumber=0,roundId=0,settings={{wildIds={},angle=35},{wildIds={},angle=35}},
         votes={false,false},rewards={},rounds={},completedRounds=0,decisiveRounds=0,fightSeconds=0,draftSeconds=0,transitionSeconds=0,
         queueSeconds=math.max(0,self.deps.now()-a.queuedAt)}
     -- A bot never flies the pilot's own paint; two planes must read apart at a glance.
@@ -197,7 +205,7 @@ function BattleLab:createMatch(a,b,mode,botIdentity)
         -- Round one is dealt, not picked, so the first thing a new pilot does
         -- is watch a fight. The round winner still earns the first wild card.
         m.settings[1].offenceId=GUIDE.offences[1]; m.settings[2].offenceId=GUIDE.offences[2]
-        m.selected={}; m.locked={true,true}; m.offers={{},{}}; m.offerRevision={0,0}; m.pickAnyActive={false,false}
+        m.locked={true,true}; m.offers={}; m.drafts={}; m.offerRevision={0,0}
         self:startRound(m,self.GUIDE_INTRO_SECONDS)
     else self:startPick(m) end
     self:emitMatch(m)
@@ -278,19 +286,15 @@ function BattleLab:snapshot(player)
     if not session.match then return {active=true,phase="Searching",serverTime=self.deps.now(),endsAt=session.queuedAt+self.QUEUE_SECONDS,
         queuedAt=session.queuedAt,queueId=session.queueId,rosterVersion=session.roster.version,mode=session.roster.mode} end
     local m,side=session.match,session.side
-    local eligible=m.phase=="Pick" and self:eligible(m,side) or {}
-    local resources=copy(m.resources[side]); local reason
-    if resources.reroll==0 then reason="Used this match"
-    elseif #eligible<=self.OFFER_SIZE then reason="All remaining cards are already offered"
-    elseif m.pickAnyActive[side] then reason="Pick Any is open" end
+    local picking=m.phase=="Pick"
     return {active=true,phase=m.phase,matchId=m.id,roundId=m.roundId,roundNumber=m.roundNumber,stage=m.stage,
-        slot=m.stage==1 and "offence" or "wild",score=pair(m.score,side),settings=pair(m.settings,side),players=pair(m.identities,side),
+        slots=self:slots(m),score=pair(m.score,side),settings=pair(m.settings,side),players=pair(m.identities,side),
         simulation=perspective(m.simulation,side),endsAt=m.endsAt,pickDeadline=m.phase=="Pick" and m.endsAt or 0,
         fightDeadline=m.phase=="Fight" and m.fightDeadline or 0,
         matchDeadline=m.startedAt+self.MATCH_SECONDS,serverTime=self.deps.now(),simulatedOpponent=m.identities[3-side].bot,
-        guided=m.guided==true,offer=m.phase=="Pick" and copy(m.offers[side]) or {},offerRevision=m.offerRevision[side],eligible=eligible,
-        selected=m.phase=="Pick" and m.selected[side] or nil,locked=pair(m.locked or {false,false},side),
-        resources=resources,pickAnyActive=m.pickAnyActive[side],rerollReason=reason,matchPoint=m.score[1]==1 or m.score[2]==1,
+        guided=m.guided==true,offer=picking and copy(m.offers[side]) or {offences={},wilds={}},offerRevision=m.offerRevision[side],
+        draft=picking and copy(m.drafts[side]) or nil,locked=pair(m.locked or {false,false},side),
+        matchPoint=m.score[1]==1 or m.score[2]==1,
         result=self:viewResult(m,m.result,side),roundResult=self:viewResult(m,m.roundResult,side),reward=copy(m.rewards[side]),
         rematchVotes=pair(m.votes,side),rivalGone=m.participants[3-side].gone==true,
         rematchStatus=m.participants[3-side].gone and "unavailable" or m.votes[side] and "waiting" or "ready",
@@ -466,20 +470,19 @@ function BattleLab:command(player,payload)
             end
         elseif m.phase=="Pick" and time<m.endsAt and payload.stage==m.stage and payload.offerRevision==m.offerRevision[side] and not m.locked[side]
             and payload.side==nil and payload.userId==nil and payload.playerId==nil and payload.settings==nil then
-            local eligible=self:eligible(m,side)
-            if kind=="pick" and payload.slot==(m.stage==1 and "offence" or "wild") and contains(m.offers[side],payload.skillId) then
-                m.selected[side]=payload.skillId
-            elseif kind=="lock" and payload.slot==(m.stage==1 and "offence" or "wild") and contains(m.offers[side],payload.skillId) then
-                -- Lock exactly the card the pilot saw. Only the deadline may
-                -- auto-pick: an old offer or missing selection cannot do so.
-                m.selected[side]=payload.skillId; m.locked[side]=true
+            local draft,offer,index=m.drafts[side],m.offers[side],payload.index
+            if kind=="pick" and payload.slot=="offence" and contains(offer.offences,payload.skillId) then
+                draft.offenceId=payload.skillId
+            elseif kind=="pick" and payload.slot=="wild" and contains(offer.wilds,payload.skillId) and not contains(draft.wildIds,payload.skillId)
+                and type(index)=="number" and index%1==0 and index>=1 and index<=self:slots(m) and index<=#draft.wildIds+1 then
+                draft.wildIds[index]=payload.skillId
+            elseif kind=="lock" and self:validBuild(m,side,payload.offenceId,payload.wildIds) then
+                -- Lock exactly the loadout the pilot saw. Only the deadline
+                -- may fill a gap: an incomplete or stale lock cannot.
+                draft.offenceId=payload.offenceId; draft.wildIds={}
+                for slot=1,self:slots(m) do draft.wildIds[slot]=payload.wildIds[slot] end
+                m.locked[side]=true
                 if m.locked[1] and m.locked[2] then self:reveal(m) end
-            elseif kind=="reroll" and m.resources[side].reroll>0 and #eligible>self.OFFER_SIZE and not m.pickAnyActive[side] then
-                m.offers[side]=self:offer(eligible,m.offers[side]); m.resources[side].reroll=0; m.selected[side]=nil
-                m.offerRevision[side]=m.offerRevision[side]+1
-            elseif kind=="pickAny" and m.resources[side].pickAny>0 then
-                m.resources[side].pickAny=0; m.pickAnyActive[side]=true; m.offers[side]=eligible; m.selected[side]=nil
-                m.offerRevision[side]=m.offerRevision[side]+1
             end
         end
         self:emitMatch(m)
@@ -506,7 +509,7 @@ function BattleLab:step(dt)
         if m.phase~="MatchOver" and time>=m.startedAt+self.MATCH_SECONDS then
             self:terminal(m,m.score[1]==m.score[2] and 0 or m.score[1]>m.score[2] and 1 or 2,"wall_cap")
         elseif m.phase=="Pick" and time>=m.endsAt then
-            for side=1,2 do if not m.locked[side] then m.selected[side]=m.offers[side][1]; m.locked[side]=true end end
+            for side=1,2 do if not m.locked[side] then self:fillDraft(m,side,false); m.locked[side]=true end end
             self:reveal(m)
         elseif m.phase=="Countdown" and time>=m.endsAt then
             self:changePhase(m,"Fight"); m.accumulator=0; m.fightDeadline=time+35

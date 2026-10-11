@@ -160,9 +160,9 @@ DEFAULT_SCENARIOS = {
         assert(sa.players[1].userId==101 and sb.players[1].userId==102 and not sa.simulatedOpponent)
         assert(sa.settings[2].offenceId==nil and sa.offers==nil)
         assert(a:GetAttribute('SkyboundFlying') and b:GetAttribute('SkyboundFlying'))
-        Harness.battleSend(a,'lock',{matchId=sa.matchId,stage=sa.stage,offerRevision=sa.offerRevision,slot=sa.slot,skillId=sa.offer[1]})
+        Harness.battleSend(a,'lock',{matchId=sa.matchId,stage=sa.stage,offerRevision=sa.offerRevision,offenceId=sa.offer.offences[1],wildIds={}})
         assert(Harness.battleLatest(b).settings[2].offenceId==nil)
-        Harness.battleSend(b,'lock',{matchId=sb.matchId,stage=sb.stage,offerRevision=sb.offerRevision,slot=sb.slot,skillId=sb.offer[1]});Harness.advance(2.6)
+        Harness.battleSend(b,'lock',{matchId=sb.matchId,stage=sb.stage,offerRevision=sb.offerRevision,offenceId=sb.offer.offences[1],wildIds={}});Harness.advance(2.6)
         sa,sb=Harness.battleLatest(a),Harness.battleLatest(b)
         assert(sa.phase=='Fight' and sb.phase=='Fight' and sa.simulation.seed==sb.simulation.seed)
         assert(sa.simulation.fighters[1].settings.offenceId==sb.simulation.fighters[2].settings.offenceId)
@@ -185,25 +185,25 @@ DEFAULT_SCENARIOS = {
         assert(Harness.battleLatest(a).phase=='Pick' and Harness.battleLatest(a).matchId~=first)
         Harness.battleSend(a,'exit');assert(Harness.latest(a).phase=='Lobby' and not a.Character.HumanoidRootPart.Anchored)
     ''',
-    'draft rejects bare and stale locks without silently choosing a replacement': r'''
+    'draft rejects bare, partial and stale locks without silently choosing a card': r'''
         local a,b=Harness.add(101),Harness.add(102)
         Harness.send(a,'play');Harness.send(b,'play');local old=Harness.battleLatest(a)
-        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage})
-        assert(not Harness.battleLatest(a).locked[1] and Harness.battleLatest(a).selected==nil)
-        -- The public draft shows the whole roster, with no reroll to spend.
-        assert(#old.offer==4 and old.resources.reroll==0 and old.resources.pickAny==0)
-        Harness.battleSend(a,'reroll',{matchId=old.matchId,stage=old.stage,offerRevision=old.offerRevision})
-        Harness.battleSend(a,'pickAny',{matchId=old.matchId,stage=old.stage,offerRevision=old.offerRevision})
-        local fresh=Harness.battleLatest(a);assert(fresh.offerRevision==old.offerRevision and #fresh.offer==4)
+        -- The public draft shows the whole roster: every attack now, every wild card later.
+        assert(#old.offer.offences==4 and #old.offer.wilds==5 and old.slots==0 and old.draft.offenceId==nil)
+        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offerRevision=old.offerRevision})
+        assert(not Harness.battleLatest(a).locked[1] and Harness.battleLatest(a).draft.offenceId==nil)
         Harness.advance(.1)
-        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,slot=old.slot,skillId=old.offer[2],offerRevision=old.offerRevision+1})
-        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,slot=old.slot,skillId='SpringBumper',offerRevision=old.offerRevision})
-        assert(not Harness.battleLatest(a).locked[1] and Harness.battleLatest(a).selected==nil)
+        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId='Firework',wildIds={},offerRevision=old.offerRevision+1})
+        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId='SpringBumper',wildIds={},offerRevision=old.offerRevision})
+        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId='Firework',wildIds={'SpringBumper'},offerRevision=old.offerRevision})
+        assert(not Harness.battleLatest(a).locked[1] and Harness.battleLatest(a).draft.offenceId==nil)
         Harness.advance(.1)
-        Harness.battleSend(a,'lock',{matchId=fresh.matchId,stage=fresh.stage,slot=fresh.slot,skillId=fresh.offer[2],offerRevision=fresh.offerRevision})
+        Harness.battleSend(a,'pick',{matchId=old.matchId,stage=old.stage,slot='offence',skillId='Pinball',offerRevision=old.offerRevision})
+        assert(Harness.battleLatest(a).draft.offenceId=='Pinball' and Harness.battleLatest(b).draft.offenceId==nil)
+        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId='Firework',wildIds={},offerRevision=old.offerRevision})
         local sb=Harness.battleLatest(b)
-        Harness.battleSend(b,'lock',{matchId=sb.matchId,stage=sb.stage,slot=sb.slot,skillId=sb.offer[1],offerRevision=sb.offerRevision})
-        assert(Harness.battleLatest(a).phase=='Countdown' and Harness.battleLatest(a).settings[1].offenceId==fresh.offer[2])
+        Harness.battleSend(b,'lock',{matchId=sb.matchId,stage=sb.stage,offenceId='Meteor',wildIds={},offerRevision=sb.offerRevision})
+        assert(Harness.battleLatest(a).phase=='Countdown' and Harness.battleLatest(a).settings[1].offenceId=='Firework')
     ''',
     'default queue cancellation and disconnect restore controls and allow a new match': r'''
         local a,b=Harness.add(101),Harness.add(102)
@@ -266,7 +266,7 @@ DEFAULT_SCENARIOS = {
         Harness.battleSend(a,'rematch',{matchId=sa.matchId});Harness.battleSend(b,'rematch',{matchId=sb.matchId})
         Harness.advance(.2);local retry=Harness.battleLatest(a)
         assert(retry.phase=='Pick' and retry.matchId~=sa.matchId and retry.players[1].trailId=='rookieblue')
-        assert(retry.resources.reroll==0 and retry.economy.credits==coins and not retry.economy.progression.starterAvailable)
+        assert(retry.slots==0 and retry.economy.credits==coins and not retry.economy.progression.starterAvailable)
     ''',
     "bot completed award purchases and equips in results while fight mutations are blocked": r'''
         local a=Harness.add(101);Harness.send(a,'play');Harness.advance(248.2)
@@ -281,7 +281,7 @@ DEFAULT_SCENARIOS = {
         assert(a:GetAttribute('SkyboundTrail')=='skyblue')
         Harness.battleSend(a,'rematch',{matchId=result.matchId});Harness.advance(.2)
         local draft=Harness.battleLatest(a)
-        Harness.battleSend(a,'lock',{matchId=draft.matchId,stage=draft.stage,offerRevision=draft.offerRevision,slot=draft.slot,skillId=draft.offer[1]});Harness.advance(2.6)
+        Harness.battleSend(a,'lock',{matchId=draft.matchId,stage=draft.stage,offerRevision=draft.offerRevision,offenceId=draft.offer.offences[1],wildIds={}});Harness.advance(2.6)
         assert(Harness.battleLatest(a).phase=='Fight')
         Harness.send(a,'claimStarter',{itemId='rookiecoral'});Harness.send(a,'selectGoal',{itemId='sunset'})
         Harness.send(a,'equipCosmetic',{itemId='classic'});Harness.advance(.3)
@@ -920,14 +920,20 @@ GUIDED_SCENARIOS = {
         for _=1,2400 do
             Harness.advance(.1);s=Harness.battleLatest(a)
             if s.phase=='Pick' and not s.locked[1] then
-                assert(s.slot=='wild' and #s.offer==(s.stage==2 and 2 or 3))
-                Harness.battleSend(a,'lock',{matchId=s.matchId,stage=s.stage,offerRevision=s.offerRevision,slot=s.slot,skillId=s.offer[1]})
+                assert(s.slots==s.stage-1 and #s.offer.wilds==(s.stage==2 and 2 or 3) and #s.offer.offences==2)
+                assert(s.draft.offenceId=='Meteor' and #s.draft.wildIds==s.slots-1,'The guided pick did not start from the plane that flew')
+                local wilds={};for _,id in ipairs(s.draft.wildIds) do wilds[#wilds+1]=id end
+                for _,id in ipairs(s.offer.wilds) do
+                    local held=false;for _,other in ipairs(wilds) do if other==id then held=true end end
+                    if not held and #wilds<s.slots then wilds[#wilds+1]=id end
+                end
+                Harness.battleSend(a,'lock',{matchId=s.matchId,stage=s.stage,offerRevision=s.offerRevision,offenceId='Meteor',wildIds=wilds})
             end
             if s.phase=='MatchOver' then break end
         end
         assert(s.phase=='MatchOver' and s.reward.eligible and s.economy.progression.matches==1)
         Harness.battleSend(a,'rematch',{matchId=first});Harness.advance(.1);s=Harness.battleLatest(a)
-        assert(s.phase=='Pick' and not s.guided and s.slot=='offence' and #s.offer==4)
+        assert(s.phase=='Pick' and not s.guided and s.slots==0 and #s.offer.offences==4)
         Harness.battleSend(a,'exit');Harness.advance(.1)
         Harness.send(a,'play');assert(Harness.battleLatest(a).phase=='Searching')
     ''',
