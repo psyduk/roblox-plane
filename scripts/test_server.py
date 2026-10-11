@@ -478,7 +478,7 @@ SCENARIOS = {
     ''',
     "plane catalog is free and server rejects unknown IDs speed spoofing and obsolete power": r'''
         local catalog=Harness.shared.PlaneCatalog.module
-        assert(#catalog.ORDER==3 and catalog.DEFAULT_ID=='cruiser')
+        assert(#catalog.ORDER==7 and catalog.DEFAULT_ID=='cruiser')
         local a=Harness.add(101)
         assert(Harness.latest(a).players[1].settings.planeId=='cruiser')
         for _,bad in ipairs({

@@ -1,0 +1,2020 @@
+{
+  "placeId": 86507299893768,
+  "sourceParity": {
+    "count": 37,
+    "mismatch": []
+  },
+  "expectedSourceChecks": {
+    "ReplicatedStorage.FlightGame.PlaneCatalog": {
+      "length": 2742,
+      "checksum": 3339750934
+    },
+    "ReplicatedStorage.FlightGame.PowerCatalog": {
+      "length": 1531,
+      "checksum": 2219766670
+    },
+    "ReplicatedStorage.FlightGame.CosmeticCatalog": {
+      "length": 3850,
+      "checksum": 353213705
+    },
+    "ReplicatedStorage.FlightGame.Simulation": {
+      "length": 16777,
+      "checksum": 4032168248
+    },
+    "ReplicatedStorage.FlightGame.BattleSimulation": {
+      "length": 51808,
+      "checksum": 2898441991
+    },
+    "ReplicatedStorage.FlightGame.BattleSkills": {
+      "length": 32487,
+      "checksum": 3680563150
+    },
+    "ReplicatedStorage.FlightGame.SkillCatalog": {
+      "length": 12574,
+      "checksum": 1689661433
+    },
+    "ReplicatedStorage.FlightGame.MountVisuals": {
+      "length": 5531,
+      "checksum": 2673231083
+    },
+    "ReplicatedStorage.FlightGame.World": {
+      "length": 70901,
+      "checksum": 3996924657
+    },
+    "ServerScriptService.FlightServer": {
+      "length": 38296,
+      "checksum": 1943892074
+    },
+    "ServerScriptService.PlayerStats": {
+      "length": 28094,
+      "checksum": 1823907902
+    },
+    "ServerScriptService.Telemetry": {
+      "length": 10349,
+      "checksum": 2481519459
+    },
+    "ServerScriptService.BattleLab": {
+      "length": 36746,
+      "checksum": 2836143186
+    },
+    "ServerStorage.SimulationTests": {
+      "length": 34187,
+      "checksum": 2711869556
+    },
+    "ServerStorage.BattleSimulationTests": {
+      "length": 79917,
+      "checksum": 2198363778
+    },
+    "ServerStorage.BattleMatchTests": {
+      "length": 33866,
+      "checksum": 4015671364
+    },
+    "ServerStorage.SkillCatalogTests": {
+      "length": 6400,
+      "checksum": 1116544741
+    },
+    "ServerStorage.PlaneCatalogTests": {
+      "length": 2840,
+      "checksum": 694005173
+    },
+    "ServerStorage.PowerCatalogTests": {
+      "length": 1501,
+      "checksum": 2478827803
+    },
+    "ServerStorage.CosmeticCatalogTests": {
+      "length": 1713,
+      "checksum": 2162243768
+    },
+    "ServerStorage.PlayerStatsTests": {
+      "length": 43023,
+      "checksum": 1315198854
+    },
+    "ServerStorage.TelemetryTests": {
+      "length": 9083,
+      "checksum": 4082240336
+    },
+    "ServerStorage.FlightAudioTests": {
+      "length": 7012,
+      "checksum": 1584119193
+    },
+    "ServerStorage.BattleAudioTests": {
+      "length": 17605,
+      "checksum": 4207931923
+    },
+    "ServerStorage.BattleViewTests": {
+      "length": 18430,
+      "checksum": 235463899
+    },
+    "ServerStorage.BattleClientTests": {
+      "length": 10926,
+      "checksum": 955136177
+    },
+    "ServerStorage.MountVisualsTests": {
+      "length": 4591,
+      "checksum": 1426250051
+    },
+    "StarterPlayer.StarterPlayerScripts.FlightClient": {
+      "length": 28767,
+      "checksum": 2922241624
+    },
+    "StarterPlayer.StarterPlayerScripts.Hud": {
+      "length": 103557,
+      "checksum": 2326586892
+    },
+    "StarterPlayer.StarterPlayerScripts.EffectsShop": {
+      "length": 23181,
+      "checksum": 1666662693
+    },
+    "StarterPlayer.StarterPlayerScripts.HangarBay": {
+      "length": 16870,
+      "checksum": 2586600063
+    },
+    "StarterPlayer.StarterPlayerScripts.FlightAudio": {
+      "length": 8984,
+      "checksum": 897781266
+    },
+    "StarterPlayer.StarterPlayerScripts.PilotAvatar": {
+      "length": 15304,
+      "checksum": 369736884
+    },
+    "StarterPlayer.StarterPlayerScripts.BattleLab": {
+      "length": 90294,
+      "checksum": 2331178139
+    },
+    "StarterPlayer.StarterPlayerScripts.BattleView": {
+      "length": 113143,
+      "checksum": 1011931648
+    },
+    "StarterPlayer.StarterPlayerScripts.BattleAudio": {
+      "length": 28575,
+      "checksum": 3159145570
+    },
+    "StarterPlayer.StarterPlayerScripts.ChallengePanel": {
+      "length": 6738,
+      "checksum": 2447824323
+    }
+  },
+  "templates": [
+    {
+      "attrs": {
+        "CockpitX": 0.12202489106262096,
+        "CockpitY": 2.1905642496655897,
+        "CockpitZ": 0,
+        "IdleFlapAmplitude": 0.12,
+        "PilotScale": 0.6,
+        "CockpitYaw": -1.5707963267948966,
+        "FlapAmplitude": 0.4,
+        "FlapFrequency": 1.25
+      },
+      "path": "ironwing",
+      "class": "Model",
+      "pivot": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "attrs": [],
+      "path": "ironwing.Body",
+      "class": "Model",
+      "pivot": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "attrs": [],
+      "path": "ironwing.Body.BodyGlow",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        2.54878830909729,
+        0.7679941654205322,
+        -1.6133581937083363e-7,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Neon",
+      "mesh": "rbxassetid://99438297076675",
+      "size": [
+        1.5801650285720825,
+        2.35965633392334,
+        0.7687432765960693
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://114472565534261",
+      "path": "ironwing.Body.BodyGlow.MountPalette",
+      "roughnessMap": "rbxassetid://101753236464261",
+      "metalnessMap": "rbxassetid://83564343537659",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "ironwing.Body.BodyMesh",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -0.39790788292884827,
+        0.18913988769054413,
+        0.00016799470176920295,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Plastic",
+      "mesh": "rbxassetid://71644962875777",
+      "size": [
+        3.239734411239624,
+        4.066202163696289,
+        8.057097434997559
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://118188265737570",
+      "path": "ironwing.Body.BodyMesh.MountPalette",
+      "roughnessMap": "rbxassetid://101753236464261",
+      "metalnessMap": "rbxassetid://83564343537659",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "cf": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "ironwing.Body.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "cf": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "ironwing.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "attrs": [],
+      "path": "ironwing.WingLeft",
+      "class": "Model",
+      "pivot": [
+        0,
+        0.503352701663971,
+        -0.9609460234642029,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "cf": [
+        0,
+        0.503352701663971,
+        -0.9609460234642029,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "ironwing.WingLeft.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "attrs": [],
+      "path": "ironwing.WingLeft.WingLeftGlow",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -1.0252126455307007,
+        1.2955280542373657,
+        -3.847907304763794,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Neon",
+      "mesh": "rbxassetid://71692888427669",
+      "size": [
+        5.368706226348877,
+        1.5857460498809814,
+        3.083127975463867
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://114472565534261",
+      "path": "ironwing.WingLeft.WingLeftGlow.MountPalette",
+      "roughnessMap": "rbxassetid://101753236464261",
+      "metalnessMap": "rbxassetid://83564343537659",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "ironwing.WingLeft.WingLeftMesh",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -1.2586296796798706,
+        1.0376900434494019,
+        -4.398902416229248,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Plastic",
+      "mesh": "rbxassetid://125815386391610",
+      "size": [
+        7.202757358551025,
+        2.860774517059326,
+        4.9925384521484375
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://118188265737570",
+      "path": "ironwing.WingLeft.WingLeftMesh.MountPalette",
+      "roughnessMap": "rbxassetid://101753236464261",
+      "metalnessMap": "rbxassetid://83564343537659",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "ironwing.WingRight",
+      "class": "Model",
+      "pivot": [
+        0,
+        0.503352701663971,
+        0.9609460234642029,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "cf": [
+        0,
+        0.503352701663971,
+        0.9609460234642029,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "ironwing.WingRight.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "attrs": [],
+      "path": "ironwing.WingRight.WingRightGlow",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -1.025212287902832,
+        1.2955281734466553,
+        3.847358465194702,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Neon",
+      "mesh": "rbxassetid://139879622455519",
+      "size": [
+        5.369803428649902,
+        1.5857460498809814,
+        3.083127975463867
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://114472565534261",
+      "path": "ironwing.WingRight.WingRightGlow.MountPalette",
+      "roughnessMap": "rbxassetid://101753236464261",
+      "metalnessMap": "rbxassetid://83564343537659",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "ironwing.WingRight.WingRightMesh",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -1.2612465620040894,
+        1.037697196006775,
+        4.398297309875488,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Plastic",
+      "mesh": "rbxassetid://128827254489467",
+      "size": [
+        7.20284366607666,
+        2.8607852458953857,
+        4.987241744995117
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://118188265737570",
+      "path": "ironwing.WingRight.WingRightMesh.MountPalette",
+      "roughnessMap": "rbxassetid://101753236464261",
+      "metalnessMap": "rbxassetid://83564343537659",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": {
+        "CockpitX": 0.16729400028837577,
+        "CockpitY": 2.3229400028837577,
+        "CockpitZ": 0,
+        "IdleFlapAmplitude": 0.12,
+        "PilotScale": 0.6,
+        "CockpitYaw": -1.5707963267948966,
+        "FlapAmplitude": 0.4,
+        "FlapFrequency": 1.25
+      },
+      "path": "phoenix",
+      "class": "Model",
+      "pivot": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "attrs": [],
+      "path": "phoenix.Body",
+      "class": "Model",
+      "pivot": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "attrs": [],
+      "path": "phoenix.Body.BodyGlow",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -2.64613938331604,
+        1.9342241287231445,
+        -0.000015676263501518406,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Neon",
+      "mesh": "rbxassetid://77422860082532",
+      "size": [
+        8.039891242980957,
+        5.698484897613525,
+        12.634639739990234
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://108760532166237",
+      "path": "phoenix.Body.BodyGlow.MountPalette",
+      "roughnessMap": "rbxassetid://93378145194882",
+      "metalnessMap": "rbxassetid://81687158281641",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "phoenix.Body.BodyMesh",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -1.4657645225524902,
+        1.3166344165802002,
+        0.00020671232778113335,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Plastic",
+      "mesh": "rbxassetid://96389982868359",
+      "size": [
+        6.16974401473999,
+        6.257389545440674,
+        11.784761428833008
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://131671610448579",
+      "path": "phoenix.Body.BodyMesh.MountPalette",
+      "roughnessMap": "rbxassetid://93378145194882",
+      "metalnessMap": "rbxassetid://81687158281641",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "cf": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "phoenix.Body.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "cf": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "phoenix.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "attrs": [],
+      "path": "phoenix.WingLeft",
+      "class": "Model",
+      "pivot": [
+        0.10037639737129211,
+        0.6189877986907959,
+        -0.8197405934333801,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "cf": [
+        0.10037639737129211,
+        0.6189877986907959,
+        -0.8197405934333801,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "phoenix.WingLeft.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "attrs": [],
+      "path": "phoenix.WingLeft.WingLeftGlow",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -0.9916804432868958,
+        1.4552292823791504,
+        -4.661053657531738,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Neon",
+      "mesh": "rbxassetid://114796403987608",
+      "size": [
+        6.683226108551025,
+        2.2120721340179443,
+        5.2186479568481445
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://108760532166237",
+      "path": "phoenix.WingLeft.WingLeftGlow.MountPalette",
+      "roughnessMap": "rbxassetid://93378145194882",
+      "metalnessMap": "rbxassetid://81687158281641",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "phoenix.WingLeft.WingLeftMesh",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -0.786785364151001,
+        1.2815450429916382,
+        -3.795105218887329,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Plastic",
+      "mesh": "rbxassetid://123957541114251",
+      "size": [
+        7.154986381530762,
+        2.1848087310791016,
+        4.684657573699951
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://131671610448579",
+      "path": "phoenix.WingLeft.WingLeftMesh.MountPalette",
+      "roughnessMap": "rbxassetid://93378145194882",
+      "metalnessMap": "rbxassetid://81687158281641",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "phoenix.WingRight",
+      "class": "Model",
+      "pivot": [
+        0.10037639737129211,
+        0.6189877986907959,
+        0.8197405934333801,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "cf": [
+        0.10037639737129211,
+        0.6189877986907959,
+        0.8197405934333801,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "phoenix.WingRight.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "attrs": [],
+      "path": "phoenix.WingRight.WingRightGlow",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -0.9904041290283203,
+        1.4552284479141235,
+        4.661855697631836,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Neon",
+      "mesh": "rbxassetid://119790932777300",
+      "size": [
+        6.68135929107666,
+        2.212143898010254,
+        5.220169544219971
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://108760532166237",
+      "path": "phoenix.WingRight.WingRightGlow.MountPalette",
+      "roughnessMap": "rbxassetid://93378145194882",
+      "metalnessMap": "rbxassetid://81687158281641",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "phoenix.WingRight.WingRightMesh",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -0.7867927551269531,
+        1.371457576751709,
+        3.7950680255889893,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Plastic",
+      "mesh": "rbxassetid://135632651442194",
+      "size": [
+        7.1549153327941895,
+        2.006582021713257,
+        4.6860761642456055
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://131671610448579",
+      "path": "phoenix.WingRight.WingRightMesh.MountPalette",
+      "roughnessMap": "rbxassetid://93378145194882",
+      "metalnessMap": "rbxassetid://81687158281641",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": {
+        "CockpitX": -0.20096438924362647,
+        "CockpitY": 1.963997929669865,
+        "CockpitZ": 0,
+        "IdleFlapAmplitude": 0.084,
+        "PilotScale": 0.6,
+        "CockpitYaw": -1.5707963267948966,
+        "FlapAmplitude": 0.28,
+        "FlapFrequency": 0.85
+      },
+      "path": "riftmanta",
+      "class": "Model",
+      "pivot": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "attrs": [],
+      "path": "riftmanta.Body",
+      "class": "Model",
+      "pivot": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "attrs": [],
+      "path": "riftmanta.Body.BodyGlow",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -3.75270676612854,
+        0.906423807144165,
+        -3.483192756448261e-7,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Neon",
+      "mesh": "rbxassetid://117490142671683",
+      "size": [
+        3.531904935836792,
+        1.0624889135360718,
+        12.096342086791992
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://118916005144839",
+      "path": "riftmanta.Body.BodyGlow.MountPalette",
+      "roughnessMap": "rbxassetid://116552243196594",
+      "metalnessMap": "rbxassetid://75593956516126",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "riftmanta.Body.BodyMesh",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -2.3813536167144775,
+        0.38721930980682373,
+        -8.412252441303281e-7,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Plastic",
+      "mesh": "rbxassetid://81529521820638",
+      "size": [
+        4.173873424530029,
+        2.5050933361053467,
+        12.767748832702637
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://115149806733491",
+      "path": "riftmanta.Body.BodyMesh.MountPalette",
+      "roughnessMap": "rbxassetid://116552243196594",
+      "metalnessMap": "rbxassetid://75593956516126",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "cf": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "riftmanta.Body.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "cf": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "riftmanta.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "attrs": [],
+      "path": "riftmanta.WingLeft",
+      "class": "Model",
+      "pivot": [
+        0,
+        0,
+        -1.0511983633041382,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "cf": [
+        0,
+        0,
+        -1.0511983633041382,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "riftmanta.WingLeft.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "attrs": [],
+      "path": "riftmanta.WingLeft.WingLeftGlow",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        0.004709382075816393,
+        0.8041066527366638,
+        -4.764929294586182,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Neon",
+      "mesh": "rbxassetid://72083362659809",
+      "size": [
+        6.469705581665039,
+        1.2338528633117676,
+        4.2959675788879395
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://118916005144839",
+      "path": "riftmanta.WingLeft.WingLeftGlow.MountPalette",
+      "roughnessMap": "rbxassetid://116552243196594",
+      "metalnessMap": "rbxassetid://75593956516126",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "riftmanta.WingLeft.WingLeftMesh",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        0.0027230726554989815,
+        0.6082184314727783,
+        -4.4753217697143555,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Plastic",
+      "mesh": "rbxassetid://128938554928162",
+      "size": [
+        7.002836227416992,
+        1.5751831531524658,
+        4.30299186706543
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://115149806733491",
+      "path": "riftmanta.WingLeft.WingLeftMesh.MountPalette",
+      "roughnessMap": "rbxassetid://116552243196594",
+      "metalnessMap": "rbxassetid://75593956516126",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "riftmanta.WingRight",
+      "class": "Model",
+      "pivot": [
+        0,
+        0,
+        1.0511983633041382,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "cf": [
+        0,
+        0,
+        1.0511983633041382,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "riftmanta.WingRight.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "attrs": [],
+      "path": "riftmanta.WingRight.WingRightGlow",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        0.003824221668764949,
+        0.8051924705505371,
+        4.7651047706604,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Neon",
+      "mesh": "rbxassetid://112895533286423",
+      "size": [
+        6.470226287841797,
+        1.231693148612976,
+        4.297740936279297
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://118916005144839",
+      "path": "riftmanta.WingRight.WingRightGlow.MountPalette",
+      "roughnessMap": "rbxassetid://116552243196594",
+      "metalnessMap": "rbxassetid://75593956516126",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "riftmanta.WingRight.WingRightMesh",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -0.003313884837552905,
+        0.6328332424163818,
+        4.475322723388672,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Plastic",
+      "mesh": "rbxassetid://100321748049145",
+      "size": [
+        7.002837181091309,
+        1.5567725896835327,
+        4.300163269042969
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://115149806733491",
+      "path": "riftmanta.WingRight.WingRightMesh.MountPalette",
+      "roughnessMap": "rbxassetid://116552243196594",
+      "metalnessMap": "rbxassetid://75593956516126",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": {
+        "CockpitX": 0.12197395772842878,
+        "CockpitY": 2.1899212163214132,
+        "CockpitZ": 0,
+        "IdleFlapAmplitude": 0.12,
+        "PilotScale": 0.6,
+        "CockpitYaw": -1.5707963267948966,
+        "FlapAmplitude": 0.4,
+        "FlapFrequency": 1.25
+      },
+      "path": "stormcrown",
+      "class": "Model",
+      "pivot": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "attrs": [],
+      "path": "stormcrown.Body",
+      "class": "Model",
+      "pivot": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "attrs": [],
+      "path": "stormcrown.Body.BodyGlow",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        2.5477242469787598,
+        0.7676735520362854,
+        -1.612684741303383e-7,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Neon",
+      "mesh": "rbxassetid://112779217643436",
+      "size": [
+        1.5795055627822876,
+        2.358671188354492,
+        0.7684224247932434
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://100531714493900",
+      "path": "stormcrown.Body.BodyGlow.MountPalette",
+      "roughnessMap": "rbxassetid://95949612891599",
+      "metalnessMap": "rbxassetid://123398694293567",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "stormcrown.Body.BodyMesh",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -0.3972346782684326,
+        0.19129760563373566,
+        0.000014704819477628917,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Plastic",
+      "mesh": "rbxassetid://99013713530054",
+      "size": [
+        3.1245734691619873,
+        4.068978309631348,
+        8.05461311340332
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://100198281528219",
+      "path": "stormcrown.Body.BodyMesh.MountPalette",
+      "roughnessMap": "rbxassetid://95949612891599",
+      "metalnessMap": "rbxassetid://123398694293567",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "cf": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "stormcrown.Body.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "cf": [
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "stormcrown.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "attrs": [],
+      "path": "stormcrown.WingLeft",
+      "class": "Model",
+      "pivot": [
+        0,
+        0.5031425952911377,
+        -0.9605448842048645,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "cf": [
+        0,
+        0.5031425952911377,
+        -0.9605448842048645,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "stormcrown.WingLeft.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "attrs": [],
+      "path": "stormcrown.WingLeft.WingLeftGlow",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -1.7671313285827637,
+        1.312514305114746,
+        -6.397702693939209,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Neon",
+      "mesh": "rbxassetid://135938863235208",
+      "size": [
+        3.2045938968658447,
+        2.3034918308258057,
+        3.9873781204223633
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://100531714493900",
+      "path": "stormcrown.WingLeft.WingLeftGlow.MountPalette",
+      "roughnessMap": "rbxassetid://95949612891599",
+      "metalnessMap": "rbxassetid://123398694293567",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "stormcrown.WingLeft.WingLeftMesh",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -1.2641668319702148,
+        1.0183042287826538,
+        -4.401045799255371,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Plastic",
+      "mesh": "rbxassetid://119013098998593",
+      "size": [
+        7.192482948303223,
+        2.8267581462860107,
+        4.975302219390869
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://100198281528219",
+      "path": "stormcrown.WingLeft.WingLeftMesh.MountPalette",
+      "roughnessMap": "rbxassetid://95949612891599",
+      "metalnessMap": "rbxassetid://123398694293567",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "stormcrown.WingRight",
+      "class": "Model",
+      "pivot": [
+        0,
+        0.5031425952911377,
+        0.9605448842048645,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "primary": "Pivot"
+    },
+    {
+      "cf": [
+        0,
+        0.5031425952911377,
+        0.9605448842048645,
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      "path": "stormcrown.WingRight.Pivot",
+      "material": "Plastic",
+      "transparency": 1,
+      "color": [
+        0.6392157077789307,
+        0.6352941393852234,
+        0.6470588445663452
+      ],
+      "class": "Part",
+      "attrs": [],
+      "size": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612
+      ]
+    },
+    {
+      "attrs": [],
+      "path": "stormcrown.WingRight.WingRightGlow",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -1.7671312093734741,
+        1.312514305114746,
+        6.397702693939209,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Neon",
+      "mesh": "rbxassetid://86194972566571",
+      "size": [
+        3.2045938968658447,
+        2.3034918308258057,
+        3.9873785972595215
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://100531714493900",
+      "path": "stormcrown.WingRight.WingRightGlow.MountPalette",
+      "roughnessMap": "rbxassetid://95949612891599",
+      "metalnessMap": "rbxassetid://123398694293567",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    },
+    {
+      "attrs": [],
+      "path": "stormcrown.WingRight.WingRightMesh",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "class": "MeshPart",
+      "cf": [
+        -1.2645267248153687,
+        1.0183051824569702,
+        4.400040626525879,
+        -4.371138828673793e-8,
+        0,
+        -1,
+        0,
+        1,
+        0,
+        1,
+        0,
+        -4.371138828673793e-8
+      ],
+      "transparency": 0,
+      "texture": "",
+      "material": "Plastic",
+      "mesh": "rbxassetid://113456911112276",
+      "size": [
+        7.191982746124268,
+        2.8267557621002197,
+        4.976050853729248
+      ]
+    },
+    {
+      "colorMap": "rbxassetid://100198281528219",
+      "path": "stormcrown.WingRight.WingRightMesh.MountPalette",
+      "roughnessMap": "rbxassetid://95949612891599",
+      "metalnessMap": "rbxassetid://123398694293567",
+      "class": "SurfaceAppearance",
+      "normalMap": "",
+      "attrs": []
+    }
+  ],
+  "method": "Native Studio publishing-place comparison before publish; exact template signature equality to final local candidate."
+}

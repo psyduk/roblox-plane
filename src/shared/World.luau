@@ -5,6 +5,7 @@ local Lighting = game:GetService("Lighting")
 local Simulation = require(script.Parent.Simulation)
 local PlaneCatalog = require(script.Parent.PlaneCatalog)
 local CosmeticCatalog = require(script.Parent.CosmeticCatalog)
+local MountVisuals = require(script.Parent.MountVisuals)
 
 local World = {}
 
@@ -205,7 +206,7 @@ local function sign(parent, name, position, size, title, subtitle, accent, rotat
 end
 
 local function makePlane(parent, name, colorIndex, planeId)
-	planeId = (planeId == "skyhopper" or planeId == "dart") and planeId or PlaneCatalog.DEFAULT_ID
+	planeId = PlaneCatalog.isSelectable(planeId) and planeId or PlaneCatalog.DEFAULT_ID
 	local color = PLANE_COLORS[((colorIndex or 1) - 1) % #PLANE_COLORS + 1]
 	local model = Instance.new("Model")
 	model.Name = name
@@ -300,6 +301,21 @@ local function makePlane(parent, name, colorIndex, planeId)
 			hit = ColorSequence.new(Color3.fromRGB(104, 101, 110), COLORS.cream),
 		},
 	}
+	if MountVisuals.attach(model, planeId) then
+		planeData[model].mountVisual = true
+		-- Retain invisible effect anchors for existing flight and skill code.
+		-- Everything else comes from the authored creature; no aircraft shows
+		-- through its body, feathers, or saddle.
+		body.Transparency = 1
+		body:SetAttribute("CosmeticShell", true)
+		for _, piece in ipairs(propeller:GetChildren()) do
+			if piece:IsA("BasePart") then piece.Transparency = 1; piece:SetAttribute("CosmeticShell", true) end
+		end
+		for _, piece in ipairs(model:GetChildren()) do
+			if piece:IsA("BasePart") and piece ~= pivot and piece ~= body and piece ~= flare
+				and not table.find(smoke, piece) then piece:Destroy() end
+		end
+	end
 	model:ScaleTo(3.1)
 	return model
 end
@@ -340,7 +356,16 @@ end
 World.COCKPIT_OFFSET = CFrame.new(0.5, 2.1, 0) * CFrame.Angles(0, -math.pi / 2, 0)
 function World.getCockpitCFrame(model)
 	local scale = model:GetScale()
-	return model:GetPivot() * CFrame.new(0.5 * scale, 2.1 * scale, 0) * CFrame.Angles(0, -math.pi / 2, 0)
+	local offset = MountVisuals.getCockpitOffset(model) or World.COCKPIT_OFFSET
+	return model:GetPivot() * CFrame.new(offset.Position * scale) * offset.Rotation
+end
+
+function World.getPilotScale(model)
+	return MountVisuals.getPilotScale(model)
+end
+
+function World.animateCosmetic(model, dt, moving, frozen, reducedMotion)
+	MountVisuals.update(model, dt, moving, frozen, reducedMotion)
 end
 
 local POWER_COLORS = { Pinball = COLORS.yellow, Muncher = COLORS.lime, Meteor = COLORS.coral }
@@ -358,7 +383,7 @@ local function ensurePowerVisual(model, data, powerId)
 	model:SetAttribute("PowerPhase", nil)
 	model:SetAttribute("PowerPartCount", 0)
 	for _, piece in data.propeller:GetChildren() do
-		if piece:IsA("BasePart") then piece.Transparency = powerId == "Muncher" and 1 or 0 end
+		if piece:IsA("BasePart") then piece.Transparency = (data.mountVisual or powerId == "Muncher") and 1 or 0 end
 	end
 	if not powerId then return end
 	local folder = Instance.new("Folder")
@@ -517,22 +542,24 @@ local function parkedPlane(parent, name, colorIndex, planeId, floor, rotation, s
 	model:ScaleTo(scale)
 	-- Parked aircraft have landing gear, so the fleet reads as a working
 	-- hangar instead of floating models on shop pedestals.
-	for _, side in { -1, 1 } do
-		part(model, "LandingStrut", Vector3.new(0.22, 1.6, 0.22) * scale,
-			CFrame.new(0.7 * scale, -1.65 * scale, side * 1.5 * scale), HANGAR.steel, Enum.Material.Metal)
-		part(model, "LandingWheel", Vector3.new(0.5, 1.4, 1.4) * scale,
-			CFrame.new(0.7 * scale, -2.1 * scale, side * 1.5 * scale) * CFrame.Angles(0, math.pi / 2, 0),
+	if model:GetAttribute("MountVisualLoaded") ~= true then
+		for _, side in { -1, 1 } do
+			part(model, "LandingStrut", Vector3.new(0.22, 1.6, 0.22) * scale,
+				CFrame.new(0.7 * scale, -1.65 * scale, side * 1.5 * scale), HANGAR.steel, Enum.Material.Metal)
+			part(model, "LandingWheel", Vector3.new(0.5, 1.4, 1.4) * scale,
+				CFrame.new(0.7 * scale, -2.1 * scale, side * 1.5 * scale) * CFrame.Angles(0, math.pi / 2, 0),
+				COLORS.deep, Enum.Material.SmoothPlastic, false, Enum.PartType.Cylinder)
+		end
+		part(model, "TailWheel", Vector3.new(0.4, 0.8, 0.8) * scale,
+			CFrame.new(-3.25 * scale, -2.4 * scale, 0) * CFrame.Angles(0, math.pi / 2, 0),
 			COLORS.deep, Enum.Material.SmoothPlastic, false, Enum.PartType.Cylinder)
 	end
-	part(model, "TailWheel", Vector3.new(0.4, 0.8, 0.8) * scale,
-		CFrame.new(-3.25 * scale, -2.4 * scale, 0) * CFrame.Angles(0, math.pi / 2, 0),
-		COLORS.deep, Enum.Material.SmoothPlastic, false, Enum.PartType.Cylinder)
 	model:PivotTo(CFrame.new(floor + Vector3.new(0, 2.8 * scale + 0.08, 0)) * CFrame.Angles(0, rotation, 0))
 	return model
 end
 World.createParkedPlane = parkedPlane
 
--- Parked planes keep their engine ticking over; only the propeller moves.
+-- Parked aircraft idle their propeller; creature mounts breathe their wings.
 -- Pass `moving` for a plane that is being flown along a path, so its real
 -- Trail draws; leave it nil for a plane standing in a bay.
 function World.idlePlane(model, dt, moving)
@@ -541,6 +568,7 @@ function World.idlePlane(model, dt, moving)
 	if moving ~= nil then data.trail.Enabled = moving end
 	data.phase = (data.phase + dt * 26) % (math.pi * 2)
 	data.propeller:PivotTo(model:GetPivot() * CFrame.new(5.1 * model:GetScale(), 0, 0) * CFrame.Angles(data.phase, 0, 0))
+	MountVisuals.update(model, dt, moving == true, false, false)
 end
 
 function World.trailLook(trailId)
@@ -1361,6 +1389,7 @@ function World.updatePlane(model, state, z, dt)
 	end
 	local pose = CFrame.new(World.COURSE_ORIGIN + Vector3.new(state.x or 0, y, z or 0)) * CFrame.Angles(0, 0, pitch)
 	model:PivotTo(pose)
+	MountVisuals.update(model, frameTime, state.alive ~= false, state.alive == false, false)
 	if data then
 		data.phase = (data.phase + frameTime * 40) % (math.pi * 2)
 		data.propeller:PivotTo(pose * CFrame.new(5.1 * scale, 0, 0) * CFrame.Angles(data.phase, 0, 0))

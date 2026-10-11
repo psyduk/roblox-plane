@@ -1,6 +1,6 @@
 # Sky Battle
 
-Build a flying fighter, watch your choices matter, then outsmart the same rival next round. The free playtest candidate implements approved **Milestones 1 and 2**. Milestones 3 and 4, paid products and roster expansion remain outside scope.
+Build a flying fighter, watch your choices matter, then outsmart the same rival next round. The free playtest candidate implements approved **Milestones 1 and 2**. Milestones 3 and 4, paid products and combat roster expansion remain outside scope.
 
 The approved direction is in [the ticket review](docs/SKY-BATTLE-TICKET-REVIEW.md). Current evidence and limitations are in [VALIDATION.md](VALIDATION.md); use [the playtest handoff](docs/SKY-BATTLE-PLAYTEST.md) for the published two-player and real-phone gate. This build is ready for iteration, not a claim of proven balance, comprehension or retention.
 
@@ -19,6 +19,8 @@ A human searching in the same server joins immediately; after eight seconds alon
 - Results show the score, final builds, factual turning point, reward, save status and goal. Replay remains available while optional cosmetics are shown. Hangar exits every phase. Sound and reduced-motion controls are available in battle.
 
 Combat and progression are server-owned. Clients cannot choose the rival's cards, fabricate a reward, alter the simulation clock or buy combat access. No Robux purchase path is enabled.
+
+**Legendary flying cosmetics:** Stormcrown Eagle, Ironwing Eagle, Eclipse Phoenix, and Rift Manta join the three existing planes. Open `build/Sky-Battle-Mounts-Final.rbxlx`, press Studio **Play**, use the hangar's **< / >** arrows to choose a look, then press the main **PLAY** button. Their wings animate in the hangar and battle, and your avatar rides the saddle. The templates use a 16-stud visual wingspan, `PilotScale=0.6`, and a 0.65-stud rider root offset above the normalized saddle. All four use Cruiser's flight profile and the unchanged shared battle contracts, including `BattleVisualSize=12`. They are free prototype cosmetics with Legendary labels and no purchase requirement. Published to [Skybound Test](https://www.roblox.com/games/86507299893768/Skybound-Test) as version **21** on **October 11, 2026 at 07:35:07 UTC**; the source and templates were verified in the target Studio place before publication. Live-server asset loading, independent-player gameplay, and phone performance remain unverified. All four flew through the normal UI in the earlier native candidate. The freshly opened final build passed the catalog, mount, and battle-view checks; all four final Studio previews also verified the rider-pose fix for the tested avatar. See [screenshots, asset pipeline, contracts, and validation](docs/LEGENDARY-FLIGHT-COSMETICS.md).
 
 ## Build and checks
 
@@ -53,6 +55,7 @@ local s=game.ReplicatedStorage.FlightGame
 local c=game.StarterPlayer.StarterPlayerScripts
 print(require(t.BattleSimulationTests)(require(s.BattleSimulation),require(s.SkillCatalog),require(s.BattleSkills)))
 print(require(t.SkillCatalogTests)(require(s.SkillCatalog)))
+print(require(t.MountVisualsTests)(require(s.World)))
 print(require(t.BattleMatchTests)(require(game.ServerScriptService.BattleLab),require(s.SkillCatalog)))
 print(require(t.PlayerStatsTests)(require(game.ServerScriptService.PlayerStats)))
 print(require(t.CosmeticCatalogTests)(require(s.CosmeticCatalog)))

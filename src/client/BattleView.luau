@@ -576,6 +576,11 @@ function BattleView:accent(index)
 	return fighter and fighter.color or self:_look(index).color
 end
 
+local function skinGeometry(model)
+	local visual = model:FindFirstChild("MountVisual")
+	return visual and visual:GetDescendants() or model:GetChildren()
+end
+
 function BattleView:_fighter(id, index)
 	local fighter = self.fighters[id]
 	if fighter then return fighter end
@@ -741,7 +746,7 @@ function BattleView:_fighter(id, index)
 	for number = 1, 2 do
 		local ghost = Instance.new("Model"); ghost.Name = "SkinAfterimage" .. number; ghost.Parent = fx
 		local pieces = {}
-		for _, original in ipairs(model:GetChildren()) do
+		for _, original in ipairs(skinGeometry(model)) do
 			if original:IsA("BasePart") and original.Transparency < 0.5 then
 				local copy = original:Clone()
 				for _, child in ipairs(copy:GetChildren()) do if not child:IsA("DataModelMesh") then child:Destroy() end end
@@ -760,10 +765,12 @@ end
 -- A plain copy of a fighter's skin, with no pilot, trail or emitters.
 local function skinCopy(fighter, name, transparency)
 	local copy = Instance.new("Model"); copy.Name = name; copy.Parent = fighter.fx
-	for _, original in ipairs(fighter.model:GetChildren()) do
+	for _, original in ipairs(skinGeometry(fighter.model)) do
 		if original:IsA("BasePart") and original.Transparency < 0.5 then
 			local piece = original:Clone()
-			for _, child in ipairs(piece:GetChildren()) do if not child:IsA("DataModelMesh") then child:Destroy() end end
+			for _, child in ipairs(piece:GetChildren()) do
+				if not child:IsA("DataModelMesh") and not child:IsA("SurfaceAppearance") then child:Destroy() end
+			end
 			piece.Anchored, piece.CanCollide, piece.CanTouch, piece.CanQuery = true, false, false, false
 			piece.Transparency, piece.LocalTransparencyModifier = transparency, 0
 			piece.Parent = copy
@@ -1829,6 +1836,9 @@ function BattleView:update(snapshot, dt, viewportRect)
 			displayPose = displayPose * CFrame.Angles(0, 0, self.clock * 18)
 		end
 		fighter.model:PivotTo(displayPose)
+		if self.World.animateCosmetic then
+			self.World.animateCosmetic(fighter.model, dt, moving, knockedOut or self.freeze > 0, self.reducedMotion)
+		end
 		-- A plane held in a beam is joined to whatever grabbed it.
 		local holder = type(state.hold) == "table" and moving and self.fighters[state.hold.by]
 		if holder and holder.position then
@@ -1901,7 +1911,7 @@ function BattleView:update(snapshot, dt, viewportRect)
 		local flash = self.clock - fighter.hitTime < 0.14
 		fighter.body.Color = flash and COLORS.cream or (armor <= 0 and fighter.color:Lerp(COLORS.steel, 0.65) or fighter.color)
 		local protected = state.invulnerable == true or numeric(state.invulnerable, 0) > 0
-		fighter.body.Transparency = protected and 0.16 or 0
+		fighter.body.Transparency = fighter.body:GetAttribute("CosmeticShell") == true and 1 or (protected and 0.16 or 0)
 		local windup = moving and state.phase == "Windup"
 		local armed = moving and state.armed == true
 		local boosted = moving and numeric(state.boostLeft, 0) > self.sampleAge

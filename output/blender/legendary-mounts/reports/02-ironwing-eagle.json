@@ -1,0 +1,55 @@
+{
+  "asset": "IRONWING EAGLE",
+  "blend": "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/models/02-ironwing-eagle.blend",
+  "mesh_objects": 402,
+  "triangles": 124100,
+  "animated_objects": [
+    "Ironwing.Wing.L",
+    "Ironwing.Wing.R"
+  ],
+  "shape_animated_objects": [],
+  "pose_bounds": {
+    "1": {
+      "min": [
+        -4.833012580871582,
+        -2.3797922134399414,
+        -1.121000051498413
+      ],
+      "max": [
+        4.833012580871582,
+        2.9000000953674316,
+        3.046494245529175
+      ]
+    },
+    "13": {
+      "min": [
+        -5.357427597045898,
+        -2.3797922134399414,
+        -1.121000051498413
+      ],
+      "max": [
+        5.357427597045898,
+        2.9000000953674316,
+        2.632166862487793
+      ]
+    },
+    "25": {
+      "min": [
+        -4.833012580871582,
+        -2.3797922134399414,
+        -1.121000051498413
+      ],
+      "max": [
+        4.833012580871582,
+        2.9000000953674316,
+        3.046494245529175
+      ]
+    }
+  },
+  "renders": [
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/02-ironwing-eagle-hero.png",
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/02-ironwing-eagle-side.png",
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/02-ironwing-eagle-wings-up.png",
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/02-ironwing-eagle-wings-down.png"
+  ]
+}

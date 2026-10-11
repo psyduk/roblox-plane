@@ -127,14 +127,39 @@ local function bendForPart(name)
 	return 0
 end
 
-local function seatRig(rig, planeScale)
+local function restoreMountJointRest(rig)
+	local restored = 0
+	for _, joint in ipairs(rig:GetDescendants()) do
+		if joint:IsA("Motor6D") then
+			-- The clone may have been captured mid-run or mid-emote. Clear the
+			-- animator transform before ScaleTo caches/scales its joint offsets.
+			joint.Transform = CFrame.identity
+			local first, second = joint.Part0, joint.Part1
+			if first and second and first:IsDescendantOf(rig) and second:IsDescendantOf(rig) then
+				local attachmentName = joint.Name .. "RigAttachment"
+				local parentAt, childAt = first:FindFirstChild(attachmentName), second:FindFirstChild(attachmentName)
+				if parentAt and childAt and parentAt:IsA("Attachment") and childAt:IsA("Attachment") then
+					-- The avatar's own rig attachments retain body proportions and
+					-- authored rest orientation even when animation has edited C0/C1.
+					joint.C0, joint.C1 = parentAt.CFrame, childAt.CFrame
+					restored = restored + 1
+				end
+			end
+		end
+	end
+	rig:SetAttribute("MountRestJointCount", restored)
+end
+
+local function seatRig(rig, planeScale, pilotScale, isMount)
 	local root = rig:FindFirstChild("HumanoidRootPart")
 	assert(root and root:IsA("BasePart"), "Avatar has no HumanoidRootPart")
 	rig.PrimaryPart = root
-	rig:ScaleTo(rig:GetScale() * planeScale * 0.9)
+	if isMount then restoreMountJointRest(rig) end
+	rig:ScaleTo(rig:GetScale() * planeScale * pilotScale)
 	root.Transparency = 1
 	local originalRoot = root.CFrame
 	local originalOffsets, joints, parts = {}, {}, {}
+	local constraintCount = 0
 	for _, object in ipairs(rig:GetDescendants()) do
 		if object:IsA("BasePart") then
 			originalOffsets[object] = originalRoot:ToObjectSpace(object.CFrame)
@@ -143,6 +168,19 @@ local function seatRig(rig, planeScale)
 			and object.Part0:IsDescendantOf(rig) and object.Part1:IsDescendantOf(rig) then
 			table.insert(joints, object)
 			if object:IsA("Motor6D") then object.Transform = CFrame.identity end
+		elseif isMount and (object:IsA("AnimationConstraint") or object:IsA("RigidConstraint")) then
+			-- New R15 avatars use attachment-based animation constraints instead
+			-- of Motor6Ds; accessories can point from Handle back toward Head.
+			-- Build the same bidirectional joint graph from their scaled bind
+			-- attachments, without borrowing the clone's current animated pose.
+			local firstAt, secondAt = object.Attachment0, object.Attachment1
+			local first, second = firstAt and firstAt.Parent, secondAt and secondAt.Parent
+			if first and second and first:IsA("BasePart") and second:IsA("BasePart")
+				and first:IsDescendantOf(rig) and second:IsDescendantOf(rig) then
+				table.insert(joints, { Part0 = first, Part1 = second, C0 = firstAt.CFrame,
+					C1 = secondAt.CFrame, constraint = object })
+				constraintCount = constraintCount + 1
+			end
 		end
 	end
 	-- Bake the pose through the joint graph, independently of Motor6D update timing.
@@ -176,11 +214,22 @@ local function seatRig(rig, planeScale)
 		part.CFrame = posed[part] or originalOffsets[part]
 	end
 	-- Store the baked relation so no remaining joint can restore the standing pose.
+	-- Virtual joints remain disabled constraints; their body/accessory parts are
+	-- anchored at the same baked attachment positions as a Motor6D avatar.
 	for _, joint in ipairs(joints) do
-		joint.C0 = joint.Part0.CFrame:ToObjectSpace(joint.Part1.CFrame) * joint.C1
+		if type(joint) == "table" then
+			joint.constraint.Enabled = false
+		else
+			joint.C0 = joint.Part0.CFrame:ToObjectSpace(joint.Part1.CFrame) * joint.C1
+		end
 	end
 	rig:SetAttribute("Pose", "Seated")
+	rig:SetAttribute("SeatPose", isMount and "Mount" or "Cockpit")
 	rig:SetAttribute("PosePartCount", #parts)
+	rig:SetAttribute("PoseConstraintCount", constraintCount)
+	local posedCount = 0
+	for _ in pairs(posed) do posedCount = posedCount + 1 end
+	rig:SetAttribute("PoseConnectedPartCount", posedCount)
 	return root
 end
 
@@ -250,7 +299,7 @@ function PilotAvatar.attach(model, userId, isGhost)
 			end
 			if not alive() then return end
 			stripAndFreeze(rig, state.connections, alive)
-			seatRig(rig, model:GetScale())
+			seatRig(rig, model:GetScale(), World.getPilotScale(model), model:GetAttribute("MountVisualLoaded") == true)
 			if not alive() then return end
 			rig.Name = "PilotAvatar"
 			rig:SetAttribute("UserId", userId)

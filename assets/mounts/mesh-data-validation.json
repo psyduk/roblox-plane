@@ -1,0 +1,30 @@
+[
+  {
+    "id": "01-stormcrown-eagle",
+    "parts": 6,
+    "triangles": 14596,
+    "degenerate_triangles": 0,
+    "json_bytes": 849913
+  },
+  {
+    "id": "02-ironwing-eagle",
+    "parts": 6,
+    "triangles": 14595,
+    "degenerate_triangles": 0,
+    "json_bytes": 860049
+  },
+  {
+    "id": "03-eclipse-phoenix",
+    "parts": 6,
+    "triangles": 14595,
+    "degenerate_triangles": 0,
+    "json_bytes": 862004
+  },
+  {
+    "id": "04-rift-manta",
+    "parts": 6,
+    "triangles": 14592,
+    "degenerate_triangles": 0,
+    "json_bytes": 794543
+  }
+]

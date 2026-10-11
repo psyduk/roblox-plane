@@ -2,13 +2,13 @@
 
 This is a free playtest candidate with the revised loadout draft and expanded power roster. Monetization, daily rewards and season passes remain outside scope. Passing local tests does not close the published/phone or unfamiliar-player gates.
 
-**Current published build:** Skybound Test, place **86507299893768**, universe **10770074500**, published **version 17** at **2026-10-11 06:06:05 UTC** (October 10, 23:06:05 PDT), from source commit **`76bc8a51d2297f47781587a0aa18e262e95b2cde`**, based on feature commit `21e369a`. Native Studio confirmed publication. [Version 17 publication proof](validation/qa-2026-10-10/published-version-17.jpg).
+**Current published build:** [Skybound Test](https://www.roblox.com/games/86507299893768/Skybound-Test), place **86507299893768**, universe **10770074500**, published **version 21** at **2026-10-11 07:35:07.714 UTC** (October 11, 00:35:07.714 PDT). Native Studio confirmed publication and offered version notes for v21. Publication preceded the source commit; the recorded candidate hash and source parity identify the published content. [Publication record](validation/legendary-cosmetics-publication-2026-10-11.json).
 
-Version 17 contains **eight attacks and twenty wild cards**, the 28-power discovery wall and NEW! badges, plus the final Meteor-drone and stolen-Rewind fixes. Local SHA-256: **`37827f68092a386794ab1fb44234f2006f93702a3889ccb847f723032c357c4e`**. All **35 cloud sources** matched UTF-8 checksums and byte lengths, with **zero extra scripts or diagnostic flags**, the four required remotes and Sensor orientation. This verifies source synchronization, not byte identity between the local XML and the published native file.
+Version 21 adds **Stormcrown Eagle, Ironwing Eagle, Eclipse Phoenix, and Rift Manta** as free cosmetic planes with animated wings and seated avatar riders, while retaining version 17's eight attacks, twenty wild cards, powers wall, and battle logic. Local candidate SHA-256: **`8e9933e64dd60b6d193a4bc5416b07ad95570bb1bddbae1a1f82eac1f6fe2f5f`**. Before publication, all **37 target-place sources** matched the intended candidate, and all **80 template descendant signatures** matched its properties, attributes, CFrames, and asset IDs across four models and 24 MeshParts. Native checks in that target passed **20 PlaneCatalog, 5 MountVisuals, and 14 BattleView cases**; template preloading reported no failures. This verifies source/template synchronization and publication, not byte identity between local XML and the published native file. [Cosmetic implementation and validation](LEGENDARY-FLIGHT-COSMETICS.md).
 
-The last recorded dashboard access observation was **Limited**, with **Playtesters enabled** and **Friends disabled**. Publication does not establish independent-account gameplay, physical-phone quality or live saving; those checks below remain unverified.
+The last recorded dashboard access observation was **Limited**, with **Playtesters enabled** and **Friends disabled**. Publication does not establish a fresh live-server gameplay session, independent-account access, physical-phone quality or live saving; those checks below remain unverified.
 
-**Previous recorded publication:** version **15**, published **2026-10-11T05:01:10Z** (October 10, 22:01:10 PDT), from source commit **`752ed54ca67ff6d223aee88e3fee5f93874ef72e`**. Its checks are retained below; no intermediate version history is inferred.
+**Previous recorded publication:** version **17**, published **2026-10-11T06:06:05Z** (October 10, 23:06:05 PDT), from source commit **`76bc8a51d2297f47781587a0aa18e262e95b2cde`**, based on feature commit `21e369a`. Native Studio confirmed publication. Local SHA-256: **`37827f68092a386794ab1fb44234f2006f93702a3889ccb847f723032c357c4e`**. Its 35 cloud sources matched UTF-8 checksums and byte lengths, with zero extra scripts or diagnostic flags, four required remotes and Sensor orientation. [Version 17 publication proof](validation/qa-2026-10-10/published-version-17.jpg). Earlier version 15 and subsequent historical checks are retained below; no intermediate version history is inferred.
 
 ## Build and launch
 
@@ -99,7 +99,7 @@ The opt-in scripts in `scripts/qa/SkyBattleNetwork.server.luau` and `.client.lua
 
 ## Published destination and future updates
 
-The existing limited test destination is **Skybound Test**, start place `86507299893768`, universe `10770074500`; version **17** contains the verified 35-script source from commit `76bc8a51d2297f47781587a0aa18e262e95b2cde`. For future updates, verify the owner/destination, synchronize and compare the intended candidate, publish to this existing place, then record the new version and UTC time. Do not substitute an old open tab or create a public release. [Roblox publishing/access instructions](https://create.roblox.com/docs/production/publishing/publish-games-and-places). Keep the experience Limited/Playtesters and verify both test accounts have Playtest access; prior access records alone are not proof of today's permissions. No purchases or paid products are required.
+The existing limited test destination is **Skybound Test**, start place `86507299893768`, universe `10770074500`; version **21** contains the verified 37-script candidate and four cosmetic templates described above. For future updates, verify the owner/destination, synchronize and compare the intended candidate, publish to this existing place, then record the new version and UTC time. Do not substitute an old open tab or create a public release. [Roblox publishing/access instructions](https://create.roblox.com/docs/production/publishing/publish-games-and-places). Keep the experience Limited/Playtesters and verify both test accounts have Playtest access; prior access records alone are not proof of today's permissions. No purchases or paid products are required.
 
 Restart existing game servers so both devices load that version. Record each account role, device model, OS, client version and network. Use one real phone and one independently connected desktop or second phone. A Studio client and the device emulator do not meet this gate.
 
@@ -136,11 +136,11 @@ Predeclared discovery targets: at least 80% reach a first fight within 20 second
 
 ## Result record (fill during the published test)
 
-- Candidate build SHA-256: `37827f68092a386794ab1fb44234f2006f93702a3889ccb847f723032c357c4e` (verify against manifest after any rebuild)
+- Candidate build SHA-256: `8e9933e64dd60b6d193a4bc5416b07ad95570bb1bddbae1a1f82eac1f6fe2f5f` (verify against manifest after any rebuild)
 - Local candidate path: `/Users/andrew/Documents/ChatGPT/color-switch/build/Sky-Battle-Playtest.rbxlx`
 - Published place / universe: `86507299893768` / `10770074500` (Skybound Test)
-- Published place version / UTC: **17** / **2026-10-11T06:06:05Z**; native Studio success confirmation observed ([publication proof](validation/qa-2026-10-10/published-version-17.jpg))
-- Published source commit: `76bc8a51d2297f47781587a0aa18e262e95b2cde` (35 scripts matched UTF-8 checksums and byte lengths; zero extra scripts; the local XML hash is not a published native-file hash)
+- Published place version / UTC: **21** / **2026-10-11T07:35:07.714Z**; native Studio success confirmation observed ([publication record](validation/legendary-cosmetics-publication-2026-10-11.json))
+- Published source: the working tree at publication time, before the source commit (37 sources and 80 template descendant signatures matched the candidate; the local XML hash is not a published native-file hash)
 - Access: last dashboard observation was Limited, Playtesters enabled and Friends disabled; individual test-account access still to verify
 - Accounts / roles / fresh or progressed:
 - Phone and other device / OS / orientation / network:

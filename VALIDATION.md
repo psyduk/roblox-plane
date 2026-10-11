@@ -1,3 +1,13 @@
+# Version 21 publication — legendary flying cosmetics, October 11, 2026
+
+**Published to Skybound Test**, place `86507299893768` / universe `10770074500`, as **v21** at **2026-10-11T07:35:07.714Z** (October 11, 00:35:07.714 PDT). Native Studio confirmed successful publication and Playtester availability. [Publication evidence](docs/validation/legendary-cosmetics-publication-2026-10-11.json).
+
+This adds Stormcrown Eagle, Ironwing Eagle, Eclipse Phoenix, and Rift Manta as free cosmetic planes with animated wings and seated avatar riders. All four inherit Cruiser's flight profile and retain the shared battle contracts. The version 17 simulation, power roster and server logic are unchanged. Publication preceded the source commit; the recorded candidate hash and source parity identify the published content. Local package SHA-256: **`8e9933e64dd60b6d193a4bc5416b07ad95570bb1bddbae1a1f82eac1f6fe2f5f`**.
+
+Before publication, all **37 target-place sources** matched the candidate, and all **80 template descendant signatures** matched transforms, sizes, attributes, mesh IDs and surface map IDs across four models and 24 MeshParts. The target Studio place passed **20 PlaneCatalog, 5 MountVisuals and 14 BattleView checks**; asset preloading reported no failures. The prior 35 sources matched the previous publication ledger before synchronization. This establishes source/template synchronization and publication; local XML byte identity with Roblox's native file is not claimed. [Implementation, local gameplay and asset validation](docs/LEGENDARY-FLIGHT-COSMETICS.md).
+
+**Still unverified:** a fresh hosted gameplay session, published asset loading for independent accounts, physical-phone performance, and live profile saving/rejoining. Access settings were unchanged and existing servers were not restarted. Historical checks below retain their original scope.
+
 # Version 17 publication — final power batch and collection wall, October 10, 2026
 
 **Published to Skybound Test**, place `86507299893768` / universe `10770074500`, source **`76bc8a51d2297f47781587a0aa18e262e95b2cde`** (feature base `21e369a`). Studio confirmed publication, Playtester availability and **v17** at **2026-10-11T06:06:05Z** (October 10, 23:06:05 PDT). [Publication proof](docs/validation/qa-2026-10-10/published-version-17.jpg).

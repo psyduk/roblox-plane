@@ -4,3 +4,9 @@ __pycache__/
 *.rbxl.lock
 .DS_Store
 build/
+
+# Local Blender backups and intermediate authoring diagnostics
+*.blend[0-9]*
+/assets/mounts/*.log
+/output/blender/legendary-mounts/*.log
+/output/blender/legendary-mounts/diagnostics/

@@ -650,6 +650,8 @@ function Hud.new(callbacks)
 	create("UITextSizeConstraint", { MinTextSize = 12, MaxTextSize = 22 }, self.planeName)
 	self.planeDetail = label(self.planeRow, "Detail", "", 52, 28, 200, 16, 11, COLORS.soft, true)
 	self.planeDetail.TextXAlignment = Enum.TextXAlignment.Center
+	self.planeDetail.TextScaled = true
+	create("UITextSizeConstraint", { MinTextSize = 9, MaxTextSize = 11 }, self.planeDetail)
 	self:_connect(self.planePrevious.Activated, function() if self.phase == "Lobby" then self:_call("cyclePlane", -1) end end)
 	self:_connect(self.planeNext.Activated, function() if self.phase == "Lobby" then self:_call("cyclePlane", 1) end end)
 	self:_connect(self.paintButton.Activated, function() if self.phase == "Lobby" then self:_call("cyclePaint") end end)
@@ -758,12 +760,17 @@ function Hud.new(callbacks)
 	self.planeButtons, self.planeStrokes = {}, {}
 	for index, id in ipairs(PlaneCatalog.ORDER) do
 		local control = button(self.customizePanel, "Plane_" .. id, PlaneCatalog.get(id).name, 12 + (index - 1) * 145, 12, 132, 44, COLORS.blue)
+		control.TextScaled = true
+		control.TextWrapped = true
+		create("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = 20 }, control)
 		self.planeButtons[id] = control
 		self.planeStrokes[id] = stroke(control, COLORS.ink, 2)
 		table.insert(self.configControls, control)
 		self:_connect(control.Activated, function() self:setLocalSettings({ planeId = id }) end)
 	end
 	self.planeSpeed = label(self.customizePanel, "PlaneSpeed", "", 12, 66, 420, 20, 13, COLORS.ink, true)
+	self.planeSpeed.TextScaled = true
+	create("UITextSizeConstraint", { MinTextSize = 10, MaxTextSize = 16 }, self.planeSpeed)
 	self.planeStrategy = label(self.customizePanel, "PlaneStrategy", "", 12, 90, 420, 20, 12, COLORS.muted)
 	self.planeStrategy.TextTruncate = Enum.TextTruncate.AtEnd
 	self.aimPad = create("TextButton", {
@@ -1261,9 +1268,15 @@ function Hud:_layoutPowerChoices(viewport, height)
 	local cardTop = headingHeight + (short and 2 or 7)
 	local cardsBottom = cardTop + (portrait and (cardHeight * 3 + gap * 2) or cardHeight)
 	local drawerTop = cardsBottom + (short and 12 or 18)
-	local drawerHeight = short and 132 or 190
+	local drawerWidth = width - 56
+	local planeAreaWidth = short and (drawerWidth / 2 - 16) or drawerWidth
+	local planeColumns = math.clamp(math.floor((planeAreaWidth + 8) / 120), 1, 4)
+	local planeRows = math.ceil(#PlaneCatalog.ORDER / planeColumns)
+	local planeChoicesHeight = planeRows * 44 + (planeRows - 1) * 8
+	local planeStatsTop = 10 + planeChoicesHeight + 7
+	local drawerHeight = short and math.max(132, planeStatsTop + 62) or (planeStatsTop + 123)
 	local contentHeight = self.compactPowerActions and (self.customizeOpen and drawerTop + drawerHeight + 12 or cardsBottom + 12)
-		or (drawerTop + 48 + (self.customizeOpen and 194 or 0) + 12)
+		or (drawerTop + 52 + (self.customizeOpen and drawerHeight or 0) + 12)
 	local bodyHeight = math.min(contentHeight, availableBody)
 	self.configPanel.AnchorPoint = Vector2.new(0.5, 0)
 	self.configPanel.Position = UDim2.new(0.5, 0, 0, top)
@@ -1333,21 +1346,20 @@ function Hud:_layoutPowerChoices(viewport, height)
 	self.customizeButton.TextSize = self.compactPowerActions and 14 or 19
 	self.customizePanel.Visible = self.customizeOpen
 	place(self.customizePanel, 16, drawerTop + (self.compactPowerActions and 0 or 52), width - 32, drawerHeight)
-	local drawerWidth = width - 56
-	local planeAreaWidth = short and (drawerWidth / 2 - 16) or drawerWidth
-	local planeWidth = (planeAreaWidth - 16) / 3
+	local planeWidth = (planeAreaWidth - (planeColumns - 1) * 8) / planeColumns
 	for index, id in ipairs(PlaneCatalog.ORDER) do
-		place(self.planeButtons[id], 12 + (index - 1) * (planeWidth + 8), 10, planeWidth, 44)
+		local column, row = (index - 1) % planeColumns, math.floor((index - 1) / planeColumns)
+		place(self.planeButtons[id], 12 + column * (planeWidth + 8), 10 + row * 52, planeWidth, 44)
 		self.planeButtons[id].TextSize = self.compactPowerActions and 14 or 20
 	end
-	place(self.planeSpeed, 12, 61, planeAreaWidth, 20)
+	place(self.planeSpeed, 12, planeStatsTop, planeAreaWidth, 20)
 	self.planeSpeed.TextSize = self.compactPowerActions and 13 or 16
-	place(self.planeStrategy, 12, 85, planeAreaWidth, 20)
+	place(self.planeStrategy, 12, planeStatsTop + 24, planeAreaWidth, 20)
 	self.planeStrategy.TextSize = self.compactPowerActions and 12 or 15
 	local paintLeft = short and (drawerWidth / 2 + 22) or 12
-	place(self.paintName, paintLeft, short and 12 or 111, short and drawerWidth / 2 - 20 or drawerWidth, 18)
+	place(self.paintName, paintLeft, short and 12 or (planeStatsTop + 50), short and drawerWidth / 2 - 20 or drawerWidth, 18)
 	self.paintName.TextSize = 13
-	for index, control in ipairs(self.colorButtons) do place(control, paintLeft + (index - 1) * 56, short and 43 or 132, 46, 44) end
+	for index, control in ipairs(self.colorButtons) do place(control, paintLeft + (index - 1) * 56, short and 43 or (planeStatsTop + 71), 46, 44) end
 	self.configActions.Position = UDim2.new(0.5, 0, 0, top + bodyHeight + 8)
 	self.configActions.Size = UDim2.fromOffset(width, actionHeight)
 	if portrait then
@@ -1775,7 +1787,9 @@ function Hud:update(snapshot, localUserId, watchedUserId)
 	if phase == "Lobby" then
 		local plane = PlaneCatalog.get(self.settings.planeId) or PlaneCatalog.get(PlaneCatalog.DEFAULT_ID)
 		self.planeName.Text = string.upper(plane.name)
-		self.planeDetail.Text = "HANGAR LOOK · PLANE + PAINT"
+		local planeIndex = table.find(PlaneCatalog.ORDER, plane.id) or 1
+		self.planeDetail.Text = (plane.rarity and string.upper(plane.rarity) or "HANGAR LOOK")
+			.. " · " .. tostring(planeIndex) .. " / " .. tostring(#PlaneCatalog.ORDER)
 		self.paintButton.BackgroundColor3 = PAINTS[self.settings.color] or PAINTS[1]
 		self.hubAction.Text = "PLAY"
 		self.hubAction.BackgroundColor3 = COLORS.green

@@ -1,0 +1,58 @@
+{
+  "asset": "ECLIPSE PHOENIX",
+  "blend": "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/models/03-eclipse-phoenix.blend",
+  "mesh_objects": 294,
+  "triangles": 145418,
+  "animated_objects": [
+    "Phoenix \u2022 L shoulder flap",
+    "Phoenix \u2022 R shoulder flap",
+    "Phoenix \u2022 tail streamer 1",
+    "Phoenix \u2022 tail streamer 2",
+    "Phoenix \u2022 tail streamer 3"
+  ],
+  "shape_animated_objects": [],
+  "pose_bounds": {
+    "1": {
+      "min": [
+        -4.055537223815918,
+        -2.650513172149658,
+        -0.8574999570846558
+      ],
+      "max": [
+        4.055537223815918,
+        5.386597156524658,
+        3.4422316551208496
+      ]
+    },
+    "13": {
+      "min": [
+        -4.807036876678467,
+        -2.650513172149658,
+        -1.3524577617645264
+      ],
+      "max": [
+        4.807036876678467,
+        5.374565601348877,
+        2.8600001335144043
+      ]
+    },
+    "25": {
+      "min": [
+        -4.055537223815918,
+        -2.650513172149658,
+        -0.8574999570846558
+      ],
+      "max": [
+        4.055537223815918,
+        5.386597156524658,
+        3.4422316551208496
+      ]
+    }
+  },
+  "renders": [
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/03-eclipse-phoenix-hero.png",
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/03-eclipse-phoenix-side.png",
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/03-eclipse-phoenix-wings-up.png",
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/03-eclipse-phoenix-wings-down.png"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "experience": "Skybound Test",
+  "placeId": 86507299893768,
+  "universeId": 10770074500,
+  "publishedVersion": 21,
+  "publishedAtUtc": "2026-10-11T07:35:07.714Z",
+  "candidate": "build/Sky-Battle-Mounts-Final.rbxlx",
+  "candidateSha256": "8e9933e64dd60b6d193a4bc5416b07ad95570bb1bddbae1a1f82eac1f6fe2f5f",
+  "sourceCount": 37,
+  "sourceParity": "All 37 publishing-place sources matched candidate byte lengths and Adler-32 checksums; each changed source was also checked with exact string equality after assignment.",
+  "baseline": "The 35 prior publishing-place sources matched the previous publication source ledger before synchronization.",
+  "templates": ["stormcrown", "ironwing", "phoenix", "riftmanta"],
+  "meshParts": 24,
+  "templateParity": "All 80 descendant signatures matched the verified candidate, including transforms, sizes, attributes, mesh IDs and surface map IDs.",
+  "nativePrepublishChecks": {"PlaneCatalog": 20, "MountVisuals": 5, "BattleView": 14},
+  "assetPreloadFailures": [],
+  "confirmation": [
+    "00:35:05.162 Sent message to server to publish.",
+    "00:35:07.714 Published new changes in Skybound Test to Roblox.",
+    "00:35:07.751 Place published. Playtesters can now play this place in Roblox.",
+    "00:35:07.751 Add publish notes to v21"
+  ],
+  "confirmationSource": "Roblox Studio Output accessibility text, observed after the publish action",
+  "accessSettingsChanged": false,
+  "existingServersRestarted": false,
+  "newHostedGameplaySessionVerified": false,
+  "realPhoneVerified": false
+}

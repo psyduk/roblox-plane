@@ -1,0 +1,1950 @@
+<?xml version='1.0' encoding='utf-8'?>
+<roblox version="4">
+  <External>null</External>
+  <External>nil</External>
+  <Item class="Folder" referent="MountAsset_1">
+    <Properties>
+      <string name="Name">MountTemplates</string>
+    </Properties>
+    <Item class="Model" referent="MountAsset_2">
+      <Properties>
+        <string name="Name">stormcrown</string>
+        <Ref name="PrimaryPart">MountAsset_3</Ref>
+        <BinaryString name="AttributesSerialize">CAAAAAgAAABDb2NrcGl0WAYIRGhvrzm/PwgAAABDb2NrcGl0WQYKVidq9YQBQAoAAABDb2NrcGl0WWF3BhgtRFT7Ifm/CAAAAENvY2twaXRaBgAAAAAAAACADQAAAEZsYXBBbXBsaXR1ZGUGmpmZmZmZ2T8NAAAARmxhcEZyZXF1ZW5jeQYAAAAAAAD0PxEAAABJZGxlRmxhcEFtcGxpdHVkZQa4HoXrUbi+PwoAAABQaWxvdFNjYWxlBjMzMzMzM+M/</BinaryString>
+      </Properties>
+      <Item class="Part" referent="MountAsset_3">
+        <Properties>
+          <string name="Name">Pivot</string>
+          <bool name="Anchored">true</bool>
+          <bool name="CanCollide">false</bool>
+          <bool name="CanTouch">false</bool>
+          <bool name="CanQuery">false</bool>
+          <bool name="Massless">true</bool>
+          <bool name="CastShadow">false</bool>
+          <float name="Transparency">1</float>
+          <Vector3 name="size">
+            <X>0.1</X>
+            <Y>0.1</Y>
+            <Z>0.1</Z>
+          </Vector3>
+          <CoordinateFrame name="CFrame">
+            <X>0.0</X>
+            <Y>0.0</Y>
+            <Z>0.0</Z>
+            <R00>1.0</R00>
+            <R01>0.0</R01>
+            <R02>0.0</R02>
+            <R10>0.0</R10>
+            <R11>1.0</R11>
+            <R12>0.0</R12>
+            <R20>0.0</R20>
+            <R21>0.0</R21>
+            <R22>1.0</R22>
+          </CoordinateFrame>
+        </Properties>
+      </Item>
+      <Item class="Model" referent="MountAsset_4">
+        <Properties>
+          <string name="Name">Body</string>
+          <Ref name="PrimaryPart">MountAsset_5</Ref>
+        </Properties>
+        <Item class="Part" referent="MountAsset_5">
+          <Properties>
+            <string name="Name">Pivot</string>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">1</float>
+            <Vector3 name="size">
+              <X>0.1</X>
+              <Y>0.1</Y>
+              <Z>0.1</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>0.0</X>
+              <Y>0.0</Y>
+              <Z>0.0</Z>
+              <R00>1.0</R00>
+              <R01>0.0</R01>
+              <R02>0.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>0.0</R20>
+              <R21>0.0</R21>
+              <R22>1.0</R22>
+            </CoordinateFrame>
+          </Properties>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_18">
+          <Properties>
+            <string name="Name">BodyGlow</string>
+            <Content name="MeshId">
+              <url>rbxassetid://112779217643436</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">288</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>1.5795055200011776</X>
+              <Y>2.3586713028824033</Y>
+              <Z>0.7684224052741043</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>1.035962462425232</X>
+              <Y>1.5469999313354492</Y>
+              <Z>0.5039911270141602</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>2.5477242469787598</X>
+              <Y>0.7676735719045003</Y>
+              <Z>-1.612684741303383e-07</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_19">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://100531714493900</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://123398694293567</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://95949612891599</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_20">
+          <Properties>
+            <string name="Name">BodyMesh</string>
+            <Content name="MeshId">
+              <url>rbxassetid://99013713530054</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">256</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>3.124573488327034</X>
+              <Y>4.068978340395438</Y>
+              <Z>8.05461312371851</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>2.0493381023406982</X>
+              <Y>2.6687521934509277</Y>
+              <Z>5.282841205596924</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-0.3972346782684326</X>
+              <Y>0.19129761060078937</Y>
+              <Z>1.4704819477628917e-05</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_21">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://100198281528219</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://123398694293567</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://95949612891599</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+      </Item>
+      <Item class="Model" referent="MountAsset_6">
+        <Properties>
+          <string name="Name">WingLeft</string>
+          <Ref name="PrimaryPart">MountAsset_7</Ref>
+        </Properties>
+        <Item class="Part" referent="MountAsset_7">
+          <Properties>
+            <string name="Name">Pivot</string>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">1</float>
+            <Vector3 name="size">
+              <X>0.1</X>
+              <Y>0.1</Y>
+              <Z>0.1</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-0.0</X>
+              <Y>0.5031425956228583</Y>
+              <Z>-0.9605449098411623</Z>
+              <R00>1.0</R00>
+              <R01>0.0</R01>
+              <R02>0.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>0.0</R20>
+              <R21>0.0</R21>
+              <R22>1.0</R22>
+            </CoordinateFrame>
+          </Properties>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_10">
+          <Properties>
+            <string name="Name">WingLeftGlow</string>
+            <Content name="MeshId">
+              <url>rbxassetid://135938863235208</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">288</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>3.2045938303869876</X>
+              <Y>2.303491829460399</Y>
+              <Z>3.9873781807415285</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>2.1018216609954834</X>
+              <Y>1.5108089447021484</Y>
+              <Z>2.615232467651367</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-1.7671313285827637</X>
+              <Y>1.312514305114746</Y>
+              <Z>-6.397702534993489</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_11">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://100531714493900</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://123398694293567</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://95949612891599</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_12">
+          <Properties>
+            <string name="Name">WingLeftMesh</string>
+            <Content name="MeshId">
+              <url>rbxassetid://119013098998593</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">256</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>7.192482743691679</X>
+              <Y>2.826758242287529</Y>
+              <Z>4.9753021728308084</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>4.717389106750488</X>
+              <Y>1.8540077209472656</Y>
+              <Z>3.2631897926330566</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-1.2641668319702148</X>
+              <Y>1.0183041890462239</Y>
+              <Z>-4.401045799255371</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_13">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://100198281528219</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://123398694293567</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://95949612891599</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+      </Item>
+      <Item class="Model" referent="MountAsset_8">
+        <Properties>
+          <string name="Name">WingRight</string>
+          <Ref name="PrimaryPart">MountAsset_9</Ref>
+        </Properties>
+        <Item class="Part" referent="MountAsset_9">
+          <Properties>
+            <string name="Name">Pivot</string>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">1</float>
+            <Vector3 name="size">
+              <X>0.1</X>
+              <Y>0.1</Y>
+              <Z>0.1</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-0.0</X>
+              <Y>0.5031425956228583</Y>
+              <Z>0.9605449098411623</Z>
+              <R00>1.0</R00>
+              <R01>0.0</R01>
+              <R02>0.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>0.0</R20>
+              <R21>0.0</R21>
+              <R22>1.0</R22>
+            </CoordinateFrame>
+          </Properties>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_14">
+          <Properties>
+            <string name="Name">WingRightGlow</string>
+            <Content name="MeshId">
+              <url>rbxassetid://86194972566571</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">288</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>3.2045938303869876</X>
+              <Y>2.303491829460399</Y>
+              <Z>3.98737854425225</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>2.1018216609954834</X>
+              <Y>1.5108089447021484</Y>
+              <Z>2.6152327060699463</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-1.7671311696370442</X>
+              <Y>1.312514305114746</Y>
+              <Z>6.397702534993489</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_15">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://100531714493900</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://123398694293567</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://95949612891599</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_16">
+          <Properties>
+            <string name="Name">WingRightMesh</string>
+            <Content name="MeshId">
+              <url>rbxassetid://113456911112276</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">256</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>7.191982552939429</X>
+              <Y>2.826755697712481</Y>
+              <Z>4.9760510049163</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>4.7170610427856445</X>
+              <Y>1.854006052017212</Y>
+              <Z>3.263680934906006</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-1.2645267645517984</X>
+              <Y>1.0183051427205403</Y>
+              <Z>4.400040626525879</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_17">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://100198281528219</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://123398694293567</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://95949612891599</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+      </Item>
+    </Item>
+    <Item class="Model" referent="MountAsset_22">
+      <Properties>
+        <string name="Name">ironwing</string>
+        <Ref name="PrimaryPart">MountAsset_23</Ref>
+        <BinaryString name="AttributesSerialize">CAAAAAgAAABDb2NrcGl0WAaSc2n0BT2/PwgAAABDb2NrcGl0WQbMzaCMRoYBQAoAAABDb2NrcGl0WWF3BhgtRFT7Ifm/CAAAAENvY2twaXRaBgAAAAAAAACADQAAAEZsYXBBbXBsaXR1ZGUGmpmZmZmZ2T8NAAAARmxhcEZyZXF1ZW5jeQYAAAAAAAD0PxEAAABJZGxlRmxhcEFtcGxpdHVkZQa4HoXrUbi+PwoAAABQaWxvdFNjYWxlBjMzMzMzM+M/</BinaryString>
+      </Properties>
+      <Item class="Part" referent="MountAsset_23">
+        <Properties>
+          <string name="Name">Pivot</string>
+          <bool name="Anchored">true</bool>
+          <bool name="CanCollide">false</bool>
+          <bool name="CanTouch">false</bool>
+          <bool name="CanQuery">false</bool>
+          <bool name="Massless">true</bool>
+          <bool name="CastShadow">false</bool>
+          <float name="Transparency">1</float>
+          <Vector3 name="size">
+            <X>0.1</X>
+            <Y>0.1</Y>
+            <Z>0.1</Z>
+          </Vector3>
+          <CoordinateFrame name="CFrame">
+            <X>0.0</X>
+            <Y>0.0</Y>
+            <Z>0.0</Z>
+            <R00>1.0</R00>
+            <R01>0.0</R01>
+            <R02>0.0</R02>
+            <R10>0.0</R10>
+            <R11>1.0</R11>
+            <R12>0.0</R12>
+            <R20>0.0</R20>
+            <R21>0.0</R21>
+            <R22>1.0</R22>
+          </CoordinateFrame>
+        </Properties>
+      </Item>
+      <Item class="Model" referent="MountAsset_24">
+        <Properties>
+          <string name="Name">Body</string>
+          <Ref name="PrimaryPart">MountAsset_25</Ref>
+        </Properties>
+        <Item class="Part" referent="MountAsset_25">
+          <Properties>
+            <string name="Name">Pivot</string>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">1</float>
+            <Vector3 name="size">
+              <X>0.1</X>
+              <Y>0.1</Y>
+              <Z>0.1</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>0.0</X>
+              <Y>0.0</Y>
+              <Z>0.0</Z>
+              <R00>1.0</R00>
+              <R01>0.0</R01>
+              <R02>0.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>0.0</R20>
+              <R21>0.0</R21>
+              <R22>1.0</R22>
+            </CoordinateFrame>
+          </Properties>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_36">
+          <Properties>
+            <string name="Name">BodyGlow</string>
+            <Content name="MeshId">
+              <url>rbxassetid://99438297076675</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">288</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>1.5801650827800433</X>
+              <Y>2.359656226188628</Y>
+              <Z>0.7687432796303806</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>1.035962462425232</X>
+              <Y>1.5469999313354492</Y>
+              <Z>0.5039911270141602</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>2.54878822962443</X>
+              <Y>0.7679941654205322</Y>
+              <Z>-1.6133581463388205e-07</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_37">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://114472565534261</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://83564343537659</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://101753236464261</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_40">
+          <Properties>
+            <string name="Name">BodyMesh</string>
+            <Content name="MeshId">
+              <url>rbxassetid://71644962875777</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">256</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>3.239734420902448</X>
+              <Y>4.066202215086557</Y>
+              <Z>8.0570971967166</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>2.1239826679229736</X>
+              <Y>2.665818214416504</Y>
+              <Z>5.282264709472656</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-0.3979078928629557</X>
+              <Y>0.1891398827234904</Y>
+              <Z>0.00016799470176920295</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_41">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://118188265737570</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://83564343537659</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://101753236464261</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+      </Item>
+      <Item class="Model" referent="MountAsset_26">
+        <Properties>
+          <string name="Name">WingLeft</string>
+          <Ref name="PrimaryPart">MountAsset_27</Ref>
+        </Properties>
+        <Item class="Part" referent="MountAsset_27">
+          <Properties>
+            <string name="Name">Pivot</string>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">1</float>
+            <Vector3 name="size">
+              <X>0.1</X>
+              <Y>0.1</Y>
+              <Z>0.1</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-0.0</X>
+              <Y>0.5033526956347497</Y>
+              <Z>-0.9609460098448898</Z>
+              <R00>1.0</R00>
+              <R01>0.0</R01>
+              <R02>0.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>0.0</R20>
+              <R21>0.0</R21>
+              <R22>1.0</R22>
+            </CoordinateFrame>
+          </Properties>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_30">
+          <Properties>
+            <string name="Name">WingLeftMesh</string>
+            <Content name="MeshId">
+              <url>rbxassetid://125815386391610</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">256</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>7.202757216450746</X>
+              <Y>2.8607744429622164</Y>
+              <Z>4.992538645278946</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>4.722156047821045</X>
+              <Y>1.875535011291504</Y>
+              <Z>3.273128032684326</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-1.2586296399434407</X>
+              <Y>1.037690003712972</Y>
+              <Z>-4.398902257283528</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_31">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://118188265737570</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://83564343537659</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://101753236464261</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_38">
+          <Properties>
+            <string name="Name">WingLeftGlow</string>
+            <Content name="MeshId">
+              <url>rbxassetid://71692888427669</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">288</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>5.3687060587720445</X>
+              <Y>1.5857460295553978</Y>
+              <Z>3.0831278867416736</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>3.519744873046875</X>
+              <Y>1.039621353149414</Y>
+              <Z>2.021310806274414</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-1.0252126057942708</X>
+              <Y>1.2955280939737954</Y>
+              <Z>-3.8479073842366533</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_39">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://114472565534261</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://83564343537659</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://101753236464261</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+      </Item>
+      <Item class="Model" referent="MountAsset_28">
+        <Properties>
+          <string name="Name">WingRight</string>
+          <Ref name="PrimaryPart">MountAsset_29</Ref>
+        </Properties>
+        <Item class="Part" referent="MountAsset_29">
+          <Properties>
+            <string name="Name">Pivot</string>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">1</float>
+            <Vector3 name="size">
+              <X>0.1</X>
+              <Y>0.1</Y>
+              <Z>0.1</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-0.0</X>
+              <Y>0.5033526956347497</Y>
+              <Z>0.9609460098448898</Z>
+              <R00>1.0</R00>
+              <R01>0.0</R01>
+              <R02>0.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>0.0</R20>
+              <R21>0.0</R21>
+              <R22>1.0</R22>
+            </CoordinateFrame>
+          </Properties>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_32">
+          <Properties>
+            <string name="Name">WingRightGlow</string>
+            <Content name="MeshId">
+              <url>rbxassetid://139879622455519</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">288</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>5.369803228577617</X>
+              <Y>1.5857460295553978</Y>
+              <Z>3.0831278867416736</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>3.5204641819000244</X>
+              <Y>1.039621353149414</Y>
+              <Z>2.021310806274414</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-1.025212287902832</X>
+              <Y>1.2955281734466553</Y>
+              <Z>3.8473583857218423</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_33">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://114472565534261</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://83564343537659</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://101753236464261</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_34">
+          <Properties>
+            <string name="Name">WingRightMesh</string>
+            <Content name="MeshId">
+              <url>rbxassetid://128827254489467</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">256</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>7.202843768129144</X>
+              <Y>2.8607853528376443</Y>
+              <Z>4.987241537095985</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>4.722212791442871</X>
+              <Y>1.875542163848877</Y>
+              <Z>3.269655227661133</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-1.2612465222676594</X>
+              <Y>1.0376972357432046</Y>
+              <Z>4.398297309875488</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_35">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://118188265737570</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://83564343537659</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://101753236464261</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+      </Item>
+    </Item>
+    <Item class="Model" referent="MountAsset_42">
+      <Properties>
+        <string name="Name">phoenix</string>
+        <Ref name="PrimaryPart">MountAsset_43</Ref>
+        <BinaryString name="AttributesSerialize">CAAAAAgAAABDb2NrcGl0WAaGHQfK42nFPwgAAABDb2NrcGl0WQanpXeRYZUCQAoAAABDb2NrcGl0WWF3BhgtRFT7Ifm/CAAAAENvY2twaXRaBgAAAAAAAACADQAAAEZsYXBBbXBsaXR1ZGUGmpmZmZmZ2T8NAAAARmxhcEZyZXF1ZW5jeQYAAAAAAAD0PxEAAABJZGxlRmxhcEFtcGxpdHVkZQa4HoXrUbi+PwoAAABQaWxvdFNjYWxlBjMzMzMzM+M/</BinaryString>
+      </Properties>
+      <Item class="Part" referent="MountAsset_43">
+        <Properties>
+          <string name="Name">Pivot</string>
+          <bool name="Anchored">true</bool>
+          <bool name="CanCollide">false</bool>
+          <bool name="CanTouch">false</bool>
+          <bool name="CanQuery">false</bool>
+          <bool name="Massless">true</bool>
+          <bool name="CastShadow">false</bool>
+          <float name="Transparency">1</float>
+          <Vector3 name="size">
+            <X>0.1</X>
+            <Y>0.1</Y>
+            <Z>0.1</Z>
+          </Vector3>
+          <CoordinateFrame name="CFrame">
+            <X>0.0</X>
+            <Y>0.0</Y>
+            <Z>0.0</Z>
+            <R00>1.0</R00>
+            <R01>0.0</R01>
+            <R02>0.0</R02>
+            <R10>0.0</R10>
+            <R11>1.0</R11>
+            <R12>0.0</R12>
+            <R20>0.0</R20>
+            <R21>0.0</R21>
+            <R22>1.0</R22>
+          </CoordinateFrame>
+        </Properties>
+      </Item>
+      <Item class="Model" referent="MountAsset_44">
+        <Properties>
+          <string name="Name">Body</string>
+          <Ref name="PrimaryPart">MountAsset_45</Ref>
+        </Properties>
+        <Item class="Part" referent="MountAsset_45">
+          <Properties>
+            <string name="Name">Pivot</string>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">1</float>
+            <Vector3 name="size">
+              <X>0.1</X>
+              <Y>0.1</Y>
+              <Z>0.1</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>0.0</X>
+              <Y>0.0</Y>
+              <Z>0.0</Z>
+              <R00>1.0</R00>
+              <R01>0.0</R01>
+              <R02>0.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>0.0</R20>
+              <R21>0.0</R21>
+              <R22>1.0</R22>
+            </CoordinateFrame>
+          </Properties>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_56">
+          <Properties>
+            <string name="Name">BodyGlow</string>
+            <Content name="MeshId">
+              <url>rbxassetid://77422860082532</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">288</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>8.039890988040085</X>
+              <Y>5.698484697050128</Y>
+              <Z>12.634640164176272</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>4.804283142089844</X>
+              <Y>3.4051623344421387</Y>
+              <Z>7.549901962280273</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-2.6461394627888994</X>
+              <Y>1.9342241287231445</Y>
+              <Z>-1.5676264107848205e-05</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_57">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://108760532166237</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://81687158281641</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://93378145194882</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_60">
+          <Properties>
+            <string name="Name">BodyMesh</string>
+            <Content name="MeshId">
+              <url>rbxassetid://96389982868359</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">256</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>6.169744173803096</X>
+              <Y>6.257389438463921</Y>
+              <Z>11.784761826103939</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>3.6867661476135254</X>
+              <Y>3.7391390800476074</Y>
+              <Z>7.042052268981934</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-1.4657645225524902</X>
+              <Y>1.3166344165802002</Y>
+              <Z>0.00020671232293049494</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_61">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://131671610448579</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://81687158281641</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://93378145194882</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+      </Item>
+      <Item class="Model" referent="MountAsset_46">
+        <Properties>
+          <string name="Name">WingLeft</string>
+          <Ref name="PrimaryPart">MountAsset_47</Ref>
+        </Properties>
+        <Item class="Part" referent="MountAsset_47">
+          <Properties>
+            <string name="Name">Pivot</string>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">1</float>
+            <Vector3 name="size">
+              <X>0.1</X>
+              <Y>0.1</Y>
+              <Z>0.1</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>0.10037639792943807</X>
+              <Y>0.6189878090441898</Y>
+              <Z>-0.8197406173674403</Z>
+              <R00>1.0</R00>
+              <R01>0.0</R01>
+              <R02>0.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>0.0</R20>
+              <R21>0.0</R21>
+              <R22>1.0</R22>
+            </CoordinateFrame>
+          </Properties>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_50">
+          <Properties>
+            <string name="Name">WingLeftGlow</string>
+            <Content name="MeshId">
+              <url>rbxassetid://114796403987608</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">288</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>6.683226334276345</X>
+              <Y>2.2120721907984597</Y>
+              <Z>5.218647740192285</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>3.993600368499756</X>
+              <Y>1.3218364715576172</Y>
+              <Z>3.1184329986572266</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-0.9916804631551106</X>
+              <Y>1.4552292823791504</Y>
+              <Z>-4.661053657531738</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_51">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://108760532166237</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://81687158281641</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://93378145194882</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_52">
+          <Properties>
+            <string name="Name">WingLeftMesh</string>
+            <Content name="MeshId">
+              <url>rbxassetid://123957541114251</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">256</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>7.154986144085944</X>
+              <Y>2.1848088270880472</Y>
+              <Z>4.6846575102525385</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>4.275503158569336</X>
+              <Y>1.3055450916290283</Y>
+              <Z>2.799344062805176</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-0.786785364151001</X>
+              <Y>1.2815450827280679</Y>
+              <Z>-3.7951052983601885</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_53">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://131671610448579</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://81687158281641</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://93378145194882</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+      </Item>
+      <Item class="Model" referent="MountAsset_48">
+        <Properties>
+          <string name="Name">WingRight</string>
+          <Ref name="PrimaryPart">MountAsset_49</Ref>
+        </Properties>
+        <Item class="Part" referent="MountAsset_49">
+          <Properties>
+            <string name="Name">Pivot</string>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">1</float>
+            <Vector3 name="size">
+              <X>0.1</X>
+              <Y>0.1</Y>
+              <Z>0.1</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>0.10037639792943807</X>
+              <Y>0.6189878090441898</Y>
+              <Z>0.8197406173674403</Z>
+              <R00>1.0</R00>
+              <R01>0.0</R01>
+              <R02>0.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>0.0</R20>
+              <R21>0.0</R21>
+              <R22>1.0</R22>
+            </CoordinateFrame>
+          </Properties>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_54">
+          <Properties>
+            <string name="Name">WingRightMesh</string>
+            <Content name="MeshId">
+              <url>rbxassetid://135632651442194</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">256</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>7.1549151239232005</X>
+              <Y>2.0065821327235174</Y>
+              <Z>4.686076317548703</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>4.275460720062256</X>
+              <Y>1.1990447044372559</Y>
+              <Z>2.800191879272461</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-0.7867927551269531</X>
+              <Y>1.371457576751709</Y>
+              <Z>3.7950681050618487</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_55">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://131671610448579</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://81687158281641</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://93378145194882</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_58">
+          <Properties>
+            <string name="Name">WingRightGlow</string>
+            <Content name="MeshId">
+              <url>rbxassetid://119790932777300</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">288</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>6.6813590625817305</X>
+              <Y>2.2121440089405606</Y>
+              <Z>5.22016948682546</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>3.9924845695495605</X>
+              <Y>1.3218793869018555</Y>
+              <Z>3.11934232711792</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-0.9904041290283203</X>
+              <Y>1.4552284876505532</Y>
+              <Z>4.661855697631836</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_59">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://108760532166237</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://81687158281641</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://93378145194882</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+      </Item>
+    </Item>
+    <Item class="Model" referent="MountAsset_62">
+      <Properties>
+        <string name="Name">riftmanta</string>
+        <Ref name="PrimaryPart">MountAsset_63</Ref>
+        <BinaryString name="AttributesSerialize">CAAAAAgAAABDb2NrcGl0WAZ8Irt7M7nJvwgAAABDb2NrcGl0WQYegNUXiWz/PwoAAABDb2NrcGl0WWF3BhgtRFT7Ifm/CAAAAENvY2twaXRaBgAAAAAAAACADQAAAEZsYXBBbXBsaXR1ZGUG7FG4HoXr0T8NAAAARmxhcEZyZXF1ZW5jeQYzMzMzMzPrPxEAAABJZGxlRmxhcEFtcGxpdHVkZQYbL90kBoG1PwoAAABQaWxvdFNjYWxlBjMzMzMzM+M/</BinaryString>
+      </Properties>
+      <Item class="Part" referent="MountAsset_63">
+        <Properties>
+          <string name="Name">Pivot</string>
+          <bool name="Anchored">true</bool>
+          <bool name="CanCollide">false</bool>
+          <bool name="CanTouch">false</bool>
+          <bool name="CanQuery">false</bool>
+          <bool name="Massless">true</bool>
+          <bool name="CastShadow">false</bool>
+          <float name="Transparency">1</float>
+          <Vector3 name="size">
+            <X>0.1</X>
+            <Y>0.1</Y>
+            <Z>0.1</Z>
+          </Vector3>
+          <CoordinateFrame name="CFrame">
+            <X>0.0</X>
+            <Y>0.0</Y>
+            <Z>0.0</Z>
+            <R00>1.0</R00>
+            <R01>0.0</R01>
+            <R02>0.0</R02>
+            <R10>0.0</R10>
+            <R11>1.0</R11>
+            <R12>0.0</R12>
+            <R20>0.0</R20>
+            <R21>0.0</R21>
+            <R22>1.0</R22>
+          </CoordinateFrame>
+        </Properties>
+      </Item>
+      <Item class="Model" referent="MountAsset_64">
+        <Properties>
+          <string name="Name">Body</string>
+          <Ref name="PrimaryPart">MountAsset_65</Ref>
+        </Properties>
+        <Item class="Part" referent="MountAsset_65">
+          <Properties>
+            <string name="Name">Pivot</string>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">1</float>
+            <Vector3 name="size">
+              <X>0.1</X>
+              <Y>0.1</Y>
+              <Z>0.1</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>0.0</X>
+              <Y>0.0</Y>
+              <Z>0.0</Z>
+              <R00>1.0</R00>
+              <R01>0.0</R01>
+              <R02>0.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>0.0</R20>
+              <R21>0.0</R21>
+              <R22>1.0</R22>
+            </CoordinateFrame>
+          </Properties>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_74">
+          <Properties>
+            <string name="Name">BodyGlow</string>
+            <Content name="MeshId">
+              <url>rbxassetid://117490142671683</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">288</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>3.5319048893892795</X>
+              <Y>1.0624889286080712</Y>
+              <Z>12.0963419913749</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>2.2847213745117188</X>
+              <Y>0.6873036623001099</Y>
+              <Z>7.824891090393066</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-3.7527068456013994</X>
+              <Y>0.906423807144165</Y>
+              <Z>-3.4831926617092296e-07</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_75">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://118916005144839</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://75593956516126</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://116552243196594</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_80">
+          <Properties>
+            <string name="Name">BodyMesh</string>
+            <Content name="MeshId">
+              <url>rbxassetid://81529521820638</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">256</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>4.173873270346241</X>
+              <Y>2.5050933816192296</Y>
+              <Z>12.767749252420458</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>2.699998378753662</X>
+              <Y>1.6204967498779297</Y>
+              <Z>8.259211540222168</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-2.381353696187337</X>
+              <Y>0.38721930980682373</Y>
+              <Z>-8.412252251825217e-07</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_81">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://115149806733491</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://75593956516126</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://116552243196594</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+      </Item>
+      <Item class="Model" referent="MountAsset_66">
+        <Properties>
+          <string name="Name">WingLeft</string>
+          <Ref name="PrimaryPart">MountAsset_67</Ref>
+        </Properties>
+        <Item class="Part" referent="MountAsset_67">
+          <Properties>
+            <string name="Name">Pivot</string>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">1</float>
+            <Vector3 name="size">
+              <X>0.1</X>
+              <Y>0.1</Y>
+              <Z>0.1</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-0.0</X>
+              <Y>0.0</Y>
+              <Z>-1.051198354792887</Z>
+              <R00>1.0</R00>
+              <R01>0.0</R01>
+              <R02>0.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>0.0</R20>
+              <R21>0.0</R21>
+              <R22>1.0</R22>
+            </CoordinateFrame>
+          </Properties>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_70">
+          <Properties>
+            <string name="Name">WingLeftGlow</string>
+            <Content name="MeshId">
+              <url>rbxassetid://72083362659809</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">288</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>6.469705654044969</X>
+              <Y>1.2338528139844447</Y>
+              <Z>4.295967555460158</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>4.185128211975098</X>
+              <Y>0.798155665397644</Y>
+              <Z>2.7789788246154785</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>0.004709382231036821</X>
+              <Y>0.8041066328684489</Y>
+              <Z>-4.7649294535319004</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_71">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://118916005144839</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://75593956516126</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://116552243196594</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_76">
+          <Properties>
+            <string name="Name">WingLeftMesh</string>
+            <Content name="MeshId">
+              <url>rbxassetid://128938554928162</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">256</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>7.002836349520266</X>
+              <Y>1.5751831648777141</Y>
+              <Z>4.302991695690126</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>4.53000020980835</X>
+              <Y>1.0189557075500488</Y>
+              <Z>2.783522605895996</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>0.0027230726554989815</X>
+              <Y>0.6082184314727783</Y>
+              <Z>-4.4753217697143555</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_77">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://115149806733491</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://75593956516126</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://116552243196594</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+      </Item>
+      <Item class="Model" referent="MountAsset_68">
+        <Properties>
+          <string name="Name">WingRight</string>
+          <Ref name="PrimaryPart">MountAsset_69</Ref>
+        </Properties>
+        <Item class="Part" referent="MountAsset_69">
+          <Properties>
+            <string name="Name">Pivot</string>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">1</float>
+            <Vector3 name="size">
+              <X>0.1</X>
+              <Y>0.1</Y>
+              <Z>0.1</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-0.0</X>
+              <Y>0.0</Y>
+              <Z>1.051198354792887</Z>
+              <R00>1.0</R00>
+              <R01>0.0</R01>
+              <R02>0.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>0.0</R20>
+              <R21>0.0</R21>
+              <R22>1.0</R22>
+            </CoordinateFrame>
+          </Properties>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_72">
+          <Properties>
+            <string name="Name">WingRightMesh</string>
+            <Content name="MeshId">
+              <url>rbxassetid://100321748049145</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">256</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>7.002837086653253</X>
+              <Y>1.5567725314026712</Y>
+              <Z>4.300163316420278</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>4.530000686645508</X>
+              <Y>1.0070462226867676</Y>
+              <Z>2.7816929817199707</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>-0.0033138847599426904</X>
+              <Y>0.6328332424163818</Y>
+              <Z>4.475322723388672</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_73">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://115149806733491</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://75593956516126</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://116552243196594</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+        <Item class="MeshPart" referent="MountAsset_78">
+          <Properties>
+            <string name="Name">WingRightGlow</string>
+            <Content name="MeshId">
+              <url>rbxassetid://112895533286423</url>
+            </Content>
+            <bool name="Anchored">true</bool>
+            <bool name="CanCollide">false</bool>
+            <bool name="CanTouch">false</bool>
+            <bool name="CanQuery">false</bool>
+            <bool name="Massless">true</bool>
+            <bool name="CastShadow">false</bool>
+            <float name="Transparency">0</float>
+            <bool name="DoubleSided">false</bool>
+            <token name="Material">288</token>
+            <Color3uint8 name="Color3uint8">4294967295</Color3uint8>
+            <Vector3 name="size">
+              <X>6.470226069933557</X>
+              <Y>1.2316931064751282</Y>
+              <Z>4.297740728859591</Z>
+            </Vector3>
+            <Vector3 name="InitialSize">
+              <X>4.185464859008789</X>
+              <Y>0.7967585921287537</Y>
+              <Z>2.780125856399536</Z>
+            </Vector3>
+            <CoordinateFrame name="CFrame">
+              <X>0.003824221591154734</X>
+              <Y>0.8051924705505371</Y>
+              <Z>4.765104611714681</Z>
+              <R00>-4.371138828673793e-08</R00>
+              <R01>0.0</R01>
+              <R02>-1.0</R02>
+              <R10>0.0</R10>
+              <R11>1.0</R11>
+              <R12>0.0</R12>
+              <R20>1.0</R20>
+              <R21>0.0</R21>
+              <R22>-4.371138828673793e-08</R22>
+            </CoordinateFrame>
+          </Properties>
+          <Item class="SurfaceAppearance" referent="MountAsset_79">
+            <Properties>
+              <string name="Name">MountPalette</string>
+              <Content name="ColorMap">
+                <url>rbxassetid://118916005144839</url>
+              </Content>
+              <Content name="MetalnessMap">
+                <url>rbxassetid://75593956516126</url>
+              </Content>
+              <Content name="RoughnessMap">
+                <url>rbxassetid://116552243196594</url>
+              </Content>
+            </Properties>
+          </Item>
+        </Item>
+      </Item>
+    </Item>
+  </Item>
+</roblox>

@@ -1,0 +1,997 @@
+{
+  "id": "03-eclipse-phoenix",
+  "name": "Eclipse Phoenix",
+  "source_blend": "output/blender/legendary-mounts/models/03-eclipse-phoenix.blend",
+  "glb": "assets/mounts/03-eclipse-phoenix/03-eclipse-phoenix.glb",
+  "frame": 7,
+  "source_object_count": 339,
+  "source_triangles": 306530,
+  "mesh_parts": 6,
+  "triangles": 14595,
+  "materials": 2,
+  "placeholder_pilot_exported": false,
+  "presentation_exported": false,
+  "bounds_blender": {
+    "min": [
+      -4.781961441040039,
+      -2.6451499462127686,
+      -1.0828070640563965
+    ],
+    "max": [
+      4.782039642333984,
+      5.356166839599609,
+      2.8583879470825195
+    ]
+  },
+  "source_wingspan": 9.564001083374023,
+  "scale_to_16_stud_wingspan": 1.6729400028837575,
+  "scale_rule": "For target wingspan W studs, multiply every imported part size, offset, pivot and seat offset by W/source_wingspan.",
+  "seat_blender": [
+    0,
+    -0.1,
+    1.0
+  ],
+  "seat_gltf": [
+    0.0,
+    1.0,
+    0.1
+  ],
+  "seat_roblox": [
+    0.1,
+    1.0,
+    -0.0
+  ],
+  "coordinates": {
+    "blender": "X right, Z up, -Y forward",
+    "gltf": "Standard Blender glTF exporter: (x,z,-y); Y up, +Z forward.",
+    "roblox": "Apply +90 degrees about Y to standard GLB import, then uniform scale. Desired source conversion is (-y,z,-x), +X forward, +Y up.",
+    "caution": "Studio may center each MeshPart on its bounds. Use measured imported centers, not inferred GLB node origins, when packaging the final template."
+  },
+  "animation": {
+    "type": "Rigid animated wing components",
+    "loop_seconds": 1.0,
+    "axis_roblox": [
+      -1,
+      0,
+      0
+    ],
+    "axis_blender": [
+      0,
+      1,
+      0
+    ],
+    "reference_frame": 7,
+    "manta_approximation": false,
+    "notes": "Body fixed. Rotate both solid and glow components together around the matching pivot; opposite wing signs. Manta source shape-key deformation is approximated by rigid fin rotations. Phoenix split-tail sway is baked into Body at frame 7."
+  },
+  "emission": "GLB includes an emissive palette for glow components; if Roblox importer drops emission, set those MeshParts to Neon. Exact Blender glow intensity is not a Roblox guarantee.",
+  "palette": [
+    {
+      "name": "Phoenix \u00b7 midnight obsidian",
+      "linear_base_color": [
+        0.008999999612569809,
+        0.004000000189989805,
+        0.02199999988079071,
+        1.0
+      ],
+      "metallic": 0.4000000059604645,
+      "roughness": 0.3799999952316284,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Phoenix \u00b7 amethyst vane",
+      "linear_base_color": [
+        0.03500000014901161,
+        0.00800000037997961,
+        0.06499999761581421,
+        1.0
+      ],
+      "metallic": 0.30000001192092896,
+      "roughness": 0.4000000059604645,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Phoenix \u00b7 royal violet",
+      "linear_base_color": [
+        0.10499999672174454,
+        0.012000000104308128,
+        0.17000000178813934,
+        1.0
+      ],
+      "metallic": 0.2800000011920929,
+      "roughness": 0.4000000059604645,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Phoenix \u00b7 molten transition",
+      "linear_base_color": [
+        0.41999998688697815,
+        0.00800000037997961,
+        0.06499999761581421,
+        1.0
+      ],
+      "metallic": 0.18000000715255737,
+      "roughness": 0.3799999952316284,
+      "emission_strength": 0.11999999731779099,
+      "linear_emission_color": [
+        0.41999998688697815,
+        0.00800000037997961,
+        0.06499999761581421,
+        1.0
+      ]
+    },
+    {
+      "name": "Phoenix \u00b7 ember gold",
+      "linear_base_color": [
+        1.0,
+        0.09000000357627869,
+        0.003000000026077032,
+        1.0
+      ],
+      "metallic": 0.1599999964237213,
+      "roughness": 0.3499999940395355,
+      "emission_strength": 0.6499999761581421,
+      "linear_emission_color": [
+        1.0,
+        0.09000000357627869,
+        0.003000000026077032,
+        1.0
+      ]
+    },
+    {
+      "name": "Phoenix \u00b7 warm luminous edge",
+      "linear_base_color": [
+        1.0,
+        0.4000000059604645,
+        0.012000000104308128,
+        1.0
+      ],
+      "metallic": 0.15000000596046448,
+      "roughness": 0.30000001192092896,
+      "emission_strength": 0.800000011920929,
+      "linear_emission_color": [
+        1.0,
+        0.4000000059604645,
+        0.012000000104308128,
+        1.0
+      ]
+    },
+    {
+      "name": "Phoenix \u00b7 brushed ancient gold",
+      "linear_base_color": [
+        0.7300000190734863,
+        0.3700000047683716,
+        0.07500000298023224,
+        1.0
+      ],
+      "metallic": 0.7699999809265137,
+      "roughness": 0.25999999046325684,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Phoenix \u00b7 bronze harness",
+      "linear_base_color": [
+        0.2800000011920929,
+        0.10499999672174454,
+        0.027000000700354576,
+        1.0
+      ],
+      "metallic": 0.7300000190734863,
+      "roughness": 0.3400000035762787,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Phoenix \u00b7 eye ink",
+      "linear_base_color": [
+        0.004999999888241291,
+        0.003000000026077032,
+        0.008999999612569809,
+        1.0
+      ],
+      "metallic": 0.0,
+      "roughness": 0.23000000417232513,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Phoenix \u00b7 living amber",
+      "linear_base_color": [
+        1.0,
+        0.3100000023841858,
+        0.014999999664723873,
+        1.0
+      ],
+      "metallic": 0.07999999821186066,
+      "roughness": 0.18000000715255737,
+      "emission_strength": 3.200000047683716,
+      "linear_emission_color": [
+        1.0,
+        0.3100000023841858,
+        0.014999999664723873,
+        1.0
+      ]
+    },
+    {
+      "name": "Phoenix \u00b7 saddle leather",
+      "linear_base_color": [
+        0.06499999761581421,
+        0.026000000536441803,
+        0.05299999937415123,
+        1.0
+      ],
+      "metallic": 0.11999999731779099,
+      "roughness": 0.5099999904632568,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "parts": [
+    {
+      "name": "Body",
+      "motion_group": "Body",
+      "glow": false,
+      "triangles": 4735,
+      "vertices": 2774,
+      "budget": 4761,
+      "source_triangles": 112026,
+      "source_object_count": 162,
+      "pivot_blender": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "pivot_gltf": [
+        0.0,
+        0.0,
+        -0.0
+      ],
+      "pivot_roblox": [
+        -0.0,
+        0.0,
+        -0.0
+      ],
+      "center_blender": [
+        -0.00012320280075073242,
+        0.8758760690689087,
+        0.7867624759674072
+      ],
+      "center_gltf": [
+        -0.00012320280075073242,
+        0.7867624759674072,
+        -0.8758760690689087
+      ],
+      "center_roblox": [
+        -0.8758760690689087,
+        0.7867624759674072,
+        0.00012320280075073242
+      ],
+      "local_bounds_blender": {
+        "min": [
+          -1.8435063362121582,
+          -2.6451499462127686,
+          -1.0828070640563965
+        ],
+        "max": [
+          1.8432599306106567,
+          4.396902084350586,
+          2.656332015991211
+        ]
+      },
+      "recommended_material": "SmoothPlastic",
+      "source_objects": [
+        "Phoenix \u2022 body covert 00-00",
+        "Phoenix \u2022 body covert 00-01",
+        "Phoenix \u2022 body covert 00-02",
+        "Phoenix \u2022 body covert 00-03",
+        "Phoenix \u2022 body covert 00-04",
+        "Phoenix \u2022 body covert 00-05",
+        "Phoenix \u2022 body covert 00-06",
+        "Phoenix \u2022 body covert 00-07",
+        "Phoenix \u2022 body covert 00-08",
+        "Phoenix \u2022 body covert 00-09",
+        "Phoenix \u2022 body covert 01-00",
+        "Phoenix \u2022 body covert 01-01",
+        "Phoenix \u2022 body covert 01-02",
+        "Phoenix \u2022 body covert 01-03",
+        "Phoenix \u2022 body covert 01-04",
+        "Phoenix \u2022 body covert 01-05",
+        "Phoenix \u2022 body covert 01-06",
+        "Phoenix \u2022 body covert 01-07",
+        "Phoenix \u2022 body covert 01-08",
+        "Phoenix \u2022 body covert 01-09",
+        "Phoenix \u2022 body covert 02-00",
+        "Phoenix \u2022 body covert 02-01",
+        "Phoenix \u2022 body covert 02-02",
+        "Phoenix \u2022 body covert 02-03",
+        "Phoenix \u2022 body covert 02-04",
+        "Phoenix \u2022 body covert 02-05",
+        "Phoenix \u2022 body covert 02-06",
+        "Phoenix \u2022 body covert 02-07",
+        "Phoenix \u2022 body covert 02-08",
+        "Phoenix \u2022 body covert 02-09",
+        "Phoenix \u2022 body covert 03-00",
+        "Phoenix \u2022 body covert 03-01",
+        "Phoenix \u2022 body covert 03-02",
+        "Phoenix \u2022 body covert 03-03",
+        "Phoenix \u2022 body covert 03-04",
+        "Phoenix \u2022 body covert 03-05",
+        "Phoenix \u2022 body covert 03-06",
+        "Phoenix \u2022 body covert 03-07",
+        "Phoenix \u2022 body covert 03-08",
+        "Phoenix \u2022 body covert 03-09",
+        "Phoenix \u2022 body covert 04-00",
+        "Phoenix \u2022 body covert 04-01",
+        "Phoenix \u2022 body covert 04-02",
+        "Phoenix \u2022 body covert 04-03",
+        "Phoenix \u2022 body covert 04-04",
+        "Phoenix \u2022 body covert 04-05",
+        "Phoenix \u2022 body covert 04-06",
+        "Phoenix \u2022 body covert 04-07",
+        "Phoenix \u2022 body covert 04-08",
+        "Phoenix \u2022 body covert 04-09",
+        "Phoenix \u2022 body covert 05-00",
+        "Phoenix \u2022 body covert 05-01",
+        "Phoenix \u2022 body covert 05-02",
+        "Phoenix \u2022 body covert 05-03",
+        "Phoenix \u2022 body covert 05-04",
+        "Phoenix \u2022 body covert 05-05",
+        "Phoenix \u2022 body covert 05-06",
+        "Phoenix \u2022 body covert 05-07",
+        "Phoenix \u2022 body covert 05-08",
+        "Phoenix \u2022 body covert 05-09",
+        "Phoenix \u2022 cheek plume -1 0",
+        "Phoenix \u2022 cheek plume -1 1",
+        "Phoenix \u2022 cheek plume -1 2",
+        "Phoenix \u2022 cheek plume 1 0",
+        "Phoenix \u2022 cheek plume 1 1",
+        "Phoenix \u2022 cheek plume 1 2",
+        "Phoenix \u2022 commanding brow -1",
+        "Phoenix \u2022 commanding brow 1",
+        "Phoenix \u2022 eye socket -1",
+        "Phoenix \u2022 eye socket 1",
+        "Phoenix \u2022 gold claw -1-0",
+        "Phoenix \u2022 gold claw -1-1",
+        "Phoenix \u2022 gold claw -1-2",
+        "Phoenix \u2022 gold claw 1-0",
+        "Phoenix \u2022 gold claw 1-1",
+        "Phoenix \u2022 gold claw 1-2",
+        "Phoenix \u2022 golden chest sigil -1",
+        "Phoenix \u2022 golden chest sigil 1",
+        "Phoenix \u2022 golden hooked upper beak",
+        "Phoenix \u2022 harness strap -1",
+        "Phoenix \u2022 harness strap 1",
+        "Phoenix \u2022 hind claw -1",
+        "Phoenix \u2022 hind claw 1",
+        "Phoenix \u2022 leg -1",
+        "Phoenix \u2022 leg 1",
+        "Phoenix \u2022 long flame streamer 1",
+        "Phoenix \u2022 long flame streamer 1_quill",
+        "Phoenix \u2022 long flame streamer 2",
+        "Phoenix \u2022 long flame streamer 2_quill",
+        "Phoenix \u2022 long flame streamer 3",
+        "Phoenix \u2022 long flame streamer 3_quill",
+        "Phoenix \u2022 neck ruff -1 0 0",
+        "Phoenix \u2022 neck ruff -1 0 1",
+        "Phoenix \u2022 neck ruff -1 0 2",
+        "Phoenix \u2022 neck ruff -1 1 0",
+        "Phoenix \u2022 neck ruff -1 1 1",
+        "Phoenix \u2022 neck ruff -1 1 2",
+        "Phoenix \u2022 neck ruff -1 2 0",
+        "Phoenix \u2022 neck ruff -1 2 1",
+        "Phoenix \u2022 neck ruff -1 2 2",
+        "Phoenix \u2022 neck ruff -1 3 0",
+        "Phoenix \u2022 neck ruff -1 3 1",
+        "Phoenix \u2022 neck ruff -1 3 2",
+        "Phoenix \u2022 neck ruff 1 0 0",
+        "Phoenix \u2022 neck ruff 1 0 1",
+        "Phoenix \u2022 neck ruff 1 0 2",
+        "Phoenix \u2022 neck ruff 1 1 0",
+        "Phoenix \u2022 neck ruff 1 1 1",
+        "Phoenix \u2022 neck ruff 1 1 2",
+        "Phoenix \u2022 neck ruff 1 2 0",
+        "Phoenix \u2022 neck ruff 1 2 1",
+        "Phoenix \u2022 neck ruff 1 2 2",
+        "Phoenix \u2022 neck ruff 1 3 0",
+        "Phoenix \u2022 neck ruff 1 3 1",
+        "Phoenix \u2022 neck ruff 1 3 2",
+        "Phoenix \u2022 nostril -1",
+        "Phoenix \u2022 nostril 1",
+        "Phoenix \u2022 powerful breast",
+        "Phoenix \u2022 proud head",
+        "Phoenix \u2022 rider saddle",
+        "Phoenix \u2022 rising neck",
+        "Phoenix \u2022 saddle front piping",
+        "Phoenix \u2022 saddle heraldic shield -1",
+        "Phoenix \u2022 saddle heraldic shield 1",
+        "Phoenix \u2022 saddle pad",
+        "Phoenix \u2022 shin scale -1-0",
+        "Phoenix \u2022 shin scale -1-1",
+        "Phoenix \u2022 shin scale -1-2",
+        "Phoenix \u2022 shin scale -1-3",
+        "Phoenix \u2022 shin scale -1-4",
+        "Phoenix \u2022 shin scale 1-0",
+        "Phoenix \u2022 shin scale 1-1",
+        "Phoenix \u2022 shin scale 1-2",
+        "Phoenix \u2022 shin scale 1-3",
+        "Phoenix \u2022 shin scale 1-4",
+        "Phoenix \u2022 shoulders",
+        "Phoenix \u2022 slit pupil -1",
+        "Phoenix \u2022 slit pupil 1",
+        "Phoenix \u2022 tail cover -1-0",
+        "Phoenix \u2022 tail cover -1-0_quill",
+        "Phoenix \u2022 tail cover -1-1",
+        "Phoenix \u2022 tail cover -1-1_quill",
+        "Phoenix \u2022 tail cover -1-2",
+        "Phoenix \u2022 tail cover -1-2_quill",
+        "Phoenix \u2022 tail cover 1-0",
+        "Phoenix \u2022 tail cover 1-0_quill",
+        "Phoenix \u2022 tail cover 1-1",
+        "Phoenix \u2022 tail cover 1-1_quill",
+        "Phoenix \u2022 tail cover 1-2",
+        "Phoenix \u2022 tail cover 1-2_quill",
+        "Phoenix \u2022 talon toe -1-0",
+        "Phoenix \u2022 talon toe -1-1",
+        "Phoenix \u2022 talon toe -1-2",
+        "Phoenix \u2022 talon toe 1-0",
+        "Phoenix \u2022 talon toe 1-1",
+        "Phoenix \u2022 talon toe 1-2",
+        "Phoenix \u2022 three flame crown 1",
+        "Phoenix \u2022 three flame crown 1_quill",
+        "Phoenix \u2022 three flame crown 2",
+        "Phoenix \u2022 three flame crown 2_quill",
+        "Phoenix \u2022 three flame crown 3",
+        "Phoenix \u2022 three flame crown 3_quill"
+      ]
+    },
+    {
+      "name": "BodyGlow",
+      "motion_group": "Body",
+      "glow": true,
+      "triangles": 656,
+      "vertices": 376,
+      "budget": 682,
+      "source_triangles": 8576,
+      "source_object_count": 17,
+      "pivot_blender": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "pivot_gltf": [
+        0.0,
+        0.0,
+        -0.0
+      ],
+      "pivot_roblox": [
+        -0.0,
+        0.0,
+        -0.0
+      ],
+      "center_blender": [
+        9.775161743164062e-06,
+        1.5812158584594727,
+        1.1558067500591278
+      ],
+      "center_gltf": [
+        9.775161743164062e-06,
+        1.1558067500591278,
+        -1.5812158584594727
+      ],
+      "center_roblox": [
+        -1.5812158584594727,
+        1.1558067500591278,
+        -9.775161743164062e-06
+      ],
+      "local_bounds_blender": {
+        "min": [
+          -2.4021317958831787,
+          -2.193735122680664,
+          -0.5467744469642639
+        ],
+        "max": [
+          2.402151346206665,
+          5.356166839599609,
+          2.8583879470825195
+        ]
+      },
+      "recommended_material": "Neon",
+      "source_objects": [
+        "Phoenix \u2022 amber eye -1",
+        "Phoenix \u2022 amber eye 1",
+        "Phoenix \u2022 chest jewel",
+        "Phoenix \u2022 eye highlight -1",
+        "Phoenix \u2022 eye highlight 1",
+        "Phoenix \u2022 long flame streamer 1",
+        "Phoenix \u2022 long flame streamer 2",
+        "Phoenix \u2022 long flame streamer 3",
+        "Phoenix \u2022 neck ruff -1 0 0",
+        "Phoenix \u2022 neck ruff -1 2 0",
+        "Phoenix \u2022 neck ruff 1 0 0",
+        "Phoenix \u2022 neck ruff 1 2 0",
+        "Phoenix \u2022 tail cover -1-2",
+        "Phoenix \u2022 tail cover 1-2",
+        "Phoenix \u2022 three flame crown 1",
+        "Phoenix \u2022 three flame crown 2",
+        "Phoenix \u2022 three flame crown 3"
+      ]
+    },
+    {
+      "name": "WingLeft",
+      "motion_group": "WingLeft",
+      "glow": false,
+      "triangles": 4053,
+      "vertices": 2273,
+      "budget": 4078,
+      "source_triangles": 88180,
+      "source_object_count": 86,
+      "pivot_blender": [
+        -0.49000000953674316,
+        -0.05999999865889549,
+        0.3700000047683716
+      ],
+      "pivot_gltf": [
+        -0.49000000953674316,
+        0.3700000047683716,
+        0.05999999865889549
+      ],
+      "pivot_roblox": [
+        0.05999999865889549,
+        0.3700000047683716,
+        0.49000000953674316
+      ],
+      "center_blender": [
+        -2.267764836549759,
+        0.47015276923775673,
+        0.8195223063230515
+      ],
+      "center_gltf": [
+        -2.267764836549759,
+        0.8195223063230515,
+        -0.47015276923775673
+      ],
+      "center_roblox": [
+        -0.47015276923775673,
+        0.8195223063230515,
+        2.267764836549759
+      ],
+      "local_bounds_blender": {
+        "min": [
+          -3.9154951572418213,
+          -0.8699432015419006,
+          -0.15000000596046448
+        ],
+        "max": [
+          0.3599655032157898,
+          1.930248737335205,
+          1.0490446090698242
+        ]
+      },
+      "recommended_material": "SmoothPlastic",
+      "source_objects": [
+        "Phoenix \u2022 L leading crown 0",
+        "Phoenix \u2022 L leading crown 1",
+        "Phoenix \u2022 L leading crown 2",
+        "Phoenix \u2022 L leading crown 3",
+        "Phoenix \u2022 L leading crown 4",
+        "Phoenix \u2022 L leading crown 5",
+        "Phoenix \u2022 L mantle 0-0",
+        "Phoenix \u2022 L mantle 0-1",
+        "Phoenix \u2022 L mantle 0-10",
+        "Phoenix \u2022 L mantle 0-11",
+        "Phoenix \u2022 L mantle 0-2",
+        "Phoenix \u2022 L mantle 0-3",
+        "Phoenix \u2022 L mantle 0-4",
+        "Phoenix \u2022 L mantle 0-5",
+        "Phoenix \u2022 L mantle 0-6",
+        "Phoenix \u2022 L mantle 0-7",
+        "Phoenix \u2022 L mantle 0-8",
+        "Phoenix \u2022 L mantle 0-9",
+        "Phoenix \u2022 L mantle 1-0",
+        "Phoenix \u2022 L mantle 1-1",
+        "Phoenix \u2022 L mantle 1-10",
+        "Phoenix \u2022 L mantle 1-11",
+        "Phoenix \u2022 L mantle 1-2",
+        "Phoenix \u2022 L mantle 1-3",
+        "Phoenix \u2022 L mantle 1-4",
+        "Phoenix \u2022 L mantle 1-5",
+        "Phoenix \u2022 L mantle 1-6",
+        "Phoenix \u2022 L mantle 1-7",
+        "Phoenix \u2022 L mantle 1-8",
+        "Phoenix \u2022 L mantle 1-9",
+        "Phoenix \u2022 L mantle 2-0",
+        "Phoenix \u2022 L mantle 2-1",
+        "Phoenix \u2022 L mantle 2-10",
+        "Phoenix \u2022 L mantle 2-11",
+        "Phoenix \u2022 L mantle 2-2",
+        "Phoenix \u2022 L mantle 2-3",
+        "Phoenix \u2022 L mantle 2-4",
+        "Phoenix \u2022 L mantle 2-5",
+        "Phoenix \u2022 L mantle 2-6",
+        "Phoenix \u2022 L mantle 2-7",
+        "Phoenix \u2022 L mantle 2-8",
+        "Phoenix \u2022 L mantle 2-9",
+        "Phoenix \u2022 L primary 01",
+        "Phoenix \u2022 L primary 01_quill",
+        "Phoenix \u2022 L primary 02",
+        "Phoenix \u2022 L primary 02_quill",
+        "Phoenix \u2022 L primary 03",
+        "Phoenix \u2022 L primary 03_quill",
+        "Phoenix \u2022 L primary 04",
+        "Phoenix \u2022 L primary 04_quill",
+        "Phoenix \u2022 L primary 05",
+        "Phoenix \u2022 L primary 05_quill",
+        "Phoenix \u2022 L primary 06",
+        "Phoenix \u2022 L primary 06_quill",
+        "Phoenix \u2022 L primary 07",
+        "Phoenix \u2022 L primary 07_quill",
+        "Phoenix \u2022 L primary 08",
+        "Phoenix \u2022 L primary 08_quill",
+        "Phoenix \u2022 L primary 09",
+        "Phoenix \u2022 L primary 09_quill",
+        "Phoenix \u2022 L primary 10",
+        "Phoenix \u2022 L primary 10_quill",
+        "Phoenix \u2022 L primary 11",
+        "Phoenix \u2022 L primary 11_quill",
+        "Phoenix \u2022 L primary 12",
+        "Phoenix \u2022 L primary 12_quill",
+        "Phoenix \u2022 L secondary 01",
+        "Phoenix \u2022 L secondary 01_quill",
+        "Phoenix \u2022 L secondary 02",
+        "Phoenix \u2022 L secondary 02_quill",
+        "Phoenix \u2022 L secondary 03",
+        "Phoenix \u2022 L secondary 03_quill",
+        "Phoenix \u2022 L secondary 04",
+        "Phoenix \u2022 L secondary 04_quill",
+        "Phoenix \u2022 L secondary 05",
+        "Phoenix \u2022 L secondary 05_quill",
+        "Phoenix \u2022 L secondary 06",
+        "Phoenix \u2022 L secondary 06_quill",
+        "Phoenix \u2022 L secondary 07",
+        "Phoenix \u2022 L secondary 07_quill",
+        "Phoenix \u2022 L secondary 08",
+        "Phoenix \u2022 L secondary 08_quill",
+        "Phoenix \u2022 L secondary 09",
+        "Phoenix \u2022 L secondary 09_quill",
+        "Phoenix \u2022 L upperwing core",
+        "Phoenix \u2022 L wing root"
+      ]
+    },
+    {
+      "name": "WingLeftGlow",
+      "motion_group": "WingLeft",
+      "glow": true,
+      "triangles": 549,
+      "vertices": 354,
+      "budget": 574,
+      "source_triangles": 4784,
+      "source_object_count": 23,
+      "pivot_blender": [
+        -0.49000000953674316,
+        -0.05999999865889549,
+        0.3700000047683716
+      ],
+      "pivot_gltf": [
+        -0.49000000953674316,
+        0.3700000047683716,
+        0.05999999865889549
+      ],
+      "pivot_roblox": [
+        0.05999999865889549,
+        0.3700000047683716,
+        0.49000000953674316
+      ],
+      "center_blender": [
+        -2.7857188135385513,
+        0.5918217934668064,
+        0.8695801720023155
+      ],
+      "center_gltf": [
+        -2.7857188135385513,
+        0.8695801720023155,
+        -0.5918217934668064
+      ],
+      "center_roblox": [
+        -0.5918217934668064,
+        0.8695801720023155,
+        2.7857188135385513
+      ],
+      "local_bounds_blender": {
+        "min": [
+          -4.291961193084717,
+          -0.9078491926193237,
+          -0.161359503865242
+        ],
+        "max": [
+          -0.29947641491889954,
+          2.2114927768707275,
+          1.1605198383331299
+        ]
+      },
+      "recommended_material": "Neon",
+      "source_objects": [
+        "Phoenix \u2022 L leading crown 4",
+        "Phoenix \u2022 L leading crown 5",
+        "Phoenix \u2022 L primary 01",
+        "Phoenix \u2022 L primary 02",
+        "Phoenix \u2022 L primary 03",
+        "Phoenix \u2022 L primary 04",
+        "Phoenix \u2022 L primary 05",
+        "Phoenix \u2022 L primary 06",
+        "Phoenix \u2022 L primary 07",
+        "Phoenix \u2022 L primary 08",
+        "Phoenix \u2022 L primary 09",
+        "Phoenix \u2022 L primary 10",
+        "Phoenix \u2022 L primary 11",
+        "Phoenix \u2022 L primary 12",
+        "Phoenix \u2022 L secondary 01",
+        "Phoenix \u2022 L secondary 02",
+        "Phoenix \u2022 L secondary 03",
+        "Phoenix \u2022 L secondary 04",
+        "Phoenix \u2022 L secondary 05",
+        "Phoenix \u2022 L secondary 06",
+        "Phoenix \u2022 L secondary 07",
+        "Phoenix \u2022 L secondary 08",
+        "Phoenix \u2022 L secondary 09"
+      ]
+    },
+    {
+      "name": "WingRight",
+      "motion_group": "WingRight",
+      "glow": false,
+      "triangles": 4053,
+      "vertices": 2267,
+      "budget": 4078,
+      "source_triangles": 88180,
+      "source_object_count": 86,
+      "pivot_blender": [
+        0.49000000953674316,
+        -0.05999999865889549,
+        0.3700000047683716
+      ],
+      "pivot_gltf": [
+        0.49000000953674316,
+        0.3700000047683716,
+        0.05999999865889549
+      ],
+      "pivot_roblox": [
+        0.05999999865889549,
+        0.3700000047683716,
+        -0.49000000953674316
+      ],
+      "center_blender": [
+        2.267786741256714,
+        0.47014791145920753,
+        0.7657946050167084
+      ],
+      "center_gltf": [
+        2.267786741256714,
+        0.7657946050167084,
+        -0.47014791145920753
+      ],
+      "center_roblox": [
+        -0.47014791145920753,
+        0.7657946050167084,
+        -2.267786741256714
+      ],
+      "local_bounds_blender": {
+        "min": [
+          -0.35996484756469727,
+          -0.8695241212844849,
+          -0.25697797536849976
+        ],
+        "max": [
+          3.9155383110046387,
+          1.929819941520691,
+          1.0485671758651733
+        ]
+      },
+      "recommended_material": "SmoothPlastic",
+      "source_objects": [
+        "Phoenix \u2022 R leading crown 0",
+        "Phoenix \u2022 R leading crown 1",
+        "Phoenix \u2022 R leading crown 2",
+        "Phoenix \u2022 R leading crown 3",
+        "Phoenix \u2022 R leading crown 4",
+        "Phoenix \u2022 R leading crown 5",
+        "Phoenix \u2022 R mantle 0-0",
+        "Phoenix \u2022 R mantle 0-1",
+        "Phoenix \u2022 R mantle 0-10",
+        "Phoenix \u2022 R mantle 0-11",
+        "Phoenix \u2022 R mantle 0-2",
+        "Phoenix \u2022 R mantle 0-3",
+        "Phoenix \u2022 R mantle 0-4",
+        "Phoenix \u2022 R mantle 0-5",
+        "Phoenix \u2022 R mantle 0-6",
+        "Phoenix \u2022 R mantle 0-7",
+        "Phoenix \u2022 R mantle 0-8",
+        "Phoenix \u2022 R mantle 0-9",
+        "Phoenix \u2022 R mantle 1-0",
+        "Phoenix \u2022 R mantle 1-1",
+        "Phoenix \u2022 R mantle 1-10",
+        "Phoenix \u2022 R mantle 1-11",
+        "Phoenix \u2022 R mantle 1-2",
+        "Phoenix \u2022 R mantle 1-3",
+        "Phoenix \u2022 R mantle 1-4",
+        "Phoenix \u2022 R mantle 1-5",
+        "Phoenix \u2022 R mantle 1-6",
+        "Phoenix \u2022 R mantle 1-7",
+        "Phoenix \u2022 R mantle 1-8",
+        "Phoenix \u2022 R mantle 1-9",
+        "Phoenix \u2022 R mantle 2-0",
+        "Phoenix \u2022 R mantle 2-1",
+        "Phoenix \u2022 R mantle 2-10",
+        "Phoenix \u2022 R mantle 2-11",
+        "Phoenix \u2022 R mantle 2-2",
+        "Phoenix \u2022 R mantle 2-3",
+        "Phoenix \u2022 R mantle 2-4",
+        "Phoenix \u2022 R mantle 2-5",
+        "Phoenix \u2022 R mantle 2-6",
+        "Phoenix \u2022 R mantle 2-7",
+        "Phoenix \u2022 R mantle 2-8",
+        "Phoenix \u2022 R mantle 2-9",
+        "Phoenix \u2022 R primary 01",
+        "Phoenix \u2022 R primary 01_quill",
+        "Phoenix \u2022 R primary 02",
+        "Phoenix \u2022 R primary 02_quill",
+        "Phoenix \u2022 R primary 03",
+        "Phoenix \u2022 R primary 03_quill",
+        "Phoenix \u2022 R primary 04",
+        "Phoenix \u2022 R primary 04_quill",
+        "Phoenix \u2022 R primary 05",
+        "Phoenix \u2022 R primary 05_quill",
+        "Phoenix \u2022 R primary 06",
+        "Phoenix \u2022 R primary 06_quill",
+        "Phoenix \u2022 R primary 07",
+        "Phoenix \u2022 R primary 07_quill",
+        "Phoenix \u2022 R primary 08",
+        "Phoenix \u2022 R primary 08_quill",
+        "Phoenix \u2022 R primary 09",
+        "Phoenix \u2022 R primary 09_quill",
+        "Phoenix \u2022 R primary 10",
+        "Phoenix \u2022 R primary 10_quill",
+        "Phoenix \u2022 R primary 11",
+        "Phoenix \u2022 R primary 11_quill",
+        "Phoenix \u2022 R primary 12",
+        "Phoenix \u2022 R primary 12_quill",
+        "Phoenix \u2022 R secondary 01",
+        "Phoenix \u2022 R secondary 01_quill",
+        "Phoenix \u2022 R secondary 02",
+        "Phoenix \u2022 R secondary 02_quill",
+        "Phoenix \u2022 R secondary 03",
+        "Phoenix \u2022 R secondary 03_quill",
+        "Phoenix \u2022 R secondary 04",
+        "Phoenix \u2022 R secondary 04_quill",
+        "Phoenix \u2022 R secondary 05",
+        "Phoenix \u2022 R secondary 05_quill",
+        "Phoenix \u2022 R secondary 06",
+        "Phoenix \u2022 R secondary 06_quill",
+        "Phoenix \u2022 R secondary 07",
+        "Phoenix \u2022 R secondary 07_quill",
+        "Phoenix \u2022 R secondary 08",
+        "Phoenix \u2022 R secondary 08_quill",
+        "Phoenix \u2022 R secondary 09",
+        "Phoenix \u2022 R secondary 09_quill",
+        "Phoenix \u2022 R upperwing core",
+        "Phoenix \u2022 R wing root"
+      ]
+    },
+    {
+      "name": "WingRightGlow",
+      "motion_group": "WingRight",
+      "glow": true,
+      "triangles": 549,
+      "vertices": 351,
+      "budget": 574,
+      "source_triangles": 4784,
+      "source_object_count": 23,
+      "pivot_blender": [
+        0.49000000953674316,
+        -0.05999999865889549,
+        0.3700000047683716
+      ],
+      "pivot_gltf": [
+        0.49000000953674316,
+        0.3700000047683716,
+        0.05999999865889549
+      ],
+      "pivot_roblox": [
+        0.05999999865889549,
+        0.3700000047683716,
+        -0.49000000953674316
+      ],
+      "center_blender": [
+        2.785239428281784,
+        0.5925841368734837,
+        0.8695805966854095
+      ],
+      "center_gltf": [
+        2.785239428281784,
+        0.8695805966854095,
+        -0.5925841368734837
+      ],
+      "center_roblox": [
+        -0.5925841368734837,
+        0.8695805966854095,
+        -2.785239428281784
+      ],
+      "local_bounds_blender": {
+        "min": [
+          0.2984394431114197,
+          -0.9066323041915894,
+          -0.16133767366409302
+        ],
+        "max": [
+          4.292039394378662,
+          2.2118005752563477,
+          1.160498857498169
+        ]
+      },
+      "recommended_material": "Neon",
+      "source_objects": [
+        "Phoenix \u2022 R leading crown 4",
+        "Phoenix \u2022 R leading crown 5",
+        "Phoenix \u2022 R primary 01",
+        "Phoenix \u2022 R primary 02",
+        "Phoenix \u2022 R primary 03",
+        "Phoenix \u2022 R primary 04",
+        "Phoenix \u2022 R primary 05",
+        "Phoenix \u2022 R primary 06",
+        "Phoenix \u2022 R primary 07",
+        "Phoenix \u2022 R primary 08",
+        "Phoenix \u2022 R primary 09",
+        "Phoenix \u2022 R primary 10",
+        "Phoenix \u2022 R primary 11",
+        "Phoenix \u2022 R primary 12",
+        "Phoenix \u2022 R secondary 01",
+        "Phoenix \u2022 R secondary 02",
+        "Phoenix \u2022 R secondary 03",
+        "Phoenix \u2022 R secondary 04",
+        "Phoenix \u2022 R secondary 05",
+        "Phoenix \u2022 R secondary 06",
+        "Phoenix \u2022 R secondary 07",
+        "Phoenix \u2022 R secondary 08",
+        "Phoenix \u2022 R secondary 09"
+      ]
+    }
+  ]
+}

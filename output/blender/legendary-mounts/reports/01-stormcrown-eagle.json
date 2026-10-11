@@ -1,0 +1,55 @@
+{
+  "asset": "STORMCROWN EAGLE",
+  "blend": "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/models/01-stormcrown-eagle.blend",
+  "mesh_objects": 335,
+  "triangles": 108302,
+  "animated_objects": [
+    "Stormcrown.Wing.L",
+    "Stormcrown.Wing.R"
+  ],
+  "shape_animated_objects": [],
+  "pose_bounds": {
+    "1": {
+      "min": [
+        -4.8356451988220215,
+        -2.3797922134399414,
+        -1.121000051498413
+      ],
+      "max": [
+        4.8356451988220215,
+        2.9000000953674316,
+        3.0382344722747803
+      ]
+    },
+    "13": {
+      "min": [
+        -5.35478401184082,
+        -2.3797922134399414,
+        -1.121000051498413
+      ],
+      "max": [
+        5.35478401184082,
+        2.9000000953674316,
+        2.632166862487793
+      ]
+    },
+    "25": {
+      "min": [
+        -4.8356451988220215,
+        -2.3797922134399414,
+        -1.121000051498413
+      ],
+      "max": [
+        4.8356451988220215,
+        2.9000000953674316,
+        3.0382344722747803
+      ]
+    }
+  },
+  "renders": [
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/01-stormcrown-eagle-hero.png",
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/01-stormcrown-eagle-side.png",
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/01-stormcrown-eagle-wings-up.png",
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/01-stormcrown-eagle-wings-down.png"
+  ]
+}

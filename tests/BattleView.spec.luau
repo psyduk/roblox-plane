@@ -1,6 +1,7 @@
 -- Native Roblox engine checks for post-result presentation, not subjective feel.
 -- require(thisModule)(BattleView, World, BattleSimulation). Fixtures are destroyed.
 return function(View, World, Simulation)
+    local PlaneCatalog=require(game:GetService("ReplicatedStorage").FlightGame.PlaneCatalog)
     local passed=0
     local function test(name,body)
         local cues={}
@@ -123,24 +124,40 @@ return function(View, World, Simulation)
         end
     end)
     test("every equipped skin keeps its geometry under every active offence",function(view,cues,advance,snapshot)
-        for skinIndex,skin in ipairs({"cruiser","skyhopper","dart"}) do
+        for skinIndex,skin in ipairs(PlaneCatalog.ORDER) do
             local s=snapshot(100+skinIndex,"Pick",3,3)
             s.players={{userId=1,name="You",planeId=skin,color=1},{userId=2,name="Rival",planeId=skin,color=1}}
             s.simulation.finished=false; s.simulation.fighters[1].offenceId=""
             s.simulation.fighters[2].offenceId=""
             view:update(s,1/60)
             local fighter=view.fighters[1]; local bodySize=fighter.body.Size
-            local geometry={}
-            for _,piece in ipairs(fighter.model:GetChildren()) do
-                if piece:IsA("BasePart") and piece.Transparency<0.5 then geometry[piece]=piece.Size end
+            local cosmetic=PlaneCatalog.get(skin).cosmeticOnly==true
+            local visual=fighter.model:FindFirstChild("MountVisual")
+            if cosmetic then
+                assert(fighter.model:GetAttribute("MountVisualLoaded")==true and visual,"Legendary template failed to load: "..skin)
+                assert(fighter.body.Transparency==1,"Cosmetic shell became visible: "..skin)
             end
+            local geometry,geometryCount={},0
+            for _,piece in ipairs((visual or fighter.model):GetDescendants()) do
+                if piece:IsA("BasePart") and piece.Transparency<0.5 then
+                    geometry[piece]={size=piece.Size,transparency=piece.Transparency}
+                    geometryCount=geometryCount+1
+                end
+            end
+            assert(geometryCount>0,"Equipped skin had no visible geometry: "..skin)
+            for _,ghost in ipairs(fighter.afterimages) do assert(#ghost.pieces>0,"Afterimage lost equipped skin: "..skin) end
             for _,name in ipairs({"Nose","Belly","WingLeft","WingRight","Tail","Centre","Top"}) do
                 assert(fighter.model.PrimaryPart:FindFirstChild(name):IsA("Attachment"),"Missing "..skin.." "..name)
             end
             for _,offence in ipairs({"Meteor","Firework","MachineGun","Pinball"}) do
-                view:_setSignature(fighter,offence)
+                s.phase="Fight";s.simulation.fighters[1].offenceId=offence
+                s.simulation.fighters[1].phase="Windup";s.simulation.fighters[1].phaseLeft=0.5
+                view:update(s,1/60)
                 assert(fighter.body.Size==bodySize,"Skill reshaped equipped fuselage")
-                for piece,size in pairs(geometry) do assert(piece.Size==size and piece.Transparency<0.5,"Skill hid or reshaped "..piece.Name) end
+                for piece,original in pairs(geometry) do
+                    assert(piece.Size==original.size and piece.Transparency==original.transparency,"Skill hid or reshaped "..skin.." "..piece.Name)
+                end
+                if cosmetic then assert(fighter.body.Transparency==1,"Battle frame revealed cosmetic shell: "..skin) end
                 assert(fighter.model:GetAttribute("PlaneId")==skin,"Wrong equipped skin")
             end
             assert(view.fighters[2].model:GetAttribute("PlaneId")==skin,"Mirror replaced rival skin")

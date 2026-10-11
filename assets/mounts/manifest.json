@@ -1,0 +1,61 @@
+{
+  "assets": [
+    {
+      "id": "01-stormcrown-eagle",
+      "name": "Stormcrown Eagle",
+      "glb": "assets/mounts/01-stormcrown-eagle/01-stormcrown-eagle.glb",
+      "mesh_parts": 6,
+      "triangles": 14596,
+      "source_wingspan": 10.494043350219727,
+      "seat_roblox": [
+        0.08,
+        1.01,
+        -0.0
+      ],
+      "scale_to_16_stud_wingspan": 1.5246744716053597
+    },
+    {
+      "id": "02-ironwing-eagle",
+      "name": "Ironwing Eagle",
+      "glb": "assets/mounts/02-ironwing-eagle/02-ironwing-eagle.glb",
+      "mesh_parts": 6,
+      "triangles": 14595,
+      "source_wingspan": 10.489663124084473,
+      "seat_roblox": [
+        0.08,
+        1.01,
+        -0.0
+      ],
+      "scale_to_16_stud_wingspan": 1.525311138282762
+    },
+    {
+      "id": "03-eclipse-phoenix",
+      "name": "Eclipse Phoenix",
+      "glb": "assets/mounts/03-eclipse-phoenix/03-eclipse-phoenix.glb",
+      "mesh_parts": 6,
+      "triangles": 14595,
+      "source_wingspan": 9.564001083374023,
+      "seat_roblox": [
+        0.1,
+        1.0,
+        -0.0
+      ],
+      "scale_to_16_stud_wingspan": 1.6729400028837575
+    },
+    {
+      "id": "04-rift-manta",
+      "name": "Rift Manta",
+      "glb": "assets/mounts/04-rift-manta/04-rift-manta.glb",
+      "mesh_parts": 6,
+      "triangles": 14592,
+      "source_wingspan": 10.35009241104126,
+      "seat_roblox": [
+        -0.13,
+        0.85,
+        -0.0
+      ],
+      "scale_to_16_stud_wingspan": 1.545879917258665
+    }
+  ],
+  "publication": "Not imported or published by exporter."
+}

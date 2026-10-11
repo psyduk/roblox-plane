@@ -1,0 +1,124 @@
+{
+  "output": "/Users/andrew/Documents/ChatGPT/color-switch/assets/mounts/MountTemplates.rbxmx",
+  "input": "/Users/andrew/Documents/ChatGPT/color-switch/assets/mounts/roblox-import.json",
+  "skins": [
+    {
+      "skin": "stormcrown",
+      "mesh_parts": 6,
+      "scale": 1.5246744716053597,
+      "cockpit": [
+        0.12197395772842878,
+        2.1899212163214132,
+        -0.0
+      ],
+      "wing_pivots": {
+        "Body": [
+          0,
+          0,
+          0
+        ],
+        "WingRight": [
+          -0.0,
+          0.5031425956228583,
+          0.9605449098411623
+        ],
+        "WingLeft": [
+          -0.0,
+          0.5031425956228583,
+          -0.9605449098411623
+        ]
+      },
+      "box_wingspan": 15.999999074667809
+    },
+    {
+      "skin": "ironwing",
+      "mesh_parts": 6,
+      "scale": 1.525311138282762,
+      "cockpit": [
+        0.12202489106262096,
+        2.1905642496655897,
+        -0.0
+      ],
+      "wing_pivots": {
+        "Body": [
+          0,
+          0,
+          0
+        ],
+        "WingRight": [
+          -0.0,
+          0.5033526956347497,
+          0.9609460098448898
+        ],
+        "WingLeft": [
+          -0.0,
+          0.5033526956347497,
+          -0.9609460098448898
+        ]
+      },
+      "box_wingspan": 16.000000277563984
+    },
+    {
+      "skin": "phoenix",
+      "mesh_parts": 6,
+      "scale": 1.6729400028837575,
+      "cockpit": [
+        0.16729400028837577,
+        2.3229400028837577,
+        -0.0
+      ],
+      "wing_pivots": {
+        "Body": [
+          0,
+          0,
+          0
+        ],
+        "WingRight": [
+          0.10037639792943807,
+          0.6189878090441898,
+          0.8197406173674403
+        ],
+        "WingLeft": [
+          0.10037639792943807,
+          0.6189878090441898,
+          -0.8197406173674403
+        ]
+      },
+      "box_wingspan": 16.00520228174021
+    },
+    {
+      "skin": "riftmanta",
+      "mesh_parts": 6,
+      "scale": 1.545879917258665,
+      "cockpit": [
+        -0.20096438924362647,
+        1.963997929669865,
+        -0.0
+      ],
+      "wing_pivots": {
+        "Body": [
+          0,
+          0,
+          0
+        ],
+        "WingRight": [
+          -0.0,
+          0.0,
+          1.051198354792887
+        ],
+        "WingLeft": [
+          -0.0,
+          0.0,
+          -1.051198354792887
+        ]
+      },
+      "box_wingspan": 16.000000115057304
+    }
+  ],
+  "input_wingspan": 12.0,
+  "input_to_template_scale": 1.3333333333333333,
+  "wingspan": 16.0,
+  "pilot_scale": 0.6,
+  "seat_hrp_offset_y": 0.65,
+  "geometry": "Uploaded Roblox mesh references; no runtime MeshId writes or EditableMesh requirement."
+}

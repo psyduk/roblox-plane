@@ -1,0 +1,23 @@
+{
+  "status": "Blender model prototypes; not integrated into Roblox",
+  "screenshots": 16,
+  "screenshot_resolution": [
+    1600,
+    1200
+  ],
+  "preview_animation": "24 fps, keyed endpoints 1 and 25 match",
+  "manta_verified_fin_sample_z": {
+    "1": 2.1928393840789795,
+    "7": 0.8767924904823303,
+    "13": -0.4392542541027069,
+    "25": 2.1928393840789795
+  },
+  "master": "Legendary-Mounts.blend",
+  "source_scripts": "source/",
+  "model_files": [
+    "models/01-stormcrown-eagle.blend",
+    "models/02-ironwing-eagle.blend",
+    "models/03-eclipse-phoenix.blend",
+    "models/04-rift-manta.blend"
+  ]
+}

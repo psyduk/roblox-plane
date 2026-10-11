@@ -1,0 +1,959 @@
+{
+  "id": "01-stormcrown-eagle",
+  "name": "Stormcrown Eagle",
+  "source_blend": "output/blender/legendary-mounts/models/01-stormcrown-eagle.blend",
+  "glb": "assets/mounts/01-stormcrown-eagle/01-stormcrown-eagle.glb",
+  "frame": 7,
+  "source_object_count": 359,
+  "source_triangles": 132454,
+  "mesh_parts": 6,
+  "triangles": 14596,
+  "materials": 2,
+  "placeholder_pilot_exported": false,
+  "presentation_exported": false,
+  "bounds_blender": {
+    "min": [
+      -5.247021675109863,
+      -2.38088321685791,
+      -1.2089083194732666
+    ],
+    "max": [
+      5.247021675109863,
+      2.9019579887390137,
+      1.61625337600708
+    ]
+  },
+  "source_wingspan": 10.494043350219727,
+  "scale_to_16_stud_wingspan": 1.5246744716053597,
+  "scale_rule": "For target wingspan W studs, multiply every imported part size, offset, pivot and seat offset by W/source_wingspan.",
+  "seat_blender": [
+    0,
+    -0.08,
+    1.01
+  ],
+  "seat_gltf": [
+    0.0,
+    1.01,
+    0.08
+  ],
+  "seat_roblox": [
+    0.08,
+    1.01,
+    -0.0
+  ],
+  "coordinates": {
+    "blender": "X right, Z up, -Y forward",
+    "gltf": "Standard Blender glTF exporter: (x,z,-y); Y up, +Z forward.",
+    "roblox": "Apply +90 degrees about Y to standard GLB import, then uniform scale. Desired source conversion is (-y,z,-x), +X forward, +Y up.",
+    "caution": "Studio may center each MeshPart on its bounds. Use measured imported centers, not inferred GLB node origins, when packaging the final template."
+  },
+  "animation": {
+    "type": "Rigid animated wing components",
+    "loop_seconds": 1.0,
+    "axis_roblox": [
+      -1,
+      0,
+      0
+    ],
+    "axis_blender": [
+      0,
+      1,
+      0
+    ],
+    "reference_frame": 7,
+    "manta_approximation": false,
+    "notes": "Body fixed. Rotate both solid and glow components together around the matching pivot; opposite wing signs. Manta source shape-key deformation is approximated by rigid fin rotations. Phoenix split-tail sway is baked into Body at frame 7."
+  },
+  "emission": "GLB includes an emissive palette for glow components; if Roblox importer drops emission, set those MeshParts to Neon. Exact Blender glow intensity is not a Roblox guarantee.",
+  "palette": [
+    {
+      "name": "Stormcrown.Primary plumage",
+      "linear_base_color": [
+        0.03099999949336052,
+        0.014000000432133675,
+        0.007000000216066837,
+        1.0
+      ],
+      "metallic": 0.029999999329447746,
+      "roughness": 0.6200000047683716,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Stormcrown.Raised plumage",
+      "linear_base_color": [
+        0.06499999761581421,
+        0.028999999165534973,
+        0.012000000104308128,
+        1.0
+      ],
+      "metallic": 0.029999999329447746,
+      "roughness": 0.6000000238418579,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Stormcrown.Ivory head",
+      "linear_base_color": [
+        0.8999999761581421,
+        0.8899999856948853,
+        0.7799999713897705,
+        1.0
+      ],
+      "metallic": 0.029999999329447746,
+      "roughness": 0.5,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Stormcrown.Ivory feather shade",
+      "linear_base_color": [
+        0.6700000166893005,
+        0.699999988079071,
+        0.6499999761581421,
+        1.0
+      ],
+      "metallic": 0.019999999552965164,
+      "roughness": 0.47999998927116394,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Stormcrown.Blue steel bevel",
+      "linear_base_color": [
+        0.0949999988079071,
+        0.041999999433755875,
+        0.017000000923871994,
+        1.0
+      ],
+      "metallic": 0.019999999552965164,
+      "roughness": 0.6200000047683716,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Stormcrown.Storm feather light",
+      "linear_base_color": [
+        0.014999999664723873,
+        0.5199999809265137,
+        1.0,
+        1.0
+      ],
+      "metallic": 0.20000000298023224,
+      "roughness": 0.27000001072883606,
+      "emission_strength": 3.0,
+      "linear_emission_color": [
+        0.014999999664723873,
+        0.5199999809265137,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Stormcrown.Warm gold",
+      "linear_base_color": [
+        0.9100000262260437,
+        0.46000000834465027,
+        0.05999999865889549,
+        1.0
+      ],
+      "metallic": 0.550000011920929,
+      "roughness": 0.25999999046325684,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Stormcrown.Deep recess",
+      "linear_base_color": [
+        0.008999999612569809,
+        0.014000000432133675,
+        0.02800000086426735,
+        1.0
+      ],
+      "metallic": 0.05000000074505806,
+      "roughness": 0.3799999952316284,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Stormcrown.Amber iris",
+      "linear_base_color": [
+        1.0,
+        0.5400000214576721,
+        0.05999999865889549,
+        1.0
+      ],
+      "metallic": 0.5,
+      "roughness": 0.2199999988079071,
+      "emission_strength": 0.20000000298023224,
+      "linear_emission_color": [
+        1.0,
+        0.5400000214576721,
+        0.05999999865889549,
+        1.0
+      ]
+    },
+    {
+      "name": "Stormcrown.Gold edge",
+      "linear_base_color": [
+        1.0,
+        0.7200000286102295,
+        0.1899999976158142,
+        1.0
+      ],
+      "metallic": 0.7799999713897705,
+      "roughness": 0.25,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Stormcrown.Saddle leather",
+      "linear_base_color": [
+        0.032999999821186066,
+        0.014999999664723873,
+        0.012000000104308128,
+        1.0
+      ],
+      "metallic": 0.10000000149011612,
+      "roughness": 0.3799999952316284,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "parts": [
+    {
+      "name": "Body",
+      "motion_group": "Body",
+      "glow": false,
+      "triangles": 6080,
+      "vertices": 3454,
+      "budget": 6105,
+      "source_triangles": 67774,
+      "source_object_count": 166,
+      "pivot_blender": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "pivot_gltf": [
+        0.0,
+        0.0,
+        -0.0
+      ],
+      "pivot_roblox": [
+        -0.0,
+        0.0,
+        -0.0
+      ],
+      "center_blender": [
+        -9.417533874511719e-06,
+        0.26053738594055176,
+        0.12546783685684204
+      ],
+      "center_gltf": [
+        -9.417533874511719e-06,
+        0.12546783685684204,
+        -0.26053738594055176
+      ],
+      "center_roblox": [
+        -0.26053738594055176,
+        0.12546783685684204,
+        9.417533874511719e-06
+      ],
+      "local_bounds_blender": {
+        "min": [
+          -1.0246784687042236,
+          -2.38088321685791,
+          -1.2089083194732666
+        ],
+        "max": [
+          1.0246596336364746,
+          2.9019579887390137,
+          1.4598439931869507
+        ]
+      },
+      "recommended_material": "SmoothPlastic",
+      "source_objects": [
+        "Stormcrown.-1.Eye glint",
+        "Stormcrown.-1.Eye socket",
+        "Stormcrown.-1.Pupil",
+        "Stormcrown.-1.Stern eyebrow",
+        "Stormcrown.1.Eye glint",
+        "Stormcrown.1.Eye socket",
+        "Stormcrown.1.Pupil",
+        "Stormcrown.1.Stern eyebrow",
+        "Stormcrown.Beak mouth seam",
+        "Stormcrown.Beak mouth seam.001",
+        "Stormcrown.Breast",
+        "Stormcrown.Breast heraldic diamond",
+        "Stormcrown.Chest harness -1",
+        "Stormcrown.Chest harness 1",
+        "Stormcrown.Chest shield.-1.0",
+        "Stormcrown.Chest shield.-1.1",
+        "Stormcrown.Chest shield.-1.2",
+        "Stormcrown.Chest shield.-1.3",
+        "Stormcrown.Chest shield.-1.4",
+        "Stormcrown.Chest shield.1.0",
+        "Stormcrown.Chest shield.1.1",
+        "Stormcrown.Chest shield.1.2",
+        "Stormcrown.Chest shield.1.3",
+        "Stormcrown.Chest shield.1.4",
+        "Stormcrown.Cranium",
+        "Stormcrown.Flank.-1.0.0",
+        "Stormcrown.Flank.-1.0.1",
+        "Stormcrown.Flank.-1.0.2",
+        "Stormcrown.Flank.-1.0.3",
+        "Stormcrown.Flank.-1.0.4",
+        "Stormcrown.Flank.-1.0.5",
+        "Stormcrown.Flank.-1.1.0",
+        "Stormcrown.Flank.-1.1.1",
+        "Stormcrown.Flank.-1.1.2",
+        "Stormcrown.Flank.-1.1.3",
+        "Stormcrown.Flank.-1.1.4",
+        "Stormcrown.Flank.-1.1.5",
+        "Stormcrown.Flank.-1.2.0",
+        "Stormcrown.Flank.-1.2.1",
+        "Stormcrown.Flank.-1.2.2",
+        "Stormcrown.Flank.-1.2.3",
+        "Stormcrown.Flank.-1.2.4",
+        "Stormcrown.Flank.-1.2.5",
+        "Stormcrown.Flank.-1.3.0",
+        "Stormcrown.Flank.-1.3.1",
+        "Stormcrown.Flank.-1.3.2",
+        "Stormcrown.Flank.-1.3.3",
+        "Stormcrown.Flank.-1.3.4",
+        "Stormcrown.Flank.-1.3.5",
+        "Stormcrown.Flank.1.0.0",
+        "Stormcrown.Flank.1.0.1",
+        "Stormcrown.Flank.1.0.2",
+        "Stormcrown.Flank.1.0.3",
+        "Stormcrown.Flank.1.0.4",
+        "Stormcrown.Flank.1.0.5",
+        "Stormcrown.Flank.1.1.0",
+        "Stormcrown.Flank.1.1.1",
+        "Stormcrown.Flank.1.1.2",
+        "Stormcrown.Flank.1.1.3",
+        "Stormcrown.Flank.1.1.4",
+        "Stormcrown.Flank.1.1.5",
+        "Stormcrown.Flank.1.2.0",
+        "Stormcrown.Flank.1.2.1",
+        "Stormcrown.Flank.1.2.2",
+        "Stormcrown.Flank.1.2.3",
+        "Stormcrown.Flank.1.2.4",
+        "Stormcrown.Flank.1.2.5",
+        "Stormcrown.Flank.1.3.0",
+        "Stormcrown.Flank.1.3.1",
+        "Stormcrown.Flank.1.3.2",
+        "Stormcrown.Flank.1.3.3",
+        "Stormcrown.Flank.1.3.4",
+        "Stormcrown.Flank.1.3.5",
+        "Stormcrown.Forehead crown.-1.0",
+        "Stormcrown.Forehead crown.-1.1",
+        "Stormcrown.Forehead crown.-1.2",
+        "Stormcrown.Forehead crown.1.0",
+        "Stormcrown.Forehead crown.1.1",
+        "Stormcrown.Forehead crown.1.2",
+        "Stormcrown.Harness gold piping -1",
+        "Stormcrown.Harness gold piping 1",
+        "Stormcrown.Hooked golden beak",
+        "Stormcrown.L.Ankle scale 0",
+        "Stormcrown.L.Ankle scale 1",
+        "Stormcrown.L.Ankle scale 2",
+        "Stormcrown.L.Ankle scale 3",
+        "Stormcrown.L.Curved talon 0",
+        "Stormcrown.L.Curved talon 1",
+        "Stormcrown.L.Curved talon 2",
+        "Stormcrown.L.Feathered thigh",
+        "Stormcrown.L.Rear claw",
+        "Stormcrown.L.Rear gripping toe",
+        "Stormcrown.L.Scaled ankle",
+        "Stormcrown.L.Toe 0",
+        "Stormcrown.L.Toe 1",
+        "Stormcrown.L.Toe 2",
+        "Stormcrown.Leather seat",
+        "Stormcrown.Nostril",
+        "Stormcrown.Nostril.001",
+        "Stormcrown.R.Ankle scale 0",
+        "Stormcrown.R.Ankle scale 1",
+        "Stormcrown.R.Ankle scale 2",
+        "Stormcrown.R.Ankle scale 3",
+        "Stormcrown.R.Curved talon 0",
+        "Stormcrown.R.Curved talon 1",
+        "Stormcrown.R.Curved talon 2",
+        "Stormcrown.R.Feathered thigh",
+        "Stormcrown.R.Rear claw",
+        "Stormcrown.R.Rear gripping toe",
+        "Stormcrown.R.Scaled ankle",
+        "Stormcrown.R.Toe 0",
+        "Stormcrown.R.Toe 1",
+        "Stormcrown.R.Toe 2",
+        "Stormcrown.Raised seat cantle",
+        "Stormcrown.Ruff.-1.0.0",
+        "Stormcrown.Ruff.-1.0.1",
+        "Stormcrown.Ruff.-1.0.2",
+        "Stormcrown.Ruff.-1.0.3",
+        "Stormcrown.Ruff.-1.0.4",
+        "Stormcrown.Ruff.-1.1.0",
+        "Stormcrown.Ruff.-1.1.1",
+        "Stormcrown.Ruff.-1.1.2",
+        "Stormcrown.Ruff.-1.1.3",
+        "Stormcrown.Ruff.-1.1.4",
+        "Stormcrown.Ruff.-1.2.0",
+        "Stormcrown.Ruff.-1.2.1",
+        "Stormcrown.Ruff.-1.2.2",
+        "Stormcrown.Ruff.-1.2.3",
+        "Stormcrown.Ruff.-1.2.4",
+        "Stormcrown.Ruff.1.0.0",
+        "Stormcrown.Ruff.1.0.1",
+        "Stormcrown.Ruff.1.0.2",
+        "Stormcrown.Ruff.1.0.3",
+        "Stormcrown.Ruff.1.0.4",
+        "Stormcrown.Ruff.1.1.0",
+        "Stormcrown.Ruff.1.1.1",
+        "Stormcrown.Ruff.1.1.2",
+        "Stormcrown.Ruff.1.1.3",
+        "Stormcrown.Ruff.1.1.4",
+        "Stormcrown.Ruff.1.2.0",
+        "Stormcrown.Ruff.1.2.1",
+        "Stormcrown.Ruff.1.2.2",
+        "Stormcrown.Ruff.1.2.3",
+        "Stormcrown.Ruff.1.2.4",
+        "Stormcrown.Rump",
+        "Stormcrown.Saddle handle -1",
+        "Stormcrown.Saddle handle 1",
+        "Stormcrown.Saddle pad",
+        "Stormcrown.Tail white rectrix 00",
+        "Stormcrown.Tail white rectrix 01",
+        "Stormcrown.Tail white rectrix 02",
+        "Stormcrown.Tail white rectrix 03",
+        "Stormcrown.Tail white rectrix 04",
+        "Stormcrown.Tail white rectrix 05",
+        "Stormcrown.Tail white rectrix 06",
+        "Stormcrown.Tail white rectrix 07",
+        "Stormcrown.Tail white rectrix 08",
+        "Stormcrown.Tail white rectrix 09",
+        "Stormcrown.Tail white rectrix 10",
+        "Stormcrown.Torso",
+        "Stormcrown.Upright neck",
+        "Stormcrown.White throat spear 0",
+        "Stormcrown.White throat spear 1",
+        "Stormcrown.White throat spear 2",
+        "Stormcrown.White throat spear 3",
+        "Stormcrown.White throat spear 4"
+      ]
+    },
+    {
+      "name": "BodyGlow",
+      "motion_group": "Body",
+      "glow": true,
+      "triangles": 492,
+      "vertices": 253,
+      "budget": 517,
+      "source_triangles": 1444,
+      "source_object_count": 3,
+      "pivot_blender": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "pivot_gltf": [
+        0.0,
+        0.0,
+        -0.0
+      ],
+      "pivot_roblox": [
+        -0.0,
+        0.0,
+        -0.0
+      ],
+      "center_blender": [
+        0.0,
+        -1.6709955930709839,
+        0.5034999698400497
+      ],
+      "center_gltf": [
+        0.0,
+        0.5034999698400497,
+        1.6709955930709839
+      ],
+      "center_roblox": [
+        1.6709955930709839,
+        0.5034999698400497,
+        -0.0
+      ],
+      "local_bounds_blender": {
+        "min": [
+          -0.517981231212616,
+          -1.922991156578064,
+          -0.27000001072883606
+        ],
+        "max": [
+          0.517981231212616,
+          -1.4190000295639038,
+          1.2769999504089355
+        ]
+      },
+      "recommended_material": "Neon",
+      "source_objects": [
+        "Stormcrown.-1.Amber iris",
+        "Stormcrown.1.Amber iris",
+        "Stormcrown.Breast inset jewel"
+      ]
+    },
+    {
+      "name": "WingLeft",
+      "motion_group": "WingLeft",
+      "glow": false,
+      "triangles": 3444,
+      "vertices": 1908,
+      "budget": 3469,
+      "source_triangles": 29058,
+      "source_object_count": 87,
+      "pivot_blender": [
+        -0.6299999952316284,
+        0.0,
+        0.33000001311302185
+      ],
+      "pivot_gltf": [
+        -0.6299999952316284,
+        0.33000001311302185,
+        -0.0
+      ],
+      "pivot_roblox": [
+        -0.0,
+        0.33000001311302185,
+        0.6299999952316284
+      ],
+      "center_blender": [
+        -2.8858884386718273,
+        0.8293750584125519,
+        0.6678836643695831
+      ],
+      "center_gltf": [
+        -2.8858884386718273,
+        0.6678836643695831,
+        -0.8293750584125519
+      ],
+      "center_roblox": [
+        -0.8293750584125519,
+        0.6678836643695831,
+        2.8858884386718273
+      ],
+      "local_bounds_blender": {
+        "min": [
+          -4.614418983459473,
+          -0.8024653792381287,
+          -0.5891193151473999
+        ],
+        "max": [
+          0.10264209657907486,
+          2.4612154960632324,
+          1.2648866176605225
+        ]
+      },
+      "recommended_material": "SmoothPlastic",
+      "source_objects": [
+        "Stormcrown.L.Covert tier 0.00",
+        "Stormcrown.L.Covert tier 0.01",
+        "Stormcrown.L.Covert tier 0.02",
+        "Stormcrown.L.Covert tier 0.03",
+        "Stormcrown.L.Covert tier 0.04",
+        "Stormcrown.L.Covert tier 0.05",
+        "Stormcrown.L.Covert tier 0.06",
+        "Stormcrown.L.Covert tier 0.07",
+        "Stormcrown.L.Covert tier 0.08",
+        "Stormcrown.L.Covert tier 0.09",
+        "Stormcrown.L.Covert tier 0.10",
+        "Stormcrown.L.Covert tier 0.11",
+        "Stormcrown.L.Covert tier 0.12",
+        "Stormcrown.L.Covert tier 1.00",
+        "Stormcrown.L.Covert tier 1.01",
+        "Stormcrown.L.Covert tier 1.02",
+        "Stormcrown.L.Covert tier 1.03",
+        "Stormcrown.L.Covert tier 1.04",
+        "Stormcrown.L.Covert tier 1.05",
+        "Stormcrown.L.Covert tier 1.06",
+        "Stormcrown.L.Covert tier 1.07",
+        "Stormcrown.L.Covert tier 1.08",
+        "Stormcrown.L.Covert tier 1.09",
+        "Stormcrown.L.Covert tier 1.10",
+        "Stormcrown.L.Covert tier 1.11",
+        "Stormcrown.L.Covert tier 1.12",
+        "Stormcrown.L.Covert tier 2.00",
+        "Stormcrown.L.Covert tier 2.01",
+        "Stormcrown.L.Covert tier 2.02",
+        "Stormcrown.L.Covert tier 2.03",
+        "Stormcrown.L.Covert tier 2.04",
+        "Stormcrown.L.Covert tier 2.05",
+        "Stormcrown.L.Covert tier 2.06",
+        "Stormcrown.L.Covert tier 2.07",
+        "Stormcrown.L.Covert tier 2.08",
+        "Stormcrown.L.Covert tier 2.09",
+        "Stormcrown.L.Covert tier 2.10",
+        "Stormcrown.L.Covert tier 2.11",
+        "Stormcrown.L.Covert tier 2.12",
+        "Stormcrown.L.Leading edge pointed feather 00",
+        "Stormcrown.L.Leading edge pointed feather 01",
+        "Stormcrown.L.Leading edge pointed feather 02",
+        "Stormcrown.L.Leading edge pointed feather 03",
+        "Stormcrown.L.Leading edge pointed feather 04",
+        "Stormcrown.L.Leading edge pointed feather 05",
+        "Stormcrown.L.Leading edge pointed feather 06",
+        "Stormcrown.L.Leading edge pointed feather 07",
+        "Stormcrown.L.Leading edge pointed feather 08",
+        "Stormcrown.L.Leading edge pointed feather 09",
+        "Stormcrown.L.Leading edge pointed feather 10",
+        "Stormcrown.L.Primary flight feather 00",
+        "Stormcrown.L.Primary flight feather 01",
+        "Stormcrown.L.Primary flight feather 02",
+        "Stormcrown.L.Primary flight feather 03",
+        "Stormcrown.L.Primary flight feather 04",
+        "Stormcrown.L.Primary flight feather 05",
+        "Stormcrown.L.Primary flight feather 06",
+        "Stormcrown.L.Primary flight feather 07",
+        "Stormcrown.L.Primary spine 00",
+        "Stormcrown.L.Primary spine 01",
+        "Stormcrown.L.Primary spine 02",
+        "Stormcrown.L.Primary spine 03",
+        "Stormcrown.L.Primary spine 04",
+        "Stormcrown.L.Primary spine 05",
+        "Stormcrown.L.Primary spine 06",
+        "Stormcrown.L.Primary spine 07",
+        "Stormcrown.L.Sculpted feather wing web",
+        "Stormcrown.L.Secondary flight feather 00",
+        "Stormcrown.L.Secondary flight feather 01",
+        "Stormcrown.L.Secondary flight feather 02",
+        "Stormcrown.L.Secondary flight feather 03",
+        "Stormcrown.L.Secondary flight feather 04",
+        "Stormcrown.L.Secondary flight feather 05",
+        "Stormcrown.L.Secondary flight feather 06",
+        "Stormcrown.L.Secondary flight feather 07",
+        "Stormcrown.L.Secondary flight feather 08",
+        "Stormcrown.L.Secondary flight feather 09",
+        "Stormcrown.L.Secondary flight feather 10",
+        "Stormcrown.L.Shoulder harness cuff",
+        "Stormcrown.L.Shoulder mantle 00",
+        "Stormcrown.L.Shoulder mantle 01",
+        "Stormcrown.L.Shoulder mantle 02",
+        "Stormcrown.L.Shoulder mantle 03",
+        "Stormcrown.L.Shoulder mantle 04",
+        "Stormcrown.L.Shoulder mantle 05",
+        "Stormcrown.L.Shoulder mantle 06",
+        "Stormcrown.L.Shoulder mantle 07"
+      ]
+    },
+    {
+      "name": "WingLeftGlow",
+      "motion_group": "WingLeft",
+      "glow": true,
+      "triangles": 568,
+      "vertices": 364,
+      "budget": 593,
+      "source_triangles": 2560,
+      "source_object_count": 8,
+      "pivot_blender": [
+        -0.6299999952316284,
+        0.0,
+        0.33000001311302185
+      ],
+      "pivot_gltf": [
+        -0.6299999952316284,
+        0.33000001311302185,
+        -0.0
+      ],
+      "pivot_roblox": [
+        -0.0,
+        0.33000001311302185,
+        0.6299999952316284
+      ],
+      "center_blender": [
+        -4.196110725402832,
+        1.1590220630168915,
+        0.8608489036560059
+      ],
+      "center_gltf": [
+        -4.196110725402832,
+        0.8608489036560059,
+        -1.1590220630168915
+      ],
+      "center_roblox": [
+        -1.1590220630168915,
+        0.8608489036560059,
+        4.196110725402832
+      ],
+      "local_bounds_blender": {
+        "min": [
+          -4.617021560668945,
+          -0.1485942006111145,
+          -0.22455555200576782
+        ],
+        "max": [
+          -2.515199899673462,
+          2.4666383266448975,
+          1.2862533330917358
+        ]
+      },
+      "recommended_material": "Neon",
+      "source_objects": [
+        "Stormcrown.L.Charged primary tip 00",
+        "Stormcrown.L.Charged primary tip 01",
+        "Stormcrown.L.Charged primary tip 02",
+        "Stormcrown.L.Charged primary tip 03",
+        "Stormcrown.L.Charged primary tip 04",
+        "Stormcrown.L.Charged primary tip 05",
+        "Stormcrown.L.Charged primary tip 06",
+        "Stormcrown.L.Charged primary tip 07"
+      ]
+    },
+    {
+      "name": "WingRight",
+      "motion_group": "WingRight",
+      "glow": false,
+      "triangles": 3444,
+      "vertices": 1907,
+      "budget": 3469,
+      "source_triangles": 29058,
+      "source_object_count": 87,
+      "pivot_blender": [
+        0.6299999952316284,
+        0.0,
+        0.33000001311302185
+      ],
+      "pivot_gltf": [
+        0.6299999952316284,
+        0.33000001311302185,
+        -0.0
+      ],
+      "pivot_roblox": [
+        -0.0,
+        0.33000001311302185,
+        -0.6299999952316284
+      ],
+      "center_blender": [
+        2.8865480422973633,
+        0.8291388154029846,
+        0.6678830087184906
+      ],
+      "center_gltf": [
+        2.8865480422973633,
+        0.6678830087184906,
+        -0.8291388154029846
+      ],
+      "center_roblox": [
+        -0.8291388154029846,
+        0.6678830087184906,
+        -2.8865480422973633
+      ],
+      "local_bounds_blender": {
+        "min": [
+          -0.10214638710021973,
+          -0.8024560213088989,
+          -0.5891208648681641
+        ],
+        "max": [
+          4.6152424812316895,
+          2.460733652114868,
+          1.2648868560791016
+        ]
+      },
+      "recommended_material": "SmoothPlastic",
+      "source_objects": [
+        "Stormcrown.R.Covert tier 0.00",
+        "Stormcrown.R.Covert tier 0.01",
+        "Stormcrown.R.Covert tier 0.02",
+        "Stormcrown.R.Covert tier 0.03",
+        "Stormcrown.R.Covert tier 0.04",
+        "Stormcrown.R.Covert tier 0.05",
+        "Stormcrown.R.Covert tier 0.06",
+        "Stormcrown.R.Covert tier 0.07",
+        "Stormcrown.R.Covert tier 0.08",
+        "Stormcrown.R.Covert tier 0.09",
+        "Stormcrown.R.Covert tier 0.10",
+        "Stormcrown.R.Covert tier 0.11",
+        "Stormcrown.R.Covert tier 0.12",
+        "Stormcrown.R.Covert tier 1.00",
+        "Stormcrown.R.Covert tier 1.01",
+        "Stormcrown.R.Covert tier 1.02",
+        "Stormcrown.R.Covert tier 1.03",
+        "Stormcrown.R.Covert tier 1.04",
+        "Stormcrown.R.Covert tier 1.05",
+        "Stormcrown.R.Covert tier 1.06",
+        "Stormcrown.R.Covert tier 1.07",
+        "Stormcrown.R.Covert tier 1.08",
+        "Stormcrown.R.Covert tier 1.09",
+        "Stormcrown.R.Covert tier 1.10",
+        "Stormcrown.R.Covert tier 1.11",
+        "Stormcrown.R.Covert tier 1.12",
+        "Stormcrown.R.Covert tier 2.00",
+        "Stormcrown.R.Covert tier 2.01",
+        "Stormcrown.R.Covert tier 2.02",
+        "Stormcrown.R.Covert tier 2.03",
+        "Stormcrown.R.Covert tier 2.04",
+        "Stormcrown.R.Covert tier 2.05",
+        "Stormcrown.R.Covert tier 2.06",
+        "Stormcrown.R.Covert tier 2.07",
+        "Stormcrown.R.Covert tier 2.08",
+        "Stormcrown.R.Covert tier 2.09",
+        "Stormcrown.R.Covert tier 2.10",
+        "Stormcrown.R.Covert tier 2.11",
+        "Stormcrown.R.Covert tier 2.12",
+        "Stormcrown.R.Leading edge pointed feather 00",
+        "Stormcrown.R.Leading edge pointed feather 01",
+        "Stormcrown.R.Leading edge pointed feather 02",
+        "Stormcrown.R.Leading edge pointed feather 03",
+        "Stormcrown.R.Leading edge pointed feather 04",
+        "Stormcrown.R.Leading edge pointed feather 05",
+        "Stormcrown.R.Leading edge pointed feather 06",
+        "Stormcrown.R.Leading edge pointed feather 07",
+        "Stormcrown.R.Leading edge pointed feather 08",
+        "Stormcrown.R.Leading edge pointed feather 09",
+        "Stormcrown.R.Leading edge pointed feather 10",
+        "Stormcrown.R.Primary flight feather 00",
+        "Stormcrown.R.Primary flight feather 01",
+        "Stormcrown.R.Primary flight feather 02",
+        "Stormcrown.R.Primary flight feather 03",
+        "Stormcrown.R.Primary flight feather 04",
+        "Stormcrown.R.Primary flight feather 05",
+        "Stormcrown.R.Primary flight feather 06",
+        "Stormcrown.R.Primary flight feather 07",
+        "Stormcrown.R.Primary spine 00",
+        "Stormcrown.R.Primary spine 01",
+        "Stormcrown.R.Primary spine 02",
+        "Stormcrown.R.Primary spine 03",
+        "Stormcrown.R.Primary spine 04",
+        "Stormcrown.R.Primary spine 05",
+        "Stormcrown.R.Primary spine 06",
+        "Stormcrown.R.Primary spine 07",
+        "Stormcrown.R.Sculpted feather wing web",
+        "Stormcrown.R.Secondary flight feather 00",
+        "Stormcrown.R.Secondary flight feather 01",
+        "Stormcrown.R.Secondary flight feather 02",
+        "Stormcrown.R.Secondary flight feather 03",
+        "Stormcrown.R.Secondary flight feather 04",
+        "Stormcrown.R.Secondary flight feather 05",
+        "Stormcrown.R.Secondary flight feather 06",
+        "Stormcrown.R.Secondary flight feather 07",
+        "Stormcrown.R.Secondary flight feather 08",
+        "Stormcrown.R.Secondary flight feather 09",
+        "Stormcrown.R.Secondary flight feather 10",
+        "Stormcrown.R.Shoulder harness cuff",
+        "Stormcrown.R.Shoulder mantle 00",
+        "Stormcrown.R.Shoulder mantle 01",
+        "Stormcrown.R.Shoulder mantle 02",
+        "Stormcrown.R.Shoulder mantle 03",
+        "Stormcrown.R.Shoulder mantle 04",
+        "Stormcrown.R.Shoulder mantle 05",
+        "Stormcrown.R.Shoulder mantle 06",
+        "Stormcrown.R.Shoulder mantle 07"
+      ]
+    },
+    {
+      "name": "WingRightGlow",
+      "motion_group": "WingRight",
+      "glow": true,
+      "triangles": 568,
+      "vertices": 364,
+      "budget": 593,
+      "source_triangles": 2560,
+      "source_object_count": 8,
+      "pivot_blender": [
+        0.6299999952316284,
+        0.0,
+        0.33000001311302185
+      ],
+      "pivot_gltf": [
+        0.6299999952316284,
+        0.33000001311302185,
+        -0.0
+      ],
+      "pivot_roblox": [
+        -0.0,
+        0.33000001311302185,
+        -0.6299999952316284
+      ],
+      "center_blender": [
+        4.196110844612122,
+        1.1590220630168915,
+        0.8608489036560059
+      ],
+      "center_gltf": [
+        4.196110844612122,
+        0.8608489036560059,
+        -1.1590220630168915
+      ],
+      "center_roblox": [
+        -1.1590220630168915,
+        0.8608489036560059,
+        -4.196110844612122
+      ],
+      "local_bounds_blender": {
+        "min": [
+          2.515200138092041,
+          -0.1485942006111145,
+          -0.22455555200576782
+        ],
+        "max": [
+          4.617021560668945,
+          2.4666383266448975,
+          1.2862533330917358
+        ]
+      },
+      "recommended_material": "Neon",
+      "source_objects": [
+        "Stormcrown.R.Charged primary tip 00",
+        "Stormcrown.R.Charged primary tip 01",
+        "Stormcrown.R.Charged primary tip 02",
+        "Stormcrown.R.Charged primary tip 03",
+        "Stormcrown.R.Charged primary tip 04",
+        "Stormcrown.R.Charged primary tip 05",
+        "Stormcrown.R.Charged primary tip 06",
+        "Stormcrown.R.Charged primary tip 07"
+      ]
+    }
+  ]
+}

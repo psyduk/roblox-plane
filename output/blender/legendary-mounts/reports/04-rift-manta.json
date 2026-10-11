@@ -1,0 +1,103 @@
+{
+  "asset": "RIFT MANTA",
+  "blend": "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/models/04-rift-manta.blend",
+  "mesh_objects": 115,
+  "triangles": 80136,
+  "animated_objects": [],
+  "shape_animated_objects": [
+    "Port / supple manta fin",
+    "RIFT / iridescent leading rim",
+    "RIFT / pale trailing edge",
+    "RIFT / cyan celestial vein 0",
+    "RIFT / cyan celestial vein 1",
+    "RIFT / cyan celestial vein 2",
+    "RIFT / luminous ray rune 0",
+    "RIFT / luminous ray rune 1",
+    "RIFT / luminous ray rune 2",
+    "RIFT / luminous ray rune 3",
+    "RIFT / tiny star in skin",
+    "RIFT / tiny star in skin.001",
+    "RIFT / tiny star in skin.002",
+    "RIFT / tiny star in skin.003",
+    "RIFT / tiny star in skin.004",
+    "RIFT / tiny star in skin.005",
+    "RIFT / tiny star in skin.006",
+    "RIFT / tiny star in skin.007",
+    "RIFT / tiny star in skin.008",
+    "RIFT / tiny star in skin.009",
+    "RIFT / tiny star in skin.010",
+    "RIFT / tiny star in skin.011",
+    "RIFT / tiny star in skin.012",
+    "RIFT / tiny star in skin.013",
+    "RIFT / tiny star in skin.014",
+    "Starboard / supple manta fin",
+    "RIFT / iridescent leading rim.001",
+    "RIFT / pale trailing edge.001",
+    "RIFT / cyan celestial vein 0.001",
+    "RIFT / cyan celestial vein 1.001",
+    "RIFT / cyan celestial vein 2.001",
+    "RIFT / luminous ray rune 0.001",
+    "RIFT / luminous ray rune 1.001",
+    "RIFT / luminous ray rune 2.001",
+    "RIFT / luminous ray rune 3.001",
+    "RIFT / tiny star in skin.015",
+    "RIFT / tiny star in skin.016",
+    "RIFT / tiny star in skin.017",
+    "RIFT / tiny star in skin.018",
+    "RIFT / tiny star in skin.019",
+    "RIFT / tiny star in skin.020",
+    "RIFT / tiny star in skin.021",
+    "RIFT / tiny star in skin.022",
+    "RIFT / tiny star in skin.023",
+    "RIFT / tiny star in skin.024",
+    "RIFT / tiny star in skin.025",
+    "RIFT / tiny star in skin.026",
+    "RIFT / tiny star in skin.027",
+    "RIFT / tiny star in skin.028",
+    "RIFT / tiny star in skin.029"
+  ],
+  "pose_bounds": {
+    "1": {
+      "min": [
+        -5.173952579498291,
+        -2.5899999141693115,
+        -0.5600000023841858
+      ],
+      "max": [
+        5.173952579498291,
+        6.339999675750732,
+        2.4721670150756836
+      ]
+    },
+    "13": {
+      "min": [
+        -5.173952579498291,
+        -2.5899999141693115,
+        -0.5600000023841858
+      ],
+      "max": [
+        5.173952579498291,
+        6.339999675750732,
+        2.4721670150756836
+      ]
+    },
+    "25": {
+      "min": [
+        -5.173952579498291,
+        -2.5899999141693115,
+        -0.5600000023841858
+      ],
+      "max": [
+        5.173952579498291,
+        6.339999675750732,
+        2.4721670150756836
+      ]
+    }
+  },
+  "renders": [
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/04-rift-manta-hero.png",
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/04-rift-manta-side.png",
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/04-rift-manta-wings-up.png",
+    "/Users/andrew/Documents/ChatGPT/color-switch/output/blender/legendary-mounts/screenshots/04-rift-manta-wings-down.png"
+  ]
+}

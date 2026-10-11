@@ -1,0 +1,1026 @@
+{
+  "id": "02-ironwing-eagle",
+  "name": "Ironwing Eagle",
+  "source_blend": "output/blender/legendary-mounts/models/02-ironwing-eagle.blend",
+  "glb": "assets/mounts/02-ironwing-eagle/02-ironwing-eagle.glb",
+  "frame": 7,
+  "source_object_count": 426,
+  "source_triangles": 148252,
+  "mesh_parts": 6,
+  "triangles": 14595,
+  "materials": 2,
+  "placeholder_pilot_exported": false,
+  "presentation_exported": false,
+  "bounds_blender": {
+    "min": [
+      -5.24464750289917,
+      -2.3802623748779297,
+      -1.2089083194732666
+    ],
+    "max": [
+      5.245015621185303,
+      2.9020023345947266,
+      1.6180895566940308
+    ]
+  },
+  "source_wingspan": 10.489663124084473,
+  "scale_to_16_stud_wingspan": 1.525311138282762,
+  "scale_rule": "For target wingspan W studs, multiply every imported part size, offset, pivot and seat offset by W/source_wingspan.",
+  "seat_blender": [
+    0,
+    -0.08,
+    1.01
+  ],
+  "seat_gltf": [
+    0.0,
+    1.01,
+    0.08
+  ],
+  "seat_roblox": [
+    0.08,
+    1.01,
+    -0.0
+  ],
+  "coordinates": {
+    "blender": "X right, Z up, -Y forward",
+    "gltf": "Standard Blender glTF exporter: (x,z,-y); Y up, +Z forward.",
+    "roblox": "Apply +90 degrees about Y to standard GLB import, then uniform scale. Desired source conversion is (-y,z,-x), +X forward, +Y up.",
+    "caution": "Studio may center each MeshPart on its bounds. Use measured imported centers, not inferred GLB node origins, when packaging the final template."
+  },
+  "animation": {
+    "type": "Rigid animated wing components",
+    "loop_seconds": 1.0,
+    "axis_roblox": [
+      -1,
+      0,
+      0
+    ],
+    "axis_blender": [
+      0,
+      1,
+      0
+    ],
+    "reference_frame": 7,
+    "manta_approximation": false,
+    "notes": "Body fixed. Rotate both solid and glow components together around the matching pivot; opposite wing signs. Manta source shape-key deformation is approximated by rigid fin rotations. Phoenix split-tail sway is baked into Body at frame 7."
+  },
+  "emission": "GLB includes an emissive palette for glow components; if Roblox importer drops emission, set those MeshParts to Neon. Exact Blender glow intensity is not a Roblox guarantee.",
+  "palette": [
+    {
+      "name": "Ironwing.Primary plumage",
+      "linear_base_color": [
+        0.019999999552965164,
+        0.03400000184774399,
+        0.061000000685453415,
+        1.0
+      ],
+      "metallic": 0.75,
+      "roughness": 0.3100000023841858,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Ironwing.Raised plumage",
+      "linear_base_color": [
+        0.0430000014603138,
+        0.07500000298023224,
+        0.1289999932050705,
+        1.0
+      ],
+      "metallic": 0.699999988079071,
+      "roughness": 0.30000001192092896,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Ironwing.Ivory head",
+      "linear_base_color": [
+        0.7799999713897705,
+        0.8799999952316284,
+        1.0,
+        1.0
+      ],
+      "metallic": 0.2800000011920929,
+      "roughness": 0.30000001192092896,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Ironwing.Warm gold",
+      "linear_base_color": [
+        0.9100000262260437,
+        0.46000000834465027,
+        0.05999999865889549,
+        1.0
+      ],
+      "metallic": 0.800000011920929,
+      "roughness": 0.25999999046325684,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Ironwing.Ivory feather shade",
+      "linear_base_color": [
+        0.4000000059604645,
+        0.5600000023841858,
+        0.7099999785423279,
+        1.0
+      ],
+      "metallic": 0.3499999940395355,
+      "roughness": 0.3499999940395355,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Ironwing.Blue steel bevel",
+      "linear_base_color": [
+        0.11999999731779099,
+        0.20000000298023224,
+        0.28999999165534973,
+        1.0
+      ],
+      "metallic": 0.800000011920929,
+      "roughness": 0.3400000035762787,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Ironwing.Amber reactor",
+      "linear_base_color": [
+        1.0,
+        0.25,
+        0.012000000104308128,
+        1.0
+      ],
+      "metallic": 0.20000000298023224,
+      "roughness": 0.27000001072883606,
+      "emission_strength": 4.0,
+      "linear_emission_color": [
+        1.0,
+        0.25,
+        0.012000000104308128,
+        1.0
+      ]
+    },
+    {
+      "name": "Ironwing.Deep recess",
+      "linear_base_color": [
+        0.008999999612569809,
+        0.014000000432133675,
+        0.02800000086426735,
+        1.0
+      ],
+      "metallic": 0.550000011920929,
+      "roughness": 0.3799999952316284,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Ironwing.Amber iris",
+      "linear_base_color": [
+        1.0,
+        0.5400000214576721,
+        0.05999999865889549,
+        1.0
+      ],
+      "metallic": 0.5,
+      "roughness": 0.2199999988079071,
+      "emission_strength": 1.600000023841858,
+      "linear_emission_color": [
+        1.0,
+        0.5400000214576721,
+        0.05999999865889549,
+        1.0
+      ]
+    },
+    {
+      "name": "Ironwing.Gold edge",
+      "linear_base_color": [
+        1.0,
+        0.7200000286102295,
+        0.1899999976158142,
+        1.0
+      ],
+      "metallic": 0.7799999713897705,
+      "roughness": 0.25,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Ironwing.Saddle leather",
+      "linear_base_color": [
+        0.032999999821186066,
+        0.014999999664723873,
+        0.012000000104308128,
+        1.0
+      ],
+      "metallic": 0.10000000149011612,
+      "roughness": 0.3799999952316284,
+      "emission_strength": 0.0,
+      "linear_emission_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "parts": [
+    {
+      "name": "Body",
+      "motion_group": "Body",
+      "glow": false,
+      "triangles": 5710,
+      "vertices": 3298,
+      "budget": 5736,
+      "source_triangles": 69948,
+      "source_object_count": 181,
+      "pivot_blender": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "pivot_gltf": [
+        0.0,
+        0.0,
+        -0.0
+      ],
+      "pivot_roblox": [
+        -0.0,
+        0.0,
+        -0.0
+      ],
+      "center_blender": [
+        -0.00010991096496582031,
+        0.26086997985839844,
+        0.12400084733963013
+      ],
+      "center_gltf": [
+        -0.00010991096496582031,
+        0.12400084733963013,
+        -0.26086997985839844
+      ],
+      "center_roblox": [
+        -0.26086997985839844,
+        0.12400084733963013,
+        0.00010991096496582031
+      ],
+      "local_bounds_blender": {
+        "min": [
+          -1.0621012449264526,
+          -2.3802623748779297,
+          -1.2089083194732666
+        ],
+        "max": [
+          1.061881422996521,
+          2.9020023345947266,
+          1.4569100141525269
+        ]
+      },
+      "recommended_material": "SmoothPlastic",
+      "source_objects": [
+        "Ironwing.-1.Eye glint",
+        "Ironwing.-1.Eye socket",
+        "Ironwing.-1.Pupil",
+        "Ironwing.-1.Stern eyebrow",
+        "Ironwing.1.Eye glint",
+        "Ironwing.1.Eye socket",
+        "Ironwing.1.Pupil",
+        "Ironwing.1.Stern eyebrow",
+        "Ironwing.Beak mouth seam",
+        "Ironwing.Beak mouth seam.001",
+        "Ironwing.Breast",
+        "Ironwing.Breast heraldic diamond",
+        "Ironwing.Chest harness -1",
+        "Ironwing.Chest harness 1",
+        "Ironwing.Chest shield.-1.0",
+        "Ironwing.Chest shield.-1.1",
+        "Ironwing.Chest shield.-1.2",
+        "Ironwing.Chest shield.-1.3",
+        "Ironwing.Chest shield.-1.4",
+        "Ironwing.Chest shield.1.0",
+        "Ironwing.Chest shield.1.1",
+        "Ironwing.Chest shield.1.2",
+        "Ironwing.Chest shield.1.3",
+        "Ironwing.Chest shield.1.4",
+        "Ironwing.Cranium",
+        "Ironwing.Flank.-1.0.0",
+        "Ironwing.Flank.-1.0.1",
+        "Ironwing.Flank.-1.0.2",
+        "Ironwing.Flank.-1.0.3",
+        "Ironwing.Flank.-1.0.4",
+        "Ironwing.Flank.-1.0.5",
+        "Ironwing.Flank.-1.1.0",
+        "Ironwing.Flank.-1.1.1",
+        "Ironwing.Flank.-1.1.2",
+        "Ironwing.Flank.-1.1.3",
+        "Ironwing.Flank.-1.1.4",
+        "Ironwing.Flank.-1.1.5",
+        "Ironwing.Flank.-1.2.0",
+        "Ironwing.Flank.-1.2.1",
+        "Ironwing.Flank.-1.2.2",
+        "Ironwing.Flank.-1.2.3",
+        "Ironwing.Flank.-1.2.4",
+        "Ironwing.Flank.-1.2.5",
+        "Ironwing.Flank.-1.3.0",
+        "Ironwing.Flank.-1.3.1",
+        "Ironwing.Flank.-1.3.2",
+        "Ironwing.Flank.-1.3.3",
+        "Ironwing.Flank.-1.3.4",
+        "Ironwing.Flank.-1.3.5",
+        "Ironwing.Flank.1.0.0",
+        "Ironwing.Flank.1.0.1",
+        "Ironwing.Flank.1.0.2",
+        "Ironwing.Flank.1.0.3",
+        "Ironwing.Flank.1.0.4",
+        "Ironwing.Flank.1.0.5",
+        "Ironwing.Flank.1.1.0",
+        "Ironwing.Flank.1.1.1",
+        "Ironwing.Flank.1.1.2",
+        "Ironwing.Flank.1.1.3",
+        "Ironwing.Flank.1.1.4",
+        "Ironwing.Flank.1.1.5",
+        "Ironwing.Flank.1.2.0",
+        "Ironwing.Flank.1.2.1",
+        "Ironwing.Flank.1.2.2",
+        "Ironwing.Flank.1.2.3",
+        "Ironwing.Flank.1.2.4",
+        "Ironwing.Flank.1.2.5",
+        "Ironwing.Flank.1.3.0",
+        "Ironwing.Flank.1.3.1",
+        "Ironwing.Flank.1.3.2",
+        "Ironwing.Flank.1.3.3",
+        "Ironwing.Flank.1.3.4",
+        "Ironwing.Flank.1.3.5",
+        "Ironwing.Forehead crown.-1.0",
+        "Ironwing.Forehead crown.-1.1",
+        "Ironwing.Forehead crown.-1.2",
+        "Ironwing.Forehead crown.1.0",
+        "Ironwing.Forehead crown.1.1",
+        "Ironwing.Forehead crown.1.2",
+        "Ironwing.Harness gold piping -1",
+        "Ironwing.Harness gold piping 1",
+        "Ironwing.Hooked golden beak",
+        "Ironwing.L.Ankle scale 0",
+        "Ironwing.L.Ankle scale 1",
+        "Ironwing.L.Ankle scale 2",
+        "Ironwing.L.Ankle scale 3",
+        "Ironwing.L.Curved talon 0",
+        "Ironwing.L.Curved talon 1",
+        "Ironwing.L.Curved talon 2",
+        "Ironwing.L.Feathered thigh",
+        "Ironwing.L.Hip servo",
+        "Ironwing.L.Hip servo recess",
+        "Ironwing.L.Rear claw",
+        "Ironwing.L.Rear gripping toe",
+        "Ironwing.L.Scaled ankle",
+        "Ironwing.L.Toe 0",
+        "Ironwing.L.Toe 1",
+        "Ironwing.L.Toe 2",
+        "Ironwing.Leather seat",
+        "Ironwing.Nostril",
+        "Ironwing.Nostril.001",
+        "Ironwing.R.Ankle scale 0",
+        "Ironwing.R.Ankle scale 1",
+        "Ironwing.R.Ankle scale 2",
+        "Ironwing.R.Ankle scale 3",
+        "Ironwing.R.Curved talon 0",
+        "Ironwing.R.Curved talon 1",
+        "Ironwing.R.Curved talon 2",
+        "Ironwing.R.Feathered thigh",
+        "Ironwing.R.Hip servo",
+        "Ironwing.R.Hip servo recess",
+        "Ironwing.R.Rear claw",
+        "Ironwing.R.Rear gripping toe",
+        "Ironwing.R.Scaled ankle",
+        "Ironwing.R.Toe 0",
+        "Ironwing.R.Toe 1",
+        "Ironwing.R.Toe 2",
+        "Ironwing.Raised seat cantle",
+        "Ironwing.Ruff.-1.0.0",
+        "Ironwing.Ruff.-1.0.1",
+        "Ironwing.Ruff.-1.0.2",
+        "Ironwing.Ruff.-1.0.3",
+        "Ironwing.Ruff.-1.0.4",
+        "Ironwing.Ruff.-1.1.0",
+        "Ironwing.Ruff.-1.1.1",
+        "Ironwing.Ruff.-1.1.2",
+        "Ironwing.Ruff.-1.1.3",
+        "Ironwing.Ruff.-1.1.4",
+        "Ironwing.Ruff.-1.2.0",
+        "Ironwing.Ruff.-1.2.1",
+        "Ironwing.Ruff.-1.2.2",
+        "Ironwing.Ruff.-1.2.3",
+        "Ironwing.Ruff.-1.2.4",
+        "Ironwing.Ruff.1.0.0",
+        "Ironwing.Ruff.1.0.1",
+        "Ironwing.Ruff.1.0.2",
+        "Ironwing.Ruff.1.0.3",
+        "Ironwing.Ruff.1.0.4",
+        "Ironwing.Ruff.1.1.0",
+        "Ironwing.Ruff.1.1.1",
+        "Ironwing.Ruff.1.1.2",
+        "Ironwing.Ruff.1.1.3",
+        "Ironwing.Ruff.1.1.4",
+        "Ironwing.Ruff.1.2.0",
+        "Ironwing.Ruff.1.2.1",
+        "Ironwing.Ruff.1.2.2",
+        "Ironwing.Ruff.1.2.3",
+        "Ironwing.Ruff.1.2.4",
+        "Ironwing.Rump",
+        "Ironwing.Saddle handle -1",
+        "Ironwing.Saddle handle 1",
+        "Ironwing.Saddle pad",
+        "Ironwing.Tail gold tip 00",
+        "Ironwing.Tail gold tip 01",
+        "Ironwing.Tail gold tip 02",
+        "Ironwing.Tail gold tip 03",
+        "Ironwing.Tail gold tip 04",
+        "Ironwing.Tail gold tip 05",
+        "Ironwing.Tail gold tip 06",
+        "Ironwing.Tail gold tip 07",
+        "Ironwing.Tail gold tip 08",
+        "Ironwing.Tail gold tip 09",
+        "Ironwing.Tail gold tip 10",
+        "Ironwing.Tail white rectrix 00",
+        "Ironwing.Tail white rectrix 01",
+        "Ironwing.Tail white rectrix 02",
+        "Ironwing.Tail white rectrix 03",
+        "Ironwing.Tail white rectrix 04",
+        "Ironwing.Tail white rectrix 05",
+        "Ironwing.Tail white rectrix 06",
+        "Ironwing.Tail white rectrix 07",
+        "Ironwing.Tail white rectrix 08",
+        "Ironwing.Tail white rectrix 09",
+        "Ironwing.Tail white rectrix 10",
+        "Ironwing.Torso",
+        "Ironwing.Upright neck",
+        "Ironwing.White throat spear 0",
+        "Ironwing.White throat spear 1",
+        "Ironwing.White throat spear 2",
+        "Ironwing.White throat spear 3",
+        "Ironwing.White throat spear 4"
+      ]
+    },
+    {
+      "name": "BodyGlow",
+      "motion_group": "Body",
+      "glow": true,
+      "triangles": 484,
+      "vertices": 249,
+      "budget": 510,
+      "source_triangles": 1444,
+      "source_object_count": 3,
+      "pivot_blender": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "pivot_gltf": [
+        0.0,
+        0.0,
+        -0.0
+      ],
+      "pivot_roblox": [
+        -0.0,
+        0.0,
+        -0.0
+      ],
+      "center_blender": [
+        0.0,
+        -1.6709955930709839,
+        0.5034999698400497
+      ],
+      "center_gltf": [
+        0.0,
+        0.5034999698400497,
+        1.6709955930709839
+      ],
+      "center_roblox": [
+        1.6709955930709839,
+        0.5034999698400497,
+        -0.0
+      ],
+      "local_bounds_blender": {
+        "min": [
+          -0.517981231212616,
+          -1.922991156578064,
+          -0.27000001072883606
+        ],
+        "max": [
+          0.517981231212616,
+          -1.4190000295639038,
+          1.2769999504089355
+        ]
+      },
+      "recommended_material": "Neon",
+      "source_objects": [
+        "Ironwing.-1.Amber iris",
+        "Ironwing.1.Amber iris",
+        "Ironwing.Breast inset jewel"
+      ]
+    },
+    {
+      "name": "WingLeft",
+      "motion_group": "WingLeft",
+      "glow": false,
+      "triangles": 3586,
+      "vertices": 2028,
+      "budget": 3612,
+      "source_triangles": 34854,
+      "source_object_count": 111,
+      "pivot_blender": [
+        -0.6299999952316284,
+        0.0,
+        0.33000001311302185
+      ],
+      "pivot_gltf": [
+        -0.6299999952316284,
+        0.33000001311302185,
+        -0.0
+      ],
+      "pivot_roblox": [
+        -0.0,
+        0.33000001311302185,
+        0.6299999952316284
+      ],
+      "center_blender": [
+        -2.8835411071777344,
+        0.8268783092498779,
+        0.6803184151649475
+      ],
+      "center_gltf": [
+        -2.8835411071777344,
+        0.6803184151649475,
+        -0.8268783092498779
+      ],
+      "center_roblox": [
+        -0.8268783092498779,
+        0.6803184151649475,
+        2.8835411071777344
+      ],
+      "local_bounds_blender": {
+        "min": [
+          -4.614647388458252,
+          -0.8079493045806885,
+          -0.5874527096748352
+        ],
+        "max": [
+          0.10756516456604004,
+          2.4617059230804443,
+          1.2880895137786865
+        ]
+      },
+      "recommended_material": "SmoothPlastic",
+      "source_objects": [
+        "Ironwing.L.Articulated joint 0",
+        "Ironwing.L.Articulated joint 1",
+        "Ironwing.L.Covert tier 0.00",
+        "Ironwing.L.Covert tier 0.01",
+        "Ironwing.L.Covert tier 0.02",
+        "Ironwing.L.Covert tier 0.03",
+        "Ironwing.L.Covert tier 0.04",
+        "Ironwing.L.Covert tier 0.05",
+        "Ironwing.L.Covert tier 0.06",
+        "Ironwing.L.Covert tier 0.07",
+        "Ironwing.L.Covert tier 0.08",
+        "Ironwing.L.Covert tier 0.09",
+        "Ironwing.L.Covert tier 0.10",
+        "Ironwing.L.Covert tier 0.11",
+        "Ironwing.L.Covert tier 0.12",
+        "Ironwing.L.Covert tier 1.00",
+        "Ironwing.L.Covert tier 1.01",
+        "Ironwing.L.Covert tier 1.02",
+        "Ironwing.L.Covert tier 1.03",
+        "Ironwing.L.Covert tier 1.04",
+        "Ironwing.L.Covert tier 1.05",
+        "Ironwing.L.Covert tier 1.06",
+        "Ironwing.L.Covert tier 1.07",
+        "Ironwing.L.Covert tier 1.08",
+        "Ironwing.L.Covert tier 1.09",
+        "Ironwing.L.Covert tier 1.10",
+        "Ironwing.L.Covert tier 1.11",
+        "Ironwing.L.Covert tier 1.12",
+        "Ironwing.L.Covert tier 2.00",
+        "Ironwing.L.Covert tier 2.01",
+        "Ironwing.L.Covert tier 2.02",
+        "Ironwing.L.Covert tier 2.03",
+        "Ironwing.L.Covert tier 2.04",
+        "Ironwing.L.Covert tier 2.05",
+        "Ironwing.L.Covert tier 2.06",
+        "Ironwing.L.Covert tier 2.07",
+        "Ironwing.L.Covert tier 2.08",
+        "Ironwing.L.Covert tier 2.09",
+        "Ironwing.L.Covert tier 2.10",
+        "Ironwing.L.Covert tier 2.11",
+        "Ironwing.L.Covert tier 2.12",
+        "Ironwing.L.Gold joint bezel 0",
+        "Ironwing.L.Gold joint bezel 1",
+        "Ironwing.L.Gold leading armor",
+        "Ironwing.L.Gold primary cap 00",
+        "Ironwing.L.Gold primary cap 01",
+        "Ironwing.L.Gold primary cap 02",
+        "Ironwing.L.Gold primary cap 03",
+        "Ironwing.L.Gold primary cap 04",
+        "Ironwing.L.Gold primary cap 05",
+        "Ironwing.L.Gold primary cap 06",
+        "Ironwing.L.Gold primary cap 07",
+        "Ironwing.L.Gold wrist armor",
+        "Ironwing.L.Leading edge pointed feather 00",
+        "Ironwing.L.Leading edge pointed feather 01",
+        "Ironwing.L.Leading edge pointed feather 02",
+        "Ironwing.L.Leading edge pointed feather 03",
+        "Ironwing.L.Leading edge pointed feather 04",
+        "Ironwing.L.Leading edge pointed feather 05",
+        "Ironwing.L.Leading edge pointed feather 06",
+        "Ironwing.L.Leading edge pointed feather 07",
+        "Ironwing.L.Leading edge pointed feather 08",
+        "Ironwing.L.Leading edge pointed feather 09",
+        "Ironwing.L.Leading edge pointed feather 10",
+        "Ironwing.L.Primary flight feather 00",
+        "Ironwing.L.Primary flight feather 01",
+        "Ironwing.L.Primary flight feather 02",
+        "Ironwing.L.Primary flight feather 03",
+        "Ironwing.L.Primary flight feather 04",
+        "Ironwing.L.Primary flight feather 05",
+        "Ironwing.L.Primary flight feather 06",
+        "Ironwing.L.Primary flight feather 07",
+        "Ironwing.L.Primary spine 00",
+        "Ironwing.L.Primary spine 01",
+        "Ironwing.L.Primary spine 02",
+        "Ironwing.L.Primary spine 03",
+        "Ironwing.L.Primary spine 04",
+        "Ironwing.L.Primary spine 05",
+        "Ironwing.L.Primary spine 06",
+        "Ironwing.L.Primary spine 07",
+        "Ironwing.L.Sculpted feather wing web",
+        "Ironwing.L.Secondary flight feather 00",
+        "Ironwing.L.Secondary flight feather 01",
+        "Ironwing.L.Secondary flight feather 02",
+        "Ironwing.L.Secondary flight feather 03",
+        "Ironwing.L.Secondary flight feather 04",
+        "Ironwing.L.Secondary flight feather 05",
+        "Ironwing.L.Secondary flight feather 06",
+        "Ironwing.L.Secondary flight feather 07",
+        "Ironwing.L.Secondary flight feather 08",
+        "Ironwing.L.Secondary flight feather 09",
+        "Ironwing.L.Secondary flight feather 10",
+        "Ironwing.L.Secondary gilded blade 00",
+        "Ironwing.L.Secondary gilded blade 01",
+        "Ironwing.L.Secondary gilded blade 02",
+        "Ironwing.L.Secondary gilded blade 03",
+        "Ironwing.L.Secondary gilded blade 04",
+        "Ironwing.L.Secondary gilded blade 05",
+        "Ironwing.L.Secondary gilded blade 06",
+        "Ironwing.L.Secondary gilded blade 07",
+        "Ironwing.L.Secondary gilded blade 08",
+        "Ironwing.L.Secondary gilded blade 09",
+        "Ironwing.L.Secondary gilded blade 10",
+        "Ironwing.L.Shoulder mantle 00",
+        "Ironwing.L.Shoulder mantle 01",
+        "Ironwing.L.Shoulder mantle 02",
+        "Ironwing.L.Shoulder mantle 03",
+        "Ironwing.L.Shoulder mantle 04",
+        "Ironwing.L.Shoulder mantle 05",
+        "Ironwing.L.Shoulder mantle 06",
+        "Ironwing.L.Shoulder mantle 07"
+      ]
+    },
+    {
+      "name": "WingLeftGlow",
+      "motion_group": "WingLeft",
+      "glow": true,
+      "triangles": 614,
+      "vertices": 391,
+      "budget": 639,
+      "source_triangles": 3576,
+      "source_object_count": 10,
+      "pivot_blender": [
+        -0.6299999952316284,
+        0.0,
+        0.33000001311302185
+      ],
+      "pivot_gltf": [
+        -0.6299999952316284,
+        0.33000001311302185,
+        -0.0
+      ],
+      "pivot_roblox": [
+        -0.0,
+        0.33000001311302185,
+        0.6299999952316284
+      ],
+      "center_blender": [
+        -2.5223434269428253,
+        0.6721333563327789,
+        0.8493533732544165
+      ],
+      "center_gltf": [
+        -2.5223434269428253,
+        0.8493533732544165,
+        -0.6721333563327789
+      ],
+      "center_roblox": [
+        -0.6721333563327789,
+        0.8493533732544165,
+        2.5223434269428253
+      ],
+      "local_bounds_blender": {
+        "min": [
+          -3.6525754928588867,
+          -0.3385220170021057,
+          -0.00045734603190794587
+        ],
+        "max": [
+          -0.13211137056350708,
+          1.6827887296676636,
+          1.0391640663146973
+        ]
+      },
+      "recommended_material": "Neon",
+      "source_objects": [
+        "Ironwing.L.Amber bearing 0",
+        "Ironwing.L.Amber bearing 1",
+        "Ironwing.L.Reactor channel 00",
+        "Ironwing.L.Reactor channel 01",
+        "Ironwing.L.Reactor channel 02",
+        "Ironwing.L.Reactor channel 03",
+        "Ironwing.L.Reactor channel 04",
+        "Ironwing.L.Reactor channel 05",
+        "Ironwing.L.Reactor channel 06",
+        "Ironwing.L.Reactor channel 07"
+      ]
+    },
+    {
+      "name": "WingRight",
+      "motion_group": "WingRight",
+      "glow": false,
+      "triangles": 3587,
+      "vertices": 2027,
+      "budget": 3612,
+      "source_triangles": 34854,
+      "source_object_count": 111,
+      "pivot_blender": [
+        0.6299999952316284,
+        0.0,
+        0.33000001311302185
+      ],
+      "pivot_gltf": [
+        0.6299999952316284,
+        0.33000001311302185,
+        -0.0
+      ],
+      "pivot_roblox": [
+        -0.0,
+        0.33000001311302185,
+        -0.6299999952316284
+      ],
+      "center_blender": [
+        2.8839375153183937,
+        0.8251624703407288,
+        0.6803136467933655
+      ],
+      "center_gltf": [
+        2.8839375153183937,
+        0.6803136467933655,
+        -0.8251624703407288
+      ],
+      "center_roblox": [
+        -0.8251624703407288,
+        0.6803136467933655,
+        -2.8839375153183937
+      ],
+      "local_bounds_blender": {
+        "min": [
+          -0.10714046657085419,
+          -0.8114014863967896,
+          -0.5874539017677307
+        ],
+        "max": [
+          4.615015506744385,
+          2.461726427078247,
+          1.288081169128418
+        ]
+      },
+      "recommended_material": "SmoothPlastic",
+      "source_objects": [
+        "Ironwing.R.Articulated joint 0",
+        "Ironwing.R.Articulated joint 1",
+        "Ironwing.R.Covert tier 0.00",
+        "Ironwing.R.Covert tier 0.01",
+        "Ironwing.R.Covert tier 0.02",
+        "Ironwing.R.Covert tier 0.03",
+        "Ironwing.R.Covert tier 0.04",
+        "Ironwing.R.Covert tier 0.05",
+        "Ironwing.R.Covert tier 0.06",
+        "Ironwing.R.Covert tier 0.07",
+        "Ironwing.R.Covert tier 0.08",
+        "Ironwing.R.Covert tier 0.09",
+        "Ironwing.R.Covert tier 0.10",
+        "Ironwing.R.Covert tier 0.11",
+        "Ironwing.R.Covert tier 0.12",
+        "Ironwing.R.Covert tier 1.00",
+        "Ironwing.R.Covert tier 1.01",
+        "Ironwing.R.Covert tier 1.02",
+        "Ironwing.R.Covert tier 1.03",
+        "Ironwing.R.Covert tier 1.04",
+        "Ironwing.R.Covert tier 1.05",
+        "Ironwing.R.Covert tier 1.06",
+        "Ironwing.R.Covert tier 1.07",
+        "Ironwing.R.Covert tier 1.08",
+        "Ironwing.R.Covert tier 1.09",
+        "Ironwing.R.Covert tier 1.10",
+        "Ironwing.R.Covert tier 1.11",
+        "Ironwing.R.Covert tier 1.12",
+        "Ironwing.R.Covert tier 2.00",
+        "Ironwing.R.Covert tier 2.01",
+        "Ironwing.R.Covert tier 2.02",
+        "Ironwing.R.Covert tier 2.03",
+        "Ironwing.R.Covert tier 2.04",
+        "Ironwing.R.Covert tier 2.05",
+        "Ironwing.R.Covert tier 2.06",
+        "Ironwing.R.Covert tier 2.07",
+        "Ironwing.R.Covert tier 2.08",
+        "Ironwing.R.Covert tier 2.09",
+        "Ironwing.R.Covert tier 2.10",
+        "Ironwing.R.Covert tier 2.11",
+        "Ironwing.R.Covert tier 2.12",
+        "Ironwing.R.Gold joint bezel 0",
+        "Ironwing.R.Gold joint bezel 1",
+        "Ironwing.R.Gold leading armor",
+        "Ironwing.R.Gold primary cap 00",
+        "Ironwing.R.Gold primary cap 01",
+        "Ironwing.R.Gold primary cap 02",
+        "Ironwing.R.Gold primary cap 03",
+        "Ironwing.R.Gold primary cap 04",
+        "Ironwing.R.Gold primary cap 05",
+        "Ironwing.R.Gold primary cap 06",
+        "Ironwing.R.Gold primary cap 07",
+        "Ironwing.R.Gold wrist armor",
+        "Ironwing.R.Leading edge pointed feather 00",
+        "Ironwing.R.Leading edge pointed feather 01",
+        "Ironwing.R.Leading edge pointed feather 02",
+        "Ironwing.R.Leading edge pointed feather 03",
+        "Ironwing.R.Leading edge pointed feather 04",
+        "Ironwing.R.Leading edge pointed feather 05",
+        "Ironwing.R.Leading edge pointed feather 06",
+        "Ironwing.R.Leading edge pointed feather 07",
+        "Ironwing.R.Leading edge pointed feather 08",
+        "Ironwing.R.Leading edge pointed feather 09",
+        "Ironwing.R.Leading edge pointed feather 10",
+        "Ironwing.R.Primary flight feather 00",
+        "Ironwing.R.Primary flight feather 01",
+        "Ironwing.R.Primary flight feather 02",
+        "Ironwing.R.Primary flight feather 03",
+        "Ironwing.R.Primary flight feather 04",
+        "Ironwing.R.Primary flight feather 05",
+        "Ironwing.R.Primary flight feather 06",
+        "Ironwing.R.Primary flight feather 07",
+        "Ironwing.R.Primary spine 00",
+        "Ironwing.R.Primary spine 01",
+        "Ironwing.R.Primary spine 02",
+        "Ironwing.R.Primary spine 03",
+        "Ironwing.R.Primary spine 04",
+        "Ironwing.R.Primary spine 05",
+        "Ironwing.R.Primary spine 06",
+        "Ironwing.R.Primary spine 07",
+        "Ironwing.R.Sculpted feather wing web",
+        "Ironwing.R.Secondary flight feather 00",
+        "Ironwing.R.Secondary flight feather 01",
+        "Ironwing.R.Secondary flight feather 02",
+        "Ironwing.R.Secondary flight feather 03",
+        "Ironwing.R.Secondary flight feather 04",
+        "Ironwing.R.Secondary flight feather 05",
+        "Ironwing.R.Secondary flight feather 06",
+        "Ironwing.R.Secondary flight feather 07",
+        "Ironwing.R.Secondary flight feather 08",
+        "Ironwing.R.Secondary flight feather 09",
+        "Ironwing.R.Secondary flight feather 10",
+        "Ironwing.R.Secondary gilded blade 00",
+        "Ironwing.R.Secondary gilded blade 01",
+        "Ironwing.R.Secondary gilded blade 02",
+        "Ironwing.R.Secondary gilded blade 03",
+        "Ironwing.R.Secondary gilded blade 04",
+        "Ironwing.R.Secondary gilded blade 05",
+        "Ironwing.R.Secondary gilded blade 06",
+        "Ironwing.R.Secondary gilded blade 07",
+        "Ironwing.R.Secondary gilded blade 08",
+        "Ironwing.R.Secondary gilded blade 09",
+        "Ironwing.R.Secondary gilded blade 10",
+        "Ironwing.R.Shoulder mantle 00",
+        "Ironwing.R.Shoulder mantle 01",
+        "Ironwing.R.Shoulder mantle 02",
+        "Ironwing.R.Shoulder mantle 03",
+        "Ironwing.R.Shoulder mantle 04",
+        "Ironwing.R.Shoulder mantle 05",
+        "Ironwing.R.Shoulder mantle 06",
+        "Ironwing.R.Shoulder mantle 07"
+      ]
+    },
+    {
+      "name": "WingRightGlow",
+      "motion_group": "WingRight",
+      "glow": true,
+      "triangles": 614,
+      "vertices": 391,
+      "budget": 639,
+      "source_triangles": 3576,
+      "source_object_count": 10,
+      "pivot_blender": [
+        0.6299999952316284,
+        0.0,
+        0.33000001311302185
+      ],
+      "pivot_gltf": [
+        0.6299999952316284,
+        0.33000001311302185,
+        -0.0
+      ],
+      "pivot_roblox": [
+        -0.0,
+        0.33000001311302185,
+        -0.6299999952316284
+      ],
+      "center_blender": [
+        2.5227030739188194,
+        0.6721334159374237,
+        0.8493533238652162
+      ],
+      "center_gltf": [
+        2.5227030739188194,
+        0.8493533238652162,
+        -0.6721334159374237
+      ],
+      "center_roblox": [
+        -0.6721334159374237,
+        0.8493533238652162,
+        -2.5227030739188194
+      ],
+      "local_bounds_blender": {
+        "min": [
+          0.1328306645154953,
+          -0.3385220170021057,
+          -0.00045732560101896524
+        ],
+        "max": [
+          3.6525754928588867,
+          1.6827888488769531,
+          1.0391639471054077
+        ]
+      },
+      "recommended_material": "Neon",
+      "source_objects": [
+        "Ironwing.R.Amber bearing 0",
+        "Ironwing.R.Amber bearing 1",
+        "Ironwing.R.Reactor channel 00",
+        "Ironwing.R.Reactor channel 01",
+        "Ironwing.R.Reactor channel 02",
+        "Ironwing.R.Reactor channel 03",
+        "Ironwing.R.Reactor channel 04",
+        "Ironwing.R.Reactor channel 05",
+        "Ironwing.R.Reactor channel 06",
+        "Ironwing.R.Reactor channel 07"
+      ]
+    }
+  ]
+}

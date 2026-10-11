@@ -1,10 +1,10 @@
 --!nonstrict
--- Free prototype planes. Speed belongs to the server-owned profile; players
--- choose their launch angle independently. These profiles are not ranked tiers.
+-- Free prototype planes and cosmetic mounts. Speed belongs to the server-owned
+-- profile; legendary looks inherit Cruiser flight and grant no combat advantage.
 local PlaneCatalog = {}
 
 PlaneCatalog.DEFAULT_ID = "cruiser"
-PlaneCatalog.ORDER = { "cruiser", "skyhopper", "dart" }
+PlaneCatalog.ORDER = { "cruiser", "skyhopper", "dart", "stormcrown", "ironwing", "phoenix", "riftmanta" }
 PlaneCatalog.MIN_ANGLE = 15
 PlaneCatalog.MAX_ANGLE = 60
 -- Battle geometry is cosmetic. These sizes/mounts never enter BattleSimulation.
@@ -24,6 +24,21 @@ local profiles = {
 	dart = { id = "dart", name = "Dart", angle = 24, defaultAngle = 24, speed = 81,
 		description = "A faster launch with a low starting aim.", visualKey = "dart", available = true, free = true },
 }
+
+local legendaryLooks = {
+	{ id = "stormcrown", name = "Stormcrown Eagle", description = "Thunder-tipped wings. Cruiser flight, legendary style." },
+	{ id = "ironwing", name = "Ironwing Eagle", description = "Armored feathers. Cruiser flight, legendary style." },
+	{ id = "phoenix", name = "Eclipse Phoenix", description = "Ember wings and a blazing tail. Cruiser flight." },
+	{ id = "riftmanta", name = "Rift Manta", description = "Ride the cosmic current. Cruiser flight, legendary style." },
+}
+for _, look in ipairs(legendaryLooks) do
+	profiles[look.id] = {
+		id = look.id, name = look.name, description = look.description, visualKey = look.id,
+		angle = profiles.cruiser.angle, defaultAngle = profiles.cruiser.defaultAngle,
+		speed = profiles.cruiser.speed, flightProfileId = "cruiser", cosmeticOnly = true,
+		rarity = "Legendary", available = true, free = true,
+	}
+end
 
 function PlaneCatalog.get(id)
 	local profile = type(id) == "string" and profiles[id] or nil
