@@ -1,4 +1,44 @@
-# Wild cards that change your plane: Squadron, Giant, Eject, Vampire, Chicken — October 10, 2026 (not committed, not published)
+# Second batch: Bug, Snowball, Swap, Gambler and the Sniper attack — October 10, 2026 (not committed, not published)
+
+Continues Linear AND-233. Ten of the nineteen planned powers now exist.
+
+**Rules**
+- **Bug:** 0.35× size, 2 armor, 1.2× speed, and it is ready to attack again 12% sooner. (The pitch said 1 armor; that scored 23%.)
+- **Snowball:** starts at 0.8× size; each of its first two hits grows it 1.4×, and once it has grown its hits break 2 armor.
+- **Swap:** 9 s into the round the two planes trade armor, once, even if both brought it. The status line counts down from 3.
+- **Gambler:** a die from the round's seed. 1 costs an armor, 2–3 do nothing, 4–5 add one, 6 adds one and makes every hit break 2.
+- **Sniper (attack):** tracks, locks its aim 0.3 s before firing, and one fast shot breaks 2 armor. Long wait after each shot.
+- **Giant** now adds 1 armor to whatever the plane has (still 4 alone) and is a little faster (0.86×), so it combines with Bug and Gambler.
+- A hit that breaks more than one armor says so on the status line. Armor pips now match the plane's real maximum (2 for a Bug).
+- The roster is 5 attacks and 14 wild cards; a pick still deals 5 wild cards.
+
+**Measured (40 seeds, both seats, against all five attacks with no wild card)**
+
+Attacks alone: Meteor 47%, Firework 53%, Machine Gun 52%, Pinball 52%, Sniper 46%.
+
+| Card | Score | Card | Score |
+|---|---|---|---|
+| Bug | 62% | Giant | 55% |
+| Snowball | 63% | Squadron | 55% |
+| Gambler | 58% | Eject | 66% |
+| Swap | 50% | Vampire | 51% |
+| Chicken | 59% | Spring Bumper | 64% |
+
+Pairs: Bug + Swap 68%, Gambler + Swap 47%, Bug + Vampire 52%. Swap alone is neutral by design; it pays off with a card that starts low on armor.
+
+**Checks run**
+- 57 simulation tests (5 new) and 5 catalog tests; 33 match, 11 client and 48 server scenarios; native Studio 57 simulation, 14 view, 24 audio. All pass.
+- Two staged fights watched in local Studio at desktop size: the dice result on the status line, 4 pips after a roll of 5, the Bug's size, the armor swap on both HUD bars, and the Sniper's red aim line (`previews/planes-sniper.jpg`).
+
+**Not verified**
+- Nothing was heard; all new sounds are existing samples re-pitched.
+- The Snowball growing, a 2-armor Sniper hit and the "ARMOR SWAP IN 3…" countdown were not caught in a captured frame.
+- No full match through the real draft, no phone-sized check, no human opponent.
+- Sniper's balance moved from 27% to 79% between two nearby settings before landing at 46%, so it is the number most likely to need retuning after real play.
+- Vampire dropped to 51% now that Sniper is in the field.
+- The words that used to float over a plane ("AIMING...", "POW!") did not appear in any captured frame, including for old attacks. The status line carries the same news; whether the floating words are broken or were hidden earlier is not known.
+
+# Wild cards that change your plane: Squadron, Giant, Eject, Vampire, Chicken — October 10, 2026 (committed as `bddba2b`, not published)
 
 Playtest feedback: the powers do not feel different, and nothing makes a player curious about what else exists. Direction from the owner: add powers that change what the plane is or break a rule (Linear AND-233). This is the first five of nineteen.
 

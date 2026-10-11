@@ -58,6 +58,7 @@ local KINDS = {
     bumper_block=true, wake_hit=true, afterburner=true, finish=true, knockout=true,
     burst=true, tracer_hit=true, ricochet=true, magnet=true, secondwind=true,
     fizz=true, pinball_bounce=true, vampire=true, chicken=true, eject=true, combo=true,
+    snowball=true, swap=true, gambler=true, sniper=true,
 }
 local function finite(value)
     return type(value)=="number" and value==value and value>-math.huge and value<math.huge
@@ -65,7 +66,9 @@ end
 local function audibleKind(event)
     if event.kind=="skill" then
         return ({Afterburner="afterburner",Magnet="magnet",SecondWind="secondwind",FizzyFuel="fizz",
-            Vampire="vampire",Chicken="chicken",Eject="eject"})[event.skillId]
+            Vampire="vampire",Chicken="chicken",Eject="eject",Snowball="snowball",Swap="swap",Gambler="gambler"})[event.skillId]
+    elseif event.kind=="rocket" and event.source=="sniper" then
+        return "sniper"
     elseif event.kind=="combo" then
         return "combo"
     elseif event.kind=="bounce" then
@@ -345,6 +348,19 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
         -- The plane goes up, the seat goes out, the parachute snaps open.
         voice("jump",0.26,0.7,0.5,2.4)
         shot("bigBlast",0.6,1.2); shot("rise",0.5,1.6); shot("whoosh",0.4,0.7)
+    elseif kind=="snowball" then
+        -- A soft crunch that drops in pitch as the plane swells.
+        voice("land",0.2,1.4,0.3,0.7); shot("crunch",0.4,1.5); shot("thump",0.4,1.3)
+    elseif kind=="swap" then
+        -- Two whooshes crossing over, then a chime.
+        voice("chime",0.22,2,0.5,0.8); voice("chime",0.22,0.8,0.5,2)
+        shot("whoosh",0.5,1.4); shot("rise",0.4,1.8)
+    elseif kind=="gambler" then
+        -- Dice on a table.
+        voice("land",0.14,2.4,0.1); shot("click",0.5,1.6); shot("click",0.4,2.1); shot("beep",0.25,1.8)
+    elseif kind=="sniper" then
+        -- A single dry crack with a long tail, nothing like the other guns.
+        voice("boom",0.3,2.2,0.12,1.2); shot("punch",0.7,0.7); shot("whoosh",0.3,2.2); shot("thunder",0.3,1.8)
     elseif kind=="combo" then
         -- A named build gets its own little announcement.
         voice("chime",0.2,1.1,0.3,2.2)

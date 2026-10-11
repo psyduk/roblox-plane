@@ -20,8 +20,9 @@ BattleLab.MAX_ROUNDS = 5
 BattleLab.GUIDE_INTRO_SECONDS = 5
 BattleLab.GUIDE_PICK_SECONDS = 40
 local GUIDE = {offences={"Meteor","Firework"},wilds={"SpringBumper","Afterburner","FizzyFuel","Magnet"},hand={[2]=2,[3]=3}}
-local PUBLIC = {offences={"Meteor","Firework","MachineGun","Pinball"},
-    wilds={"Afterburner","SpringBumper","FizzyFuel","Magnet","SecondWind","Squadron","Giant","Eject","Vampire","Chicken"}}
+local PUBLIC = {offences={"Meteor","Firework","MachineGun","Pinball","Sniper"},
+    wilds={"Afterburner","SpringBumper","FizzyFuel","Magnet","SecondWind","Squadron","Giant","Eject","Vampire","Chicken",
+        "Bug","Snowball","Swap","Gambler"}}
 -- A pick shows this many wild cards: the ones already on the plane, then a
 -- fresh random deal from the rest of the roster.
 local HAND = 5

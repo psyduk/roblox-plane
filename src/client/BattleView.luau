@@ -33,6 +33,7 @@ local POWER = {
 	magnet = Color3.fromRGB(255, 96, 200), wind = Color3.fromRGB(150, 255, 120),
 	burner = Color3.fromRGB(120, 200, 255), bumper = Color3.fromRGB(215, 255, 80),
 	vampire = Color3.fromRGB(230, 40, 90), feather = Color3.fromRGB(255, 250, 235),
+	sniper = Color3.fromRGB(255, 50, 50), snow = Color3.fromRGB(215, 240, 255), swap = Color3.fromRGB(190, 120, 255),
 }
 -- Where a squadron's wingmen fly, matching BattleSimulation's formation.
 local WING = { Vector3.new(-9, 8, 0), Vector3.new(-9, -8, 0) }
@@ -405,7 +406,7 @@ function BattleView:_resetRound(roundId)
 		fighter.position, fighter.pose, fighter.armor = nil, nil, nil
 		fighter.hitTime, fighter.blockTime, fighter.lastHitBurst = -100, -100, -100
 		fighter.shotTime, fighter.secondWindTime, fighter.magnetTime = -100, -100, -100
-		fighter.vampireTime, fighter.ejectTime = -100, -100
+		fighter.vampireTime, fighter.ejectTime, fighter.snowTime, fighter.swapTime = -100, -100, -100, -100
 		fighter.finishRotation, fighter.finishPosition = nil, nil
 		fighter.crash, fighter.crashLanded, fighter.crashContactY = nil, false, nil
 		fighter.crashGroundY = nil
@@ -653,7 +654,7 @@ function BattleView:_fighter(id, index)
 		chargeShell = chargeShell, cometFlames = cometFlames, muzzleFlashes = muzzleFlashes,
 		signatureSparks = makeRing(fx, "SignatureSpark", 8, COLORS.yellow),
 		lampAnchor = lampAnchor, noseLight = noseLight, shotTime = -100, secondWindTime = -100, magnetTime = -100,
-		vampireTime = -100, ejectTime = -100, wingmen = {}, wingShown = 0,
+		vampireTime = -100, ejectTime = -100, snowTime = -100, swapTime = -100, wingmen = {}, wingShown = 0,
 		magnetRing = makeRing(fx, "MagnetPull", 10, Color3.fromRGB(255, 120, 190)),
 		windRing = makeRing(fx, "SecondWind", 10, Color3.fromRGB(130, 255, 190)),
 		loadRing = makeRing(fx, "AttackLoad", 10, color),
@@ -977,6 +978,11 @@ function BattleView:_hit(fighter, x, y, source, actorColor)
 		self:_particles(x, y, POWER.pinball, 80, 0, 0, 120)
 		self:_particles(x, y, COLORS.cream, 30, 0, 0, 50)
 		self:_jolt(3.8, 0.95, 0.12, 0.6, 0.75)
+	elseif source == "sniper" then
+		-- One clean, heavy shot: a red crack and the hardest jolt of any gun.
+		self:_particles(x, y, POWER.sniper, 90, 6, 0, 130)
+		self:_particles(x, y, COLORS.cream, 30, 0, 0, 60)
+		self:_jolt(5, 1, 0.16, 0.7, 0.85)
 	elseif source == "machinegun" then
 		-- The burst chews through: hot sparks and shrapnel smoke.
 		self:_particles(x, y, COLORS.yellow, 60, 14, 6, 90)
@@ -1053,6 +1059,23 @@ function BattleView:_events(simulation)
 					end
 					self:_burst(x, y, POWER.vampire, true)
 					self:_jolt(1.8, 0.5, 0.06, 0.25, 0.4)
+				elseif kind == "skill" and event.skillId == "Snowball" and actor then
+					actor.snowTime = self.clock
+					self:_particles(x, y, POWER.snow, 70, 0, 0, 80)
+					self:_burst(x, y, POWER.snow, true)
+					self:_jolt(1.6, 0.5, 0.05, 0.2, 0.3)
+				elseif kind == "skill" and event.skillId == "Swap" then
+					-- Both planes flash as the armor changes hands.
+					for _, fighter in pairs(self.fighters) do
+						fighter.swapTime = self.clock
+						if fighter.position then
+							self:_particles(fighter.position.X - ORIGIN.X, fighter.position.Y - ORIGIN.Y, POWER.swap, 70, 0, 0, 90)
+							self:_burst(fighter.position.X - ORIGIN.X, fighter.position.Y - ORIGIN.Y, POWER.swap, true)
+						end
+					end
+					self:_jolt(3, 0.8, 0.12, 0.5, 0.8)
+				elseif kind == "skill" and event.skillId == "Gambler" then
+					self:_particles(x, y, COLORS.yellow, 40, 0, 0, 60)
 				elseif kind == "skill" and event.skillId == "Chicken" then
 					-- A poof of feathers where the plane used to be.
 					self:_particles(x, y, POWER.feather, 110, 14, 0, 100)
@@ -1285,10 +1308,21 @@ function BattleView:_fighterEffects(fighter, state, simulation, moving, displayP
 	else hide(fighter.loadRing) end
 	fighter.model:SetAttribute("AttackLoaded", loading and (state.phase == "Windup" or state.circling == false) or false)
 	local offence = self.skills and self.skills.get(fighter.offenceId)
+	-- Count down to a Swap on both planes, whoever brought the card.
+	local swapIn
+	for _, other in ipairs(simulation.fighters or {}) do
+		local left = numeric(other.swapAt, -1) - numeric(simulation.elapsed, 0)
+		if moving and not simulation.swapped and left > 0 and left <= 3 then swapIn = math.ceil(left) end
+	end
 	local tell
 	if winner then tell = "WINNER!"
 	elseif knockedOut then tell = "K.O.!"
+	elseif self.clock - fighter.swapTime < 1.2 then tell = "SWAP!"
+	elseif type(state.roll) == "number" and numeric(simulation.elapsed, 0) < 2.5 then
+		tell = "🎲 " .. state.roll .. (state.roll == 1 and "  OUCH!" or (state.roll == 6 and "  JACKPOT!" or (state.roll >= 4 and "  +1 ARMOR!" or "  NOTHING...")))
 	elseif type(state.combo) == "string" and numeric(simulation.elapsed, 0) < 2.5 then tell = state.combo
+	elseif swapIn then tell = "SWAP IN " .. swapIn .. "..."
+	elseif self.clock - fighter.snowTime < 0.9 then tell = "BIGGER!"
 	elseif self.clock - fighter.ejectTime < 1.1 then tell = "EJECT!"
 	elseif numeric(state.chickenLeft, 0) > 0 then tell = "BAWK!"
 	elseif self.clock - fighter.vampireTime < 0.8 then tell = "SLURP!"
@@ -1558,6 +1592,19 @@ function BattleView:update(snapshot, dt, viewportRect)
 		fighter.model:PivotTo(displayPose)
 		local squad = knockedOut and 0 or math.max(0, math.min(numeric(state.squad, 0), armor) - 1)
 		self:_wingmen(fighter, squad, displayPose, numeric(state.heading, math.atan2(vy, vx)))
+		-- A sniper's aim is a thin red line that goes solid once it is locked.
+		local aiming = moving and fighter.offenceId == "Sniper" and state.phase == "Windup" and state.form == nil
+		if aiming and not fighter.laser then
+			fighter.laser = part(fighter.fx, "SniperAim", Vector3.one, CFrame.identity, POWER.sniper, Enum.Material.Neon)
+		end
+		if fighter.laser then
+			local angle = numeric(state.heading, 0)
+			local locked = numeric(state.phaseLeft, 1) < 0.3
+			local along = Vector3.new(math.cos(angle), math.sin(angle), 0)
+			fighter.laser.Size = Vector3.new(170, locked and 0.7 or 0.28, 0.3)
+			fighter.laser.CFrame = CFrame.new(fighter.position + along * 92) * CFrame.Angles(0, 0, angle)
+			fighter.laser.Transparency = aiming and (locked and 0.05 or 0.45 + math.sin(self.clock * 30) * 0.2) or 1
+		end
 		local chicken = numeric(state.chickenLeft, 0) > 0 and not knockedOut
 		self:_morph(fighter, chicken and "🐔" or (state.ejected == true and armor > 0 and "🪂") or nil,
 			(chicken and 15 or 13) * (chicken and math.max(0.7, size) or 1))
@@ -1656,7 +1703,8 @@ function BattleView:update(snapshot, dt, viewportRect)
 		end
 		local owner = self.fighters[state.owner or state.actor]
 		local color = owner and owner.color or PLAYER_COLORS[tonumber(state.owner) or 1] or COLORS.yellow
-		local tracer = state.source == "machinegun" or state.source == "pea"
+		local sniper = state.source == "sniper"
+		local tracer = state.source == "machinegun" or state.source == "pea" or sniper
 		local ball = state.source == "pinball"
 		-- A Giant's shots are as oversized as it is.
 		local big = numeric(((simulation.fighters or {})[state.owner] or {}).shotScale, 1)
@@ -1666,9 +1714,9 @@ function BattleView:update(snapshot, dt, viewportRect)
 		rocket.ball.Transparency, rocket.ballCore.Transparency = ball and 0.15 or 1, ball and 0 or 1
 		rocket.body.Transparency = ball and 1 or 0
 		if ball then tracer = true end
-		rocket.body.Size = (tracer and Vector3.new(3.4, 0.36, 0.36) or Vector3.new(5, 1.65, 1.65)) * big
+		rocket.body.Size = (sniper and Vector3.new(11, 0.7, 0.7) or (tracer and Vector3.new(3.4, 0.36, 0.36) or Vector3.new(5, 1.65, 1.65))) * big
 		rocket.body.Material = tracer and Enum.Material.Neon or Enum.Material.SmoothPlastic
-		rocket.body.Color = tracer and COLORS.yellow or COLORS.cream
+		rocket.body.Color = sniper and POWER.sniper or (tracer and COLORS.yellow or COLORS.cream)
 		rocket.nose.Transparency = tracer and 1 or 0
 		rocket.fin.Transparency = tracer and 1 or 0
 		rocket.crossFin.Transparency = tracer and 1 or 0

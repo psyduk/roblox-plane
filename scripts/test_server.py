@@ -189,7 +189,7 @@ DEFAULT_SCENARIOS = {
         local a,b=Harness.add(101),Harness.add(102)
         Harness.send(a,'play');Harness.send(b,'play');local old=Harness.battleLatest(a)
         -- The public draft shows the whole roster: every attack now, every wild card later.
-        assert(#old.offer.offences==4 and #old.offer.wilds==5 and old.slots==0 and old.draft.offenceId==nil)
+        assert(#old.offer.offences==5 and #old.offer.wilds==5 and old.slots==0 and old.draft.offenceId==nil)
         Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offerRevision=old.offerRevision})
         assert(not Harness.battleLatest(a).locked[1] and Harness.battleLatest(a).draft.offenceId==nil)
         Harness.advance(.1)
@@ -933,7 +933,7 @@ GUIDED_SCENARIOS = {
         end
         assert(s.phase=='MatchOver' and s.reward.eligible and s.economy.progression.matches==1)
         Harness.battleSend(a,'rematch',{matchId=first});Harness.advance(.1);s=Harness.battleLatest(a)
-        assert(s.phase=='Pick' and not s.guided and s.slots==0 and #s.offer.offences==4)
+        assert(s.phase=='Pick' and not s.guided and s.slots==0 and #s.offer.offences==5)
         Harness.battleSend(a,'exit');Harness.advance(.1)
         Harness.send(a,'play');assert(Harness.battleLatest(a).phase=='Searching')
     ''',

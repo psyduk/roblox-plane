@@ -12,8 +12,8 @@ SkillCatalog.CONTRACT_VERSION = "sky-battle-combat-v1"
 
 -- Order is display order. `starter` skills are owned from the first fight.
 -- Rarity says how strange a skill is, never how strong.
-local order = { "Meteor", "Firework", "MachineGun", "Pinball", "Afterburner", "SpringBumper", "FizzyFuel", "Magnet", "SecondWind",
-	"Squadron", "Giant", "Eject", "Vampire", "Chicken" }
+local order = { "Meteor", "Firework", "MachineGun", "Pinball", "Sniper", "Afterburner", "SpringBumper", "FizzyFuel", "Magnet", "SecondWind",
+	"Squadron", "Giant", "Eject", "Vampire", "Chicken", "Bug", "Snowball", "Swap", "Gambler" }
 local skills = {
 	Meteor = { id = "Meteor", kind = "offence", name = "Meteor", icon = "☄️", word = "BOOOM!",
 		promise = "Climb high, then dive-bomb your rival.",
@@ -31,6 +31,10 @@ local skills = {
 		promise = "Fire a ball that bounces off the walls.",
 		windupTell = "AIMING...", attackTell = "PING!",
 		color = { r = 110, g = 220, b = 255 }, starter = true, rarity = "common" },
+	Sniper = { id = "Sniper", kind = "offence", name = "Sniper", icon = "🎯", word = "BANG!",
+		promise = "One careful shot from far away. A hit breaks 2 armor.",
+		windupTell = "TAKING AIM...", attackTell = "BANG!",
+		color = { r = 255, g = 70, b = 70 }, starter = true, rarity = "rare" },
 	Afterburner = { id = "Afterburner", kind = "wild", name = "Afterburner", icon = "🔥", word = "ZOOM!",
 		when = "AFTER YOU ATTACK", promise = "Jet away and attack again sooner.",
 		color = { r = 255, g = 168, b = 66 }, starter = true, rarity = "common" },
@@ -50,7 +54,7 @@ local skills = {
 		when = "ALL ROUND", promise = "Fly 3 small planes. Each has 1 life and all of them shoot.",
 		color = { r = 120, g = 190, b = 255 }, starter = true, rarity = "rare" },
 	Giant = { id = "Giant", kind = "wild", name = "Giant", icon = "🐘", word = "STOMP!",
-		when = "ALL ROUND", promise = "Double size, 5 armor and huge shots. Slow and easy to hit.",
+		when = "ALL ROUND", promise = "Double size, 1 extra armor and huge shots. Slow and easy to hit.",
 		color = { r = 255, g = 150, b = 90 }, starter = true, rarity = "rare" },
 	Eject = { id = "Eject", kind = "wild", name = "Eject", icon = "🪂", word = "EJECT!",
 		when = "WHEN YOU ARE SHOT DOWN", promise = "Your pilot bails out with a pea-shooter and 1 last life.",
@@ -61,6 +65,18 @@ local skills = {
 	Chicken = { id = "Chicken", kind = "wild", name = "Chicken", icon = "🐔", word = "BAWK!",
 		when = "YOUR FIRST HIT", promise = "Turn your rival into a chicken. Chickens cannot attack.",
 		color = { r = 255, g = 244, b = 214 }, starter = true, rarity = "rare" },
+	Bug = { id = "Bug", kind = "wild", name = "Bug", icon = "🐜", word = "BZZZ!",
+		when = "ALL ROUND", promise = "Shrink to a quick speck that is hard to hit. You have 2 armor.",
+		color = { r = 170, g = 230, b = 110 }, starter = true, rarity = "rare" },
+	Snowball = { id = "Snowball", kind = "wild", name = "Snowball", icon = "⛄", word = "BIGGER!",
+		when = "EVERY HIT YOU LAND", promise = "Start small. Grow with each hit, then break 2 armor at a time.",
+		color = { r = 200, g = 235, b = 255 }, starter = true, rarity = "rare" },
+	Swap = { id = "Swap", kind = "wild", name = "Swap", icon = "🔄", word = "SWAP!",
+		when = "AT HALF TIME", promise = "You and your rival trade armor. Lose yours first!",
+		color = { r = 190, g = 130, b = 255 }, starter = true, rarity = "rare" },
+	Gambler = { id = "Gambler", kind = "wild", name = "Gambler", icon = "🎲", word = "ROLL!",
+		when = "AS THE ROUND STARTS", promise = "Roll a die. 1 costs an armor, 4 or 5 adds one, 6 is a jackpot.",
+		color = { r = 255, g = 215, b = 80 }, starter = true, rarity = "rare" },
 }
 
 function SkillCatalog.valid(id, kind)

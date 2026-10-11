@@ -255,12 +255,13 @@ BattleSkills.wild.Squadron = {
 	end,
 }
 
--- Huge: double size and five armor, but slow and easy to hit.
+-- Huge: double size and an extra armor, but slow and easy to hit.
 BattleSkills.wild.Giant = {
-	armor = 4, size = 1.9, speed = 0.78, shot = 1.7,
+	armor = 1, size = 1.9, speed = 0.86, shot = 1.7,
 	start = function(_, _, fighter)
 		local self = BattleSkills.wild.Giant
-		fighter.armor, fighter.maxArmor = self.armor, self.armor
+		fighter.armor = fighter.armor + self.armor
+		fighter.maxArmor = fighter.armor
 		fighter.scale, fighter.radius = fighter.scale * self.size, fighter.radius * self.size
 		fighter.speedScale, fighter.shotScale = fighter.speedScale * self.speed, fighter.shotScale * self.shot
 	end,
@@ -326,9 +327,120 @@ BattleSkills.form.PeaShooter = {
 	end,
 }
 
+-- Tiny: a quick speck that is hard to hit, with two armor.
+BattleSkills.wild.Bug = {
+	lost = 1, size = 0.35, speed = 1.2, pace = 0.88,
+	start = function(_, _, fighter)
+		local self = BattleSkills.wild.Bug
+		fighter.armor = math.max(1, fighter.armor - self.lost)
+		fighter.maxArmor = fighter.armor
+		fighter.scale, fighter.radius = fighter.scale * self.size, fighter.radius * self.size
+		fighter.speedScale = fighter.speedScale * self.speed
+		-- A pest: it is back for another go sooner than a full-sized plane.
+		fighter.pace = self.pace
+	end,
+}
+
+-- Rolling: starts small, grows with every hit it lands, and once it has
+-- grown its hits break two armor.
+BattleSkills.wild.Snowball = {
+	first = 0.8, grow = 1.4, most = 2,
+	start = function(_, _, fighter)
+		local self = BattleSkills.wild.Snowball
+		fighter.snowball = 0
+		fighter.scale, fighter.radius = fighter.scale * self.first, fighter.radius * self.first
+		fighter.shotScale = fighter.shotScale * self.first
+	end,
+	landed = function(api, state, fighter, target)
+		local self = BattleSkills.wild.Snowball
+		if fighter.ejected or fighter.snowball >= self.most then return end
+		fighter.snowball = fighter.snowball + 1
+		fighter.scale, fighter.radius = fighter.scale * self.grow, fighter.radius * self.grow
+		fighter.shotScale = fighter.shotScale * self.grow
+		fighter.bonus = 1
+		api.event(state, "skill", fighter.x, fighter.y, fighter.id, target.id, "snowball", "Snowball")
+	end,
+}
+
+-- Trade: at half time the two planes swap armor. It happens once, even if
+-- both pilots brought the card.
+BattleSkills.wild.Swap = {
+	at = 9,
+	start = function(_, state, fighter) fighter.swapAt = BattleSkills.wild.Swap.at end,
+	moved = function(api, state, fighter)
+		if state.swapped or state.elapsed < BattleSkills.wild.Swap.at then return end
+		local rival = state.fighters[3 - fighter.id]
+		if fighter.armor <= 0 or rival.armor <= 0 then return end
+		state.swapped = true
+		fighter.armor, rival.armor = rival.armor, fighter.armor
+		api.event(state, "skill", (fighter.x + rival.x) / 2, (fighter.y + rival.y) / 2, fighter.id, rival.id, "swap", "Swap")
+	end,
+}
+
+-- Luck: a die rolls as the round starts. A 1 costs an armor, a 4 or 5 adds
+-- one, and a 6 adds one and makes every hit break two.
+BattleSkills.wild.Gambler = {
+	start = function(api, state, fighter)
+		local seat = state.seed % 2 == 0 and fighter.id or 3 - fighter.id
+		local mixed = (state.seed * 48271 + seat * 1299709) % 2147483647 * 16807 % 2147483647
+		local roll = math.floor(mixed / 2147483647 * 6) + 1
+		fighter.roll = roll
+		if roll == 1 then
+			fighter.armor = math.max(1, fighter.armor - 1)
+		elseif roll >= 4 then
+			fighter.armor = fighter.armor + 1
+			fighter.maxArmor = math.max(fighter.maxArmor, fighter.armor)
+		end
+		if roll == 6 then fighter.bonus = 1 end
+		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "gambler", "Gambler").roll = roll
+	end,
+}
+
+-- One slow, careful shot. The aim locks before it fires, a hit breaks two
+-- armor, and a miss leaves a long wait.
+BattleSkills.offence.Sniper = {
+	windup = 1.35, lockTime = 0.3, attackTime = 0.35, attackSpeed = 8,
+	earliest = 1.6, leadSpeed = 220, leadFactor = 1,
+	approachTime = 3.3, recoveryTime = 2.8,
+	bulletSpeed = 220, bulletLife = 1, bulletRadius = 2, power = 2,
+	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy > 40 * 40 end,
+	approach = function(api, state, fighter, opponent, dx, dy)
+		-- A sniper wants room: back away from a rival that gets close.
+		if dx * dx + dy * dy > 55 * 55 then return end
+		local awayX, awayY = api.direction(-dx, -dy, fighter.id == 1 and -1 or 1)
+		return api.clamp(fighter.x + awayX * 30, state.bounds.left + 8, state.bounds.right - 8),
+			api.clamp(fighter.y + awayY * 30, state.bounds.bottom + 8, state.bounds.top - 8), 30, 3.6
+	end,
+	windupMove = function(_, _, fighter)
+		-- Track the rival, then hold dead still for the last moment.
+		if fighter.phaseLeft > BattleSkills.offence.Sniper.lockTime then return nil, nil, 5, 7 end
+		return fighter.x + math.cos(fighter.heading) * 50, fighter.y + math.sin(fighter.heading) * 50, 2, 0
+	end,
+	attack = function(api, state, fighter, opponent)
+		local self = BattleSkills.offence.Sniper
+		local dx, dy = math.cos(fighter.heading), math.sin(fighter.heading)
+		api.launch(state, fighter, { x = fighter.x + dx * 7, y = fighter.y + dy * 7,
+			vx = dx * self.bulletSpeed, vy = dy * self.bulletSpeed, life = self.bulletLife,
+			radius = self.bulletRadius, source = "sniper", power = self.power })
+		local entry = api.event(state, "rocket", fighter.x + dx * 7, fighter.y + dy * 7, fighter.id, opponent.id, "sniper", "Sniper")
+		entry.heading = fighter.heading
+	end,
+}
+
 -- Builds worth a shout. The first pair a plane matches names it for the round.
 BattleSkills.combos = {
 	{ "Squadron", "Vampire", "VAMPIRE SWARM!" },
+	{ "Bug", "Giant", "GIANT BUG!" },
+	{ "Bug", "Swap", "BODY SWAP!" },
+	{ "Bug", "Vampire", "MOSQUITO!" },
+	{ "Bug", "Sniper", "ANT WITH A CANNON!" },
+	{ "Snowball", "Squadron", "AVALANCHE!" },
+	{ "Giant", "Snowball", "ABOMINABLE!" },
+	{ "Gambler", "Swap", "DOUBLE OR NOTHING!" },
+	{ "Gambler", "Vampire", "HIGH STAKES!" },
+	{ "Swap", "Vampire", "BLOOD TRADE!" },
+	{ "Giant", "Sniper", "ARTILLERY!" },
+	{ "Squadron", "Sniper", "FIRING SQUAD!" },
 	{ "Giant", "Squadron", "THREE GIANTS!" },
 	{ "Eject", "Giant", "TINY PILOT, BIG PLANE!" },
 	{ "Chicken", "Squadron", "CHICKEN HUNTERS!" },

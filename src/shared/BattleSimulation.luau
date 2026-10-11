@@ -290,7 +290,7 @@ local function recover(state, fighter, opponent, duration)
 	fighter._approachOffset = fighter._cadence / 2147483647 * 2.4 - 1.2
 	-- Both planes circle the same way round, or they would meet head-on.
 	state.spin = fighter._cadence % 2 == 0 and 1 or -1
-	fighter.phase, fighter.phaseLeft = "Recover", ((duration or offenceOf(fighter).recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.88 or 1) * (fighter.tempo or 1)
+	fighter.phase, fighter.phaseLeft = "Recover", ((duration or offenceOf(fighter).recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.88 or 1) * (fighter.tempo or 1) * (fighter.pace or 1)
 	fighter._bumperRecovery = nil
 	fighter.armed = false
 	local awayX, awayY = direction(fighter.x - opponent.x, fighter.y - opponent.y, fighter.id == 1 and -1 or 1)
@@ -354,7 +354,7 @@ local function prepare(state, fighter, opponent, dt)
 		end
 		recover(state, fighter, opponent)
 	elseif fighter.phase == "Recover" and fighter.phaseLeft <= 0 then
-		fighter.phase, fighter.phaseLeft = "Approach", ((offence.approachTime or BattleSimulation.APPROACH_TIME) + fighter._approachOffset) * (fighter.tempo or 1)
+		fighter.phase, fighter.phaseLeft = "Approach", ((offence.approachTime or BattleSimulation.APPROACH_TIME) + fighter._approachOffset) * (fighter.tempo or 1) * (fighter.pace or 1)
 	end
 
 	local targetX, targetY = opponent.x, opponent.y
@@ -419,7 +419,9 @@ end
 
 -- Returns landed, cancelled. A wild card on the target may cancel the hit;
 -- the first one to say so wins and the rest are not asked.
-local function damage(state, actorId, targetId, x, y, dirX, dirY, source, skillId)
+-- A hit normally removes one armor. A shot may carry its own `power`, and a
+-- wild card may add to every hit its plane lands through `bonus`.
+local function damage(state, actorId, targetId, x, y, dirX, dirY, source, skillId, power)
 	local actor, target = state.fighters[actorId], state.fighters[targetId]
 	if target.invulnerable > 0 or target.armor <= 0 then return false end
 	for _, id in ipairs(target.wildIds) do
@@ -429,13 +431,14 @@ local function damage(state, actorId, targetId, x, y, dirX, dirY, source, skillI
 			return false, true
 		end
 	end
-	target.armor = math.max(0, target.armor - 1)
+	local amount = (power or 1) + (actor.bonus or 0)
+	target.armor = math.max(0, target.armor - amount)
 	target.invulnerable = BattleSimulation.IMPACT_PROTECTION
 	-- A hit should throw the plane, not nudge it.
 	target._knockX, target._knockY = dirX * BattleSimulation.HIT_KNOCK, dirY * BattleSimulation.HIT_KNOCK
 	actor.hits = actor.hits + 1
 	actor._attackHit = true
-	event(state, source == "wake" and "wake_hit" or "hit", x, y, actorId, targetId, source, skillId)
+	event(state, source == "wake" and "wake_hit" or "hit", x, y, actorId, targetId, source, skillId).amount = amount
 	wild(target, "damaged", state, target, actor)
 	wild(actor, "landed", state, actor, target)
 	return true
@@ -573,7 +576,7 @@ local function tick(state)
 				end
 			else
 				successful, absorbed = damage(state, projectile.owner, targetId,
-					oldX + (projectile.x - oldX) * hit, oldY + (projectile.y - oldY) * hit, nx, ny, projectile.source or "rocket")
+					oldX + (projectile.x - oldX) * hit, oldY + (projectile.y - oldY) * hit, nx, ny, projectile.source or "rocket", nil, projectile.power)
 			end
 			if successful then landed[projectile.owner] = true end
 			if successful or absorbed then resolved[projectile.owner] = true end

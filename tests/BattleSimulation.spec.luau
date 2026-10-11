@@ -863,7 +863,7 @@ return function(Simulation, Catalog, Skills)
 	test("Giant is bigger, tougher and slower, and fires bigger shots", function()
 		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Giant" } }, { offenceId = "Firework" })
 		local a = state.fighters[1]
-		check(a.armor == Skills.wild.Giant.armor and a.maxArmor == a.armor and a.radius > Simulation.PLANE_RADIUS * 1.5, "Giant was not giant")
+		check(a.armor == 3 + Skills.wild.Giant.armor and a.maxArmor == a.armor and a.radius > Simulation.PLANE_RADIUS * 1.5, "Giant was not giant")
 		passive(a, -40, 50, 0); passive(state.fighters[2], 40, 80, 0)
 		a.phase, a.phaseLeft, a.windupDuration = "Windup", 0, 0
 		Simulation.step(state, Simulation.FIXED_DT)
@@ -936,6 +936,88 @@ return function(Simulation, Catalog, Skills)
 					local again = run(seed, { offenceId = offence, wildIds = { card } }, { offenceId = "Firework", wildIds = { "Eject", "Squadron" } })
 					check(first.elapsed <= Simulation.MAX_TIME and equal(first, again), offence .. " with " .. card .. " was not deterministic")
 				end
+			end
+		end
+	end)
+
+	test("Bug is a small quick plane with two armor, and Giant adds one to whatever it has", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Bug" } }, { offenceId = "Firework", wildIds = { "Giant", "Bug" } })
+		local a, b = state.fighters[1], state.fighters[2]
+		check(a.armor == 2 and a.maxArmor == 2 and a.radius < Simulation.PLANE_RADIUS * 0.5 and a.pace < 1 and a.speedScale > 1, "Bug was not a bug")
+		check(b.armor == 3 and b.combo == "GIANT BUG!", "Giant and Bug did not combine")
+	end)
+
+	test("Snowball starts small, grows twice and then breaks two armor a hit", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Snowball" } }, { offenceId = "Firework", wildIds = { "Giant" } })
+		local a, b = state.fighters[1], state.fighters[2]
+		local small = a.radius
+		check(small < Simulation.PLANE_RADIUS and b.armor == 4, "Snowball did not start small")
+		passive(a, -40, 80, 0); passive(b, 30, 50, 0)
+		shoot(state, 30, 50)
+		check(b.armor == 3 and a.snowball == 1 and a.radius > small and said(state, "skill", "Snowball"), "The first hit did not grow the plane")
+		passive(b, 30, 50, 0); b.invulnerable = 0; state.projectiles = {}
+		shoot(state, 30, 50)
+		check(b.armor == 1 and a.snowball == 2, "A grown Snowball did not break two armor")
+		local grown = a.radius
+		passive(b, 30, 50, 0); b.invulnerable = 0; state.projectiles = {}
+		shoot(state, 30, 50)
+		check(b.armor == 0 and a.radius == grown, "Snowball grew past its limit")
+	end)
+
+	test("Swap trades armor once at half time, even when both pilots bring it", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Swap" } }, { offenceId = "Firework", wildIds = { "Swap", "Giant" } })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -40, 80, 0); passive(b, 40, 30, 0)
+		a.armor = 1
+		state.elapsed = Skills.wild.Swap.at - 0.1
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(a.armor == 1 and b.armor == 4 and not state.swapped, "The swap came early")
+		state.elapsed = Skills.wild.Swap.at
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(a.armor == 4 and b.armor == 1 and state.swapped and said(state, "skill", "Swap"), "Armor did not change hands")
+		for _ = 1, 20 do Simulation.step(state, Simulation.FIXED_DT) end
+		check(a.armor == 4 and b.armor == 1, "The armor swapped back")
+	end)
+
+	test("Gambler rolls every face from the seed and each face does what the card says", function()
+		local faces = {}
+		for seed = 1, 60 do
+			local state = Simulation.newRound(seed, { offenceId = "Firework", wildIds = { "Gambler" } }, { offenceId = "Firework", wildIds = { "Gambler" } })
+			for _, fighter in ipairs(state.fighters) do
+				local roll = fighter.roll
+				faces[roll] = true
+				check(roll >= 1 and roll <= 6 and roll % 1 == 0, "The die showed a face it does not have")
+				check(fighter.armor == (roll == 1 and 2 or (roll >= 4 and 4 or 3)), "Roll " .. roll .. " gave the wrong armor")
+				check((fighter.bonus == 1) == (roll == 6), "Only a six should hit harder")
+			end
+			local again = Simulation.newRound(seed, { offenceId = "Firework", wildIds = { "Gambler" } }, { offenceId = "Firework" })
+			check(again.fighters[1].roll == state.fighters[1].roll, "The same seed rolled a different face")
+		end
+		for face = 1, 6 do check(faces[face], "Face " .. face .. " never came up") end
+	end)
+
+	test("Sniper locks its aim, breaks two armor on a hit and stays inside the cap", function()
+		local state = Simulation.newRound(4, { offenceId = "Sniper" }, { offenceId = "Firework" })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -50, 50, 0); passive(b, 30, 50, math.pi / 2)
+		b.vx, b.vy = 0, 0
+		a.phase, a.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(#state.projectiles == 1 and state.projectiles[1].power == 2 and state.projectiles[1].source == "sniper", "Sniper did not fire its shot")
+		for _ = 1, 40 do
+			passive(b, 30, 50, math.pi / 2); b.vx, b.vy = 0, 0
+			Simulation.step(state, Simulation.FIXED_DT)
+		end
+		check(b.armor == 1, "A sniper hit did not break two armor")
+		a.phase, a.phaseLeft, a.heading = "Windup", Skills.offence.Sniper.lockTime - 0.05, 0.3
+		passive(b, 30, 90, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(math.abs(a.heading - 0.3) < 0.0001, "The aim moved after it locked")
+		for seed = 1, 6 do
+			for _, rival in ipairs({ "Meteor", "Firework", "MachineGun", "Pinball", "Sniper" }) do
+				local first = run(seed, { offenceId = "Sniper", wildIds = { "Squadron", "Snowball" } }, { offenceId = rival, wildIds = { "Bug", "Swap" } })
+				local again = run(seed, { offenceId = "Sniper", wildIds = { "Squadron", "Snowball" } }, { offenceId = rival, wildIds = { "Bug", "Swap" } })
+				check(first.elapsed <= Simulation.MAX_TIME and equal(first, again), "Sniper against " .. rival .. " was not deterministic")
 			end
 		end
 	end)

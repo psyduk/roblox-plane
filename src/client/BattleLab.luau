@@ -695,8 +695,10 @@ function BattleLab:feedback(data)
                 -- An old event is history, not news.
             elseif event.kind=="hit" or event.kind=="wake_hit" then
                 local name=attack(event.target==1 and 2 or 1,event)
-                if event.target==1 then self:call(rival.."'S "..name.." HIT YOU!","bad",3,1.3)
-                else self:call("YOUR "..name.." HIT!","good",3,1.3) end
+                -- A hit that breaks more than one armor says so.
+                local extra=(event.amount or 1)>1 and "  −"..tostring(event.amount).." ARMOR!" or ""
+                if event.target==1 then self:call(rival.."'S "..name.." HIT YOU!"..extra,"bad",3,1.3)
+                else self:call("YOUR "..name.." HIT!"..extra,"good",3,1.3) end
                 self.hitTimes[event.target]=os.clock()
                 if event.source=="wake" then self.wildTimes[event.target==1 and 2 or 1].FizzyFuel=os.clock() end
             elseif event.kind=="blocked" then
@@ -704,7 +706,15 @@ function BattleLab:feedback(data)
                 self.wildTimes[mine and 1 or 2].SpringBumper=os.clock()
             elseif event.kind=="skill" then
                 local skill=self.skills.get(event.skillId or "")
-                if skill then
+                if skill and skill.id=="Gambler" then
+                    local roll=event.roll or 0
+                    local outcome=roll==1 and "LOSE 1 ARMOR" or (roll==6 and "JACKPOT! +1 ARMOR, DOUBLE HITS" or (roll>=4 and "+1 ARMOR" or "NOTHING"))
+                    self:call((mine and "YOU ROLLED " or rival.." ROLLED ")..tostring(roll)..": "..outcome,mine and "you" or "rival",2,2.2)
+                    self.wildTimes[mine and 1 or 2].Gambler=os.clock()
+                elseif skill and skill.id=="Swap" then
+                    self:call("SWAP! YOU TRADED ARMOR","good",3,1.6)
+                    self.wildTimes[mine and 1 or 2].Swap=os.clock()
+                elseif skill then
                     self:call((mine and "YOUR " or rival.."'S ")..string.upper(skill.name)..": "..skill.word,mine and "you" or "rival",2,1)
                     self.wildTimes[mine and 1 or 2][skill.id]=os.clock()
                 end
@@ -825,7 +835,7 @@ function BattleLab:update(dt)
         local pipHeight=tight and 9 or 18
         -- A Giant has more armor to show and a Vampire can grow past three.
         local armor=state.armor or 3
-        local pipCount=math.clamp(math.max(3,state.maxArmor or 3,armor),3,#fighter.pips)
+        local pipCount=math.clamp(math.max(state.maxArmor or 3,armor),1,#fighter.pips)
         local pipWidth=math.min(compact and 30 or (short and 44 or 62),(textWidth-(pipCount-1)*6)/pipCount)
         for n,pip in ipairs(fighter.pips) do
             pip.Visible=n<=pipCount
@@ -898,7 +908,16 @@ function BattleLab:update(dt)
                 end
             end
         end
-        if suddenDeath and not (line and side==1) then
+        -- A Swap on its way outranks everything: both pilots can still change it.
+        local swapIn
+        for index=1,2 do
+            local left=((fighters[index] or {}).swapAt or -1)-(sim.elapsed or 0)
+            if not sim.swapped and left>0 and left<=3 then swapIn=math.ceil(left) end
+        end
+        if swapIn then
+            self.status.Text="ARMOR SWAP IN "..tostring(swapIn).."…"; self.status.TextColor3=GOLD
+            self.statusEdge.Color=GOLD; self.statusEdge.Transparency=0.1
+        elseif suddenDeath and not (line and side==1) then
             self.status.Text="SUDDEN DEATH · NEXT HIT WINS"; self.status.TextColor3=GOLD
             self.statusEdge.Color=GOLD; self.statusEdge.Transparency=0.1
         elseif line then
