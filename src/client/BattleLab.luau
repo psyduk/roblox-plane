@@ -746,10 +746,17 @@ function BattleLab:update(dt)
         local chipSize=rowHeight+4
         for n,chip in ipairs(fighter.wilds) do
             local wild=self.skills.get((build.wildIds or {})[n] or "")
-            chip.label.Visible=wild~=nil and textWidth>=powerWidth+n*(chipSize+5)
+            -- With no room beside the pill, the chips ride on the portrait's rim.
+            local badge=textWidth<powerWidth+2*(chipSize+5)
+            chip.label.Visible=wild~=nil
             if chip.label.Visible then
                 local offset=powerWidth+5+(n-1)*(chipSize+5)
-                place(chip.label,right and textLeft+textWidth-offset-chipSize or textLeft+offset,rowTwo-2,chipSize,chipSize)
+                if badge then
+                    local step=(n-1)*(chipSize+2)-2
+                    place(chip.label,right and plateWidth-chipSize-step or step,portrait-chipSize+6,chipSize,chipSize)
+                else
+                    place(chip.label,right and textLeft+textWidth-offset-chipSize or textLeft+offset,rowTwo-2,chipSize,chipSize)
+                end
                 chip.label.Text=wild.icon; chip.label.TextSize=chipSize*0.58
                 -- A chip jumps and glows the moment its wild card does something,
                 -- and a spent Spring Bumper goes dark.
@@ -889,10 +896,11 @@ function BattleLab:update(dt)
         local fit=math.max(1,math.floor(panel/((landscapeDraft and 120 or 150)+12)))
         local rows=stackedCards and #choices or math.max(1,math.ceil(#choices/fit))
         local cols=stackedCards and 1 or math.max(1,math.ceil(#choices/rows))
-        local gap=12
+        -- Stacked cards squeeze so the whole roster shows without scrolling.
+        local gap=stackedCards and 8 or 12
         local cardHeight
         if landscapeDraft then cardHeight=math.max(80,listHeight/rows-gap)
-        elseif stackedCards then cardHeight=math.max(78,math.min(104,(listHeight-gap*2)/3))
+        elseif stackedCards then cardHeight=math.clamp(listHeight/math.max(1,#choices)-gap,54,104)
         else cardHeight=math.clamp(listHeight/math.max(1,rows)-gap,98,290) end
         -- A short hand sits centred under the title, never stretched to fill.
         local used=rows*(cardHeight+gap)
@@ -919,6 +927,8 @@ function BattleLab:update(dt)
                 card.button.ZIndex=chosen and 3 or 2
                 local roomy=not stackedCards and cardHeight>=150 and cardWidth>=120
                 card.tag.Visible=roomy; card.word.Visible=roomy and cardWidth>=190; card.promise.Visible=true
+                -- A stacked card has no tag, so its trigger leads the promise.
+                card.promise.Text=(stackedCards and card.spec.when) and (card.spec.when..": "..card.spec.promise) or card.spec.promise
                 if roomy then
                     place(card.tag,12,10,math.min(cardWidth-24,card.spec.when and 160 or 132),22)
                     card.tag.Text=chosen and "✓ YOUR PICK" or (card.spec.when or "TAP TO PICK")
@@ -987,7 +997,9 @@ function BattleLab:update(dt)
         enabled(self.fightButton,ready)
         self.picker.CanvasSize=UDim2.fromOffset(0,landscapeDraft and 0 or (y+(short and 50 or 62)>area and y+(short and 50 or 62) or 0))
     end
-    self:showResult(data,accents,width,height,contentTop,compact,short)
+    -- A phone on its side has no height to spare: the result starts beside the
+    -- three small buttons instead of under them, so REMATCH stays on screen.
+    self:showResult(data,accents,width,height,(short and not compact) and headerHeight+6 or contentTop,compact,short)
     self.reveal.Visible=countdown
     if countdown then
         local stacked=compact and not short
