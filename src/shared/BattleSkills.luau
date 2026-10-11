@@ -92,7 +92,7 @@ BattleSkills.offence.Firework = {
 BattleSkills.offence.MachineGun = {
 	windup = 0.65, attackTime = 0.65, attackSpeed = 25,
 	earliest = 1.0, leadSpeed = 90, leadFactor = 0.35,
-	approachTime = 3, recoveryTime = 2,
+	approachTime = 2.9, recoveryTime = 2,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 68 * 68 end,
 	attack = function(api, state, fighter, opponent)
 		fighter._burstNext, fighter._burstShots = 0, 0
@@ -197,11 +197,11 @@ BattleSkills.wild.FizzyFuel = {
 }
 
 BattleSkills.wild.Magnet = {
-	start = function(_, _, fighter) fighter.magnetLeft, fighter._magnetPending = 0, false end,
-	attack = function(_, _, fighter) fighter._magnetPending = true end,
-	recover = function(api, state, fighter)
-		if not fighter._magnetPending then return end
-		fighter._magnetPending, fighter.magnetLeft = false, 1
+	start = function(_, _, fighter) fighter.magnetLeft = 0 end,
+	-- The pull starts with the strike, so it drags the rival into the attack
+	-- instead of into the owner's unguarded turn away.
+	attack = function(api, state, fighter)
+		fighter.magnetLeft = 1
 		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "magnet", "Magnet")
 	end,
 }

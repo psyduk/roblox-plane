@@ -655,7 +655,7 @@ return function(Simulation, Catalog, Skills)
 		Simulation.step(state, Simulation.FIXED_DT)
 		for _, fighter in ipairs(state.fighters) do
 			check(fighter.armor == 1 and fighter.secondWind, "Simultaneous last-armor trigger failed")
-			check(close(fighter.phaseLeft, Simulation.RECOVERY_TIME * 0.84), "Trigger did not shorten same-step recovery")
+			check(close(fighter.phaseLeft, Simulation.RECOVERY_TIME * 0.88), "Trigger did not shorten same-step recovery")
 		end
 		local triggers = 0
 		for _, entry in ipairs(state.events) do if entry.skillId == "SecondWind" then triggers = triggers + 1 end end

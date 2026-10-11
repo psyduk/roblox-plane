@@ -223,7 +223,7 @@ local function recover(state, fighter, opponent, duration)
 	-- interruptions. The seed records every pass; no accuracy/winner roll.
 	fighter._cadence = (fighter._cadence * 16807) % 2147483647
 	fighter._approachOffset = fighter._cadence / 2147483647 * 2.4 - 1.2
-	fighter.phase, fighter.phaseLeft = "Recover", ((duration or Skills.offence[fighter.offenceId].recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.84 or 1)
+	fighter.phase, fighter.phaseLeft = "Recover", ((duration or Skills.offence[fighter.offenceId].recoveryTime or BattleSimulation.RECOVERY_TIME) + (fighter._bumperRecovery or 0)) * (fighter.secondWind and 0.88 or 1)
 	fighter._bumperRecovery = nil
 	fighter.armed = false
 	local awayX, awayY = direction(fighter.x - opponent.x, fighter.y - opponent.y, fighter.id == 1 and -1 or 1)

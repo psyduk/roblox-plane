@@ -40,9 +40,9 @@ local skills = {
 		when = "WHEN YOU ATTACK", promise = "Leave a fizzy trail that hurts your rival.",
 		color = { r = 96, g = 255, b = 214 }, starter = true, rarity = "common" },
 	Magnet = { id = "Magnet", kind = "wild", name = "Magnet", icon = "🧲", word = "PULL!",
-		when = "AFTER YOU ATTACK", promise = "Pull your rival close for a moment.",
+		when = "WHEN YOU ATTACK", promise = "Pull your rival in toward your attack.",
 		color = { r = 255, g = 120, b = 190 }, starter = true, rarity = "common" },
-	SecondWind = { id = "SecondWind", kind = "wild", name = "Second Wind", icon = "💨", word = "SECOND WIND!",
+	SecondWind = { id = "SecondWind", kind = "wild", name = "Second Wind", icon = "💨", word = "WHOOSH!",
 		when = "ON YOUR LAST ARMOR", promise = "Fly faster and attack sooner.",
 		color = { r = 130, g = 255, b = 190 }, starter = true, rarity = "common" },
 }

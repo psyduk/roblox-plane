@@ -755,6 +755,8 @@ function BattleLab:update(dt)
                 -- and a spent Spring Bumper goes dark.
                 local fired=math.max(0,1-(now-(((self.wildTimes or {})[i] or {})[wild.id] or -100))/0.9)
                 local spent=wild.id=="SpringBumper" and fighting and state.bumperReady==false and fired<=0
+                -- Second Wind stays lit for as long as it is helping.
+                if wild.id=="SecondWind" and fighting and state.secondWind==true then fired=math.max(fired,0.45) end
                 chip.edge.Color=accents[i]:Lerp(GOLD,fired); chip.edge.Thickness=2+fired*2
                 chip.label.BackgroundColor3=NAVY:Lerp(WHITE,fired*0.8); chip.label.TextTransparency=spent and 0.6 or 0
                 chip.scale.Scale=self.reducedMotion and 1 or 1+0.6*fired*fired
