@@ -49,6 +49,17 @@ Build fight logic with placeholder assets where useful, but give every skill in 
 - Show one factual, event-backed turning point between rounds so the next choice has context. It must identify what actually happened, not claim an untested alternative would have won.
 - First to three, with swap picks in later rounds, is a later experiment.
 
+### Playtest revision (October 10, after the first unfamiliar player)
+
+Owner-approved; where this conflicts with the match rules above, this wins.
+
+- **Round length.** Armor decides a round at 22 seconds. Level armor goes to sudden death: the next armor lost ends the round. The 35-second cap stays as the hard stop, and only a round that reaches it level, or a double knockout, is a draw.
+- **Draft.** Every pick shows the whole eligible roster in a fixed order. Reroll and Pick Any are switched off while the roster is this small; the code for a dealt hand remains for a larger one. The pick clock is 15 seconds.
+- **Magnet** pulls the planes together during its owner's attack, not after it.
+- **Readability comes first.** The fight HUD must always say what just happened or what is about to; see the [version 9 record](QA-2026-10-10.md#version-9-publication--first-player-feedback-pass).
+
+Still open from the same feedback: Pinball still looks like a second ram and should become a shot that bounces; Afterburner and Second Wind need a moment a player can point at; cards have no animated preview yet.
+
 ### Progression and purchases
 
 - The first public test progresses through **mastery and cosmetics**, with equal access to its active combat roster. The first reward is a chosen cosmetic or visible mastery goal, not a locked skill.

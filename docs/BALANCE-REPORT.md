@@ -2,6 +2,29 @@
 
 Measured 2026-10-10. Active roster only: four offences and five wild cards. Milestones 3/4 and expansion skills are outside this run. These are deterministic simulation results, not proof of human enjoyment, phone readability or published networking.
 
+## Tempo revision — measured 2026-10-10, source `072782f`
+
+This section supersedes the tables below, which describe the 35-second rules. Rounds now check armor at 22 seconds and settle level armor by sudden death; approach and recovery are shorter; Magnet pulls during the attack. Same method: 20 seeds, nine angle pairs, 2,880 base rounds; wild cards from 3 seeds.
+
+| Offence | Field score | W / L / D | Median / p90 |
+|---|---:|---:|---:|
+| Meteor | 48.6% | 673 / 713 / 54 | 20.5s / 24.1s |
+| Firework | 44.2% | 636 / 802 / 2 | 18.1s / 22.8s |
+| Machine Gun | 54.2% | 778 / 658 / 4 | 21.7s / 24.0s |
+| Pinball | 53.0% | 753 / 667 / 20 | 22.0s / 24.7s |
+
+Draws fell from 13–15% for Meteor and Pinball to under 4% for every offence; the worst mirror is Meteor at 11%. Pairings run from 31% to 69% (Pinball over Machine Gun, Machine Gun over Meteor, Meteor over Pinball), a little outside the 35–65 target.
+
+| Wild card | Average lift | By offence (Meteor, Firework, Machine Gun, Pinball) |
+|---|---:|---|
+| Afterburner | −5.7pp | +4.2, −8.3, −12.5, −6.3 |
+| Spring Bumper | +2.1pp | +10.4, −4.2, −12.5, +14.6 |
+| Fizzy Fuel | +5.2pp | 0, 0, +16.7, +4.2 |
+| Magnet | +2.6pp | +16.7, −12.5, −4.2, +10.4 |
+| Second Wind | +7.8pp | +12.5, +16.7, −8.3, +10.4 |
+
+**The balance is fragile.** Cadence is the main lever and it has cliffs: moving Machine Gun's approach from 3.0 to 2.8 seconds took its field score from 38% to 71%, and Pinball swung between 18% and 74% across a 0.5-second range. The chosen values (Machine Gun 2.9 / 2.0, Pinball 3.2 / 2.2, others 3.0 / 2.0) sit on a narrow shelf. Afterburner now costs its owner on average and needs a rework. Treat these numbers as a starting point for human play, not a result.
+
 ## Reproduce
 
 ```sh
