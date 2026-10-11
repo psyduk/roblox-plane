@@ -1,0 +1,222 @@
+{
+  "publishedVersion": 15,
+  "sourceCommit": "752ed54ca67ff6d223aee88e3fee5f93874ef72e",
+  "featureBaseCommit": "f952aaaddcdf7a3640f6a00f38367ae068e84614",
+  "publishedAtUTC": "2026-10-11T05:01:10Z",
+  "localXmlSHA256": "bfdf320737b0ef0b2e312905528be6d0265d1f19a04a3f4aa80434453d32aabf",
+  "native": {
+    "view": "BattleView: 14 native presentation tests passed",
+    "catalog": "SkillCatalog: 5 tests passed (copy, kinds, starters, detached records, build rules)",
+    "audio": "24 battle-audio tests passed",
+    "client": "BattleClient: 11 command and feedback tests passed",
+    "simulation": "BattleSimulation: 63 tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes, plane-changing cards)",
+    "match": "BattleLab: 33 orchestration cases passed"
+  },
+  "nativeNote": "Simulation rerun with final Thief fix. Other native suites passed earlier this turn before the fix.",
+  "sourceParity": {
+    "flags": [],
+    "universeId": 10770074500,
+    "scripts": {
+      "ReplicatedStorage.FlightGame.Simulation": {
+        "hash": 1348073257,
+        "length": 16777
+      },
+      "ServerStorage.PowerCatalogTests": {
+        "hash": 3413969676,
+        "length": 1501
+      },
+      "ReplicatedStorage.FlightGame.PowerCatalog": {
+        "hash": 286974829,
+        "length": 1531
+      },
+      "StarterPlayer.StarterPlayerScripts.PilotAvatar": {
+        "hash": 226184736,
+        "length": 12747
+      },
+      "StarterPlayer.StarterPlayerScripts.EffectsShop": {
+        "hash": 3897165165,
+        "length": 23181
+      },
+      "ServerStorage.SimulationTests": {
+        "hash": 2691703631,
+        "length": 34187
+      },
+      "StarterPlayer.StarterPlayerScripts.BattleView": {
+        "hash": 2582758633,
+        "length": 100795
+      },
+      "StarterPlayer.StarterPlayerScripts.HangarBay": {
+        "hash": 2613625484,
+        "length": 16870
+      },
+      "ServerScriptService.Telemetry": {
+        "hash": 1236797544,
+        "length": 10349
+      },
+      "ReplicatedStorage.FlightGame.World": {
+        "hash": 1690539897,
+        "length": 69619
+      },
+      "ReplicatedStorage.FlightGame.PlaneCatalog": {
+        "hash": 4066423773,
+        "length": 1814
+      },
+      "ReplicatedStorage.FlightGame.BattleSimulation": {
+        "hash": 3113402709,
+        "length": 38046
+      },
+      "StarterPlayer.StarterPlayerScripts.FlightClient": {
+        "hash": 608388288,
+        "length": 28767
+      },
+      "ServerStorage.TelemetryTests": {
+        "hash": 692151504,
+        "length": 9083
+      },
+      "ServerStorage.BattleSimulationTests": {
+        "hash": 1893405033,
+        "length": 67119
+      },
+      "ServerStorage.BattleViewTests": {
+        "hash": 121121272,
+        "length": 17220
+      },
+      "ServerScriptService.PlayerStats": {
+        "hash": 73814345,
+        "length": 26508
+      },
+      "ServerStorage.SkillCatalogTests": {
+        "hash": 2421516950,
+        "length": 5189
+      },
+      "ServerStorage.PlayerStatsTests": {
+        "hash": 2105426289,
+        "length": 40991
+      },
+      "ServerStorage.BattleClientTests": {
+        "hash": 1438278505,
+        "length": 10002
+      },
+      "ReplicatedStorage.FlightGame.BattleSkills": {
+        "hash": 3414054670,
+        "length": 25688
+      },
+      "ServerStorage.PlaneCatalogTests": {
+        "hash": 68938734,
+        "length": 1298
+      },
+      "ServerStorage.CosmeticCatalogTests": {
+        "hash": 73958080,
+        "length": 1713
+      },
+      "ServerStorage.BattleAudioTests": {
+        "hash": 1522176084,
+        "length": 17605
+      },
+      "StarterPlayer.StarterPlayerScripts.BattleLab": {
+        "hash": 4005597907,
+        "length": 83419
+      },
+      "ServerScriptService.FlightServer": {
+        "hash": 1674635902,
+        "length": 38145
+      },
+      "ServerStorage.BattleMatchTests": {
+        "hash": 2640409349,
+        "length": 31002
+      },
+      "ServerStorage.FlightAudioTests": {
+        "hash": 578806971,
+        "length": 7012
+      },
+      "StarterPlayer.StarterPlayerScripts.Hud": {
+        "hash": 2293425304,
+        "length": 102487
+      },
+      "ReplicatedStorage.FlightGame.CosmeticCatalog": {
+        "hash": 3444677531,
+        "length": 3850
+      },
+      "StarterPlayer.StarterPlayerScripts.ChallengePanel": {
+        "hash": 3805931645,
+        "length": 6738
+      },
+      "ServerScriptService.BattleLab": {
+        "hash": 365677851,
+        "length": 35388
+      },
+      "StarterPlayer.StarterPlayerScripts.BattleAudio": {
+        "hash": 588277329,
+        "length": 26901
+      },
+      "ReplicatedStorage.FlightGame.SkillCatalog": {
+        "hash": 3286406184,
+        "length": 9328
+      },
+      "StarterPlayer.StarterPlayerScripts.FlightAudio": {
+        "hash": 310989961,
+        "length": 8984
+      }
+    },
+    "orientation": "Enum.ScreenOrientation.Sensor",
+    "placeId": 86507299893768,
+    "remotes": [
+      "ReplicatedStorage.FlightGame.Command",
+      "ReplicatedStorage.FlightGame.Snapshot",
+      "ReplicatedStorage.FlightGame.BattleCommand",
+      "ReplicatedStorage.FlightGame.BattleSnapshot"
+    ],
+    "creatorId": 4979831885
+  },
+  "changedScriptPaths": [
+    "ReplicatedStorage.FlightGame.BattleSimulation",
+    "ReplicatedStorage.FlightGame.BattleSkills",
+    "ReplicatedStorage.FlightGame.SkillCatalog",
+    "ServerScriptService.BattleLab",
+    "ServerStorage.BattleSimulationTests",
+    "ServerStorage.BattleMatchTests",
+    "ServerStorage.SkillCatalogTests",
+    "ServerStorage.BattleClientTests",
+    "StarterPlayer.StarterPlayerScripts.BattleLab",
+    "StarterPlayer.StarterPlayerScripts.BattleView",
+    "StarterPlayer.StarterPlayerScripts.BattleAudio"
+  ],
+  "runtimeProbes": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"phases\":{\"Fight\":true,\"Pick\":true,\"RoundOver\":true},\"events\":{\"hit:boomerang\":true,\"windup:\":true,\"launch:\":true,\"rocket:Boomerang\":true,\"finish:\":true},\"fighters\":{\"1\":{\"offenceId\":\"Boomerang\",\"wildIds\":[],\"armor\":3},\"2\":{\"offenceId\":\"Boomerang\",\"wildIds\":[],\"armor\":0}}}"
+        }
+      ],
+      "isError": false
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"phases\":{\"Pick\":true,\"RoundOver\":true},\"events\":{\"hit:boomerang\":true,\"windup:\":true,\"launch:\":true,\"skill:Magnet\":true,\"combo:\":true,\"finish:\":true,\"rocket:Boomerang\":true},\"fighters\":{\"1\":{\"offenceId\":\"Sniper\",\"wildIds\":[\"Squadron\"],\"armor\":0},\"2\":{\"offenceId\":\"Boomerang\",\"wildIds\":[\"Magnet\"],\"armor\":3}}}"
+        }
+      ],
+      "isError": false
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"phases\":{\"MatchOver\":true},\"events\":{\"finish:\":true,\"rocket:Sniper\":true,\"rocket:Boomerang\":true,\"hit:boomerang\":true,\"windup:\":true,\"skill:Decoy\":true,\"decoy_pop:Decoy\":true,\"hit:sniper\":true,\"skill:Magnet\":true,\"miss:\":true},\"fighters\":{\"1\":{\"offenceId\":\"Sniper\",\"wildIds\":[\"Giant\",\"Squadron\"],\"armor\":0},\"2\":{\"offenceId\":\"Boomerang\",\"wildIds\":[\"Decoy\",\"Magnet\"],\"armor\":1}}}"
+        }
+      ],
+      "isError": false
+    }
+  ],
+  "actualInputSmoke": "Runtime-only guidance disabled to exercise normal draft; real UI inputs selected Boomerang, swapped to Sniper plus Squadron, added Giant; completed 1-2 loss with +50 Studio session coins. Rematch reset score, armor and wild slots. Smoke preceded narrow Thief fix, covered separately by final simulation regression.",
+  "console": "SKYBOUND_SERVER_READY and SKYBOUND_CLIENT_READY; no game-script errors observed.",
+  "notVerified": [
+    "physical phone",
+    "heard audio",
+    "published independent-account multiplayer",
+    "live persistence/rejoin",
+    "full balance"
+  ]
+}

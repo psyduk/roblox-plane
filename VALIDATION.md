@@ -1,4 +1,16 @@
-# Third batch: Wrap, Hot Potato, Decoy, Thief and the Boomerang attack — October 10, 2026 (not committed, not published)
+# Version 15 publication — expanded powers and loadout swaps, October 10, 2026
+
+**Published to Skybound Test**, place `86507299893768` / universe `10770074500`, from source **`752ed54ca67ff6d223aee88e3fee5f93874ef72e`**, including feature base `f952aaa`. Native Studio confirmed publication and Playtester availability at **2026-10-11T05:01:10Z** (October 10, 22:01:10 PDT), with a link to publish notes for **v15**. [Publication proof](docs/validation/qa-2026-10-10/published-version-15.jpg).
+
+The normal draft deals five attacks and five wild cards from pools of six and eighteen. Players can change the carried attack and wild slots between rounds during the 20-second pick. This includes all three power batches recorded below. Review found and fixed Thief clearing runtime state from a card the opponent retained; a regression fails against the old code and passes with the fix.
+
+Fresh Python checks passed **63 simulation, 5 catalog and 48 full-server scenarios** (15 battle mode, 33 explicitly opted-in archived distance). Native checks passed **63 simulation, 5 catalog, 14 presentation, 24 audio, 33 match and 11 client cases**; simulation was rerun after the Thief fix, while the other suites passed earlier in this turn. Audio checks do not establish heard quality. All **35 cloud script sources** match the final package by UTF-8 FNV checksum and byte length, with zero extra scripts or diagnostic flags, four remotes and Sensor orientation. Local XML SHA-256: **`bfdf320737b0ef0b2e312905528be6d0265d1f19a04a3f4aa80434453d32aabf`**. Existing native lighting/protected metadata were preserved; native artifact byte identity is not claimed. [Evidence](docs/validation/qa-2026-10-10/version-15-native.json).
+
+Actual desktop mouse input completed a normal bot match: Boomerang won round one; a late pick changed the attack to Sniper with Squadron for round two; Giant filled the second wild slot for round three. Server snapshots confirmed the selected builds even when the deadline expired before another Lock. The match ended 1–2 with **+50 session-only coins**; Rematch reset armor, score and wild slots. [Loadout combat](docs/validation/qa-2026-10-10/version-15-loadout-smoke.jpg), [result](docs/validation/qa-2026-10-10/version-15-result-smoke.jpg). No game-script console errors appeared. This smoke preceded the narrow Thief fix, which received the final regression check. Guidance was disabled only in the running Server; Stop discarded that override and final Edit flags were empty.
+
+**Still open:** physical-phone quality, heard audio, published multiplayer/persistence, full balance and new-power interaction polish. Review noted final-loadout-only mastery credit, Squadron/Wrap projectile lifetime asymmetry, and the known stale HUD chips after theft. These were not changed in this publication. Access settings were unchanged; dashboard permissions were not rechecked.
+
+# Third batch: Wrap, Hot Potato, Decoy, Thief and the Boomerang attack — October 10, 2026 (implementation notes; included in version 15)
 
 Continues Linear AND-233. Fifteen of the nineteen planned powers now exist.
 
@@ -36,7 +48,7 @@ First drafts that were changed: Wrap without the re-aim did nothing (46%) and br
 - Thief does nothing against a rival with no stealable card, which is every rival in round one.
 - Attack balance moves several points whenever a timing value changes; treat every number here as provisional until real play.
 
-# Second batch: Bug, Snowball, Swap, Gambler and the Sniper attack — October 10, 2026 (committed as `087a31b`, not published)
+# Second batch: Bug, Snowball, Swap, Gambler and the Sniper attack — October 10, 2026 (implementation notes from `087a31b`; included in version 15)
 
 Continues Linear AND-233. Ten of the nineteen planned powers now exist.
 
@@ -76,7 +88,7 @@ Pairs: Bug + Swap 68%, Gambler + Swap 47%, Bug + Vampire 52%. Swap alone is neut
 - Vampire dropped to 51% now that Sniper is in the field.
 - The words that used to float over a plane ("AIMING...", "POW!") did not appear in any captured frame, including for old attacks. The status line carries the same news; whether the floating words are broken or were hidden earlier is not known.
 
-# Wild cards that change your plane: Squadron, Giant, Eject, Vampire, Chicken — October 10, 2026 (committed as `bddba2b`, not published)
+# Wild cards that change your plane: Squadron, Giant, Eject, Vampire, Chicken — October 10, 2026 (implementation notes from `bddba2b`; included in version 15)
 
 Playtest feedback: the powers do not feel different, and nothing makes a player curious about what else exists. Direction from the owner: add powers that change what the plane is or break a rule (Linear AND-233). This is the first five of nineteen.
 
