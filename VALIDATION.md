@@ -1,3 +1,15 @@
+# Version 23 publication — dogfight movement, October 11, 2026
+
+**Published to Skybound Test**, place `86507299893768` / universe `10770074500`, source **`5f2506393406f2277d38d1174c70fa7c369cf924`** (feature base `111e567`), at **2026-10-11T08:51:09Z** (October 11, 01:51:09 PDT). Studio confirmed publication, Playtester availability and **v23**. [Publication proof](docs/validation/qa-2026-10-11/published-version-23.jpg).
+
+Includes continuing flight while charging, dodge rolls, uncancelled attacks, faster exchanges and the skill retune in [COMBAT-CONTRACT.md](docs/COMBAT-CONTRACT.md). Review fixed Eject retaining an armed Meteor dive and theft erasing a retained dodge bonus. Both new regressions failed against the original code, then passed with the fixes.
+
+Fresh Python checks passed **77 simulation, 6 catalog and 48 server scenarios** (15 battle, 33 archived distance). Native checks passed **77 simulation, 6 catalog, 14 view, 24 audio, 35 match, 12 client, 20 PlaneCatalog and 5 MountVisuals cases**; simulation was rerun after the fixes and the other suites passed earlier this turn. All **37 cloud sources** matched UTF-8 FNV checksums and byte lengths after seven script updates. Zero extra scripts or diagnostic flags; four remotes and Sensor orientation preserved. Final local XML SHA-256: **`9d3c88db511d8046766412f0f0fee43c375bf14ecc1a90766b37a13b6c408a27`**. Mount templates and native lighting/protected metadata were preserved; native-file byte identity and a fresh comparison of all template signatures are not claimed.
+
+Actual desktop input selected Stormcrown Eagle, played the guided Meteor/Firework match, selected and locked Afterburner, received **+50 session-only coins** after a **0–2** loss, then opened a fresh normal rematch draft with full armor and score 0–0. Separate read-only probes observed dodge events and movement in **276 of 279** sampled charging fighter states. No game-script errors appeared. This smoke preceded the two narrow fixes, which received final regression coverage. No diagnostic override was used. [Result](docs/validation/qa-2026-10-11/version-23-result-smoke.jpg), [raw checks/probes](docs/validation/qa-2026-10-11/version-23-native.json), [QA scope](docs/QA-2026-10-11.md).
+
+Access settings were unchanged; no existing servers were restarted. Physical phone, heard audio, published multiplayer, live saving and full two-card balance remain open. The rotating danger ring with Motion off remains a presentation follow-up.
+
 # Version 21 publication — legendary flying cosmetics, October 11, 2026
 
 **Published to Skybound Test**, place `86507299893768` / universe `10770074500`, as **v21** at **2026-10-11T07:35:07.714Z** (October 11, 00:35:07.714 PDT). Native Studio confirmed successful publication and Playtester availability. [Publication evidence](docs/validation/legendary-cosmetics-publication-2026-10-11.json).

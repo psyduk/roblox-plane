@@ -1,0 +1,219 @@
+{
+  "sourceCommit": "5f2506393406f2277d38d1174c70fa7c369cf924",
+  "featureBaseCommit": "111e56781a989e8da3fb8d5f18444e78874e46c4",
+  "localXmlSHA256": "9d3c88db511d8046766412f0f0fee43c375bf14ecc1a90766b37a13b6c408a27",
+  "native": {
+    "view": "BattleView: 14 native presentation tests passed",
+    "planes": "20 PlaneCatalog tests passed",
+    "catalog": "SkillCatalog: 6 tests passed (copy, kinds, starters, detached records, build rules)",
+    "mounts": "MountVisuals: 5 native template and animation contracts passed",
+    "audio": "24 battle-audio tests passed",
+    "client": "BattleClient: 12 command and feedback tests passed",
+    "simulation": "BattleSimulation: 77 tests passed (determinism, fixed ticks, collisions, protection, endings, wild cards, wakes, plane-changing cards, rolls, turns, tempo)",
+    "match": "BattleLab: 35 orchestration cases passed"
+  },
+  "nativeNote": "Simulation rerun after the two power-interaction fixes; other suites passed earlier this turn. Mount templates preserved from v21; no fresh comparison of all template signatures.",
+  "sourceParity": {
+    "flags": [],
+    "universeId": 10770074500,
+    "scripts": {
+      "ReplicatedStorage.FlightGame.Simulation": {
+        "hash": 1348073257,
+        "length": 16777
+      },
+      "ServerStorage.PowerCatalogTests": {
+        "hash": 3413969676,
+        "length": 1501
+      },
+      "ReplicatedStorage.FlightGame.PowerCatalog": {
+        "hash": 286974829,
+        "length": 1531
+      },
+      "StarterPlayer.StarterPlayerScripts.PilotAvatar": {
+        "hash": 2038196571,
+        "length": 15304
+      },
+      "StarterPlayer.StarterPlayerScripts.EffectsShop": {
+        "hash": 3897165165,
+        "length": 23181
+      },
+      "ServerStorage.SimulationTests": {
+        "hash": 2691703631,
+        "length": 34187
+      },
+      "StarterPlayer.StarterPlayerScripts.BattleView": {
+        "hash": 1042015800,
+        "length": 115618
+      },
+      "StarterPlayer.StarterPlayerScripts.HangarBay": {
+        "hash": 2613625484,
+        "length": 16870
+      },
+      "ServerScriptService.Telemetry": {
+        "hash": 1236797544,
+        "length": 10349
+      },
+      "ReplicatedStorage.FlightGame.MountVisuals": {
+        "hash": 1273352328,
+        "length": 5531
+      },
+      "ReplicatedStorage.FlightGame.World": {
+        "hash": 1908147171,
+        "length": 70901
+      },
+      "ReplicatedStorage.FlightGame.PlaneCatalog": {
+        "hash": 3255737139,
+        "length": 2742
+      },
+      "ServerStorage.MountVisualsTests": {
+        "hash": 688400392,
+        "length": 4591
+      },
+      "ReplicatedStorage.FlightGame.BattleSimulation": {
+        "hash": 1869993696,
+        "length": 59086
+      },
+      "StarterPlayer.StarterPlayerScripts.FlightClient": {
+        "hash": 608388288,
+        "length": 28767
+      },
+      "ServerStorage.TelemetryTests": {
+        "hash": 692151504,
+        "length": 9083
+      },
+      "ServerStorage.BattleSimulationTests": {
+        "hash": 3917676450,
+        "length": 89979
+      },
+      "ServerStorage.BattleViewTests": {
+        "hash": 4235043951,
+        "length": 18430
+      },
+      "ServerScriptService.PlayerStats": {
+        "hash": 2225963627,
+        "length": 28094
+      },
+      "ServerStorage.SkillCatalogTests": {
+        "hash": 3850124721,
+        "length": 6400
+      },
+      "ServerStorage.PlayerStatsTests": {
+        "hash": 1572883312,
+        "length": 43023
+      },
+      "ServerStorage.BattleClientTests": {
+        "hash": 2944574017,
+        "length": 10926
+      },
+      "ReplicatedStorage.FlightGame.BattleSkills": {
+        "hash": 2006366043,
+        "length": 33961
+      },
+      "ServerStorage.PlaneCatalogTests": {
+        "hash": 3783151154,
+        "length": 2840
+      },
+      "ServerStorage.CosmeticCatalogTests": {
+        "hash": 73958080,
+        "length": 1713
+      },
+      "ServerStorage.BattleAudioTests": {
+        "hash": 1522176084,
+        "length": 17605
+      },
+      "ServerStorage.BattleMatchTests": {
+        "hash": 4186984603,
+        "length": 33866
+      },
+      "StarterPlayer.StarterPlayerScripts.BattleLab": {
+        "hash": 1465770045,
+        "length": 90635
+      },
+      "ServerScriptService.FlightServer": {
+        "hash": 66572279,
+        "length": 38296
+      },
+      "ServerStorage.FlightAudioTests": {
+        "hash": 578806971,
+        "length": 7012
+      },
+      "StarterPlayer.StarterPlayerScripts.Hud": {
+        "hash": 644317809,
+        "length": 103557
+      },
+      "ReplicatedStorage.FlightGame.CosmeticCatalog": {
+        "hash": 3444677531,
+        "length": 3850
+      },
+      "StarterPlayer.StarterPlayerScripts.ChallengePanel": {
+        "hash": 3805931645,
+        "length": 6738
+      },
+      "ServerScriptService.BattleLab": {
+        "hash": 243382848,
+        "length": 36746
+      },
+      "StarterPlayer.StarterPlayerScripts.BattleAudio": {
+        "hash": 4172911060,
+        "length": 28954
+      },
+      "ReplicatedStorage.FlightGame.SkillCatalog": {
+        "hash": 1111647092,
+        "length": 12591
+      },
+      "StarterPlayer.StarterPlayerScripts.FlightAudio": {
+        "hash": 310989961,
+        "length": 8984
+      }
+    },
+    "orientation": "Enum.ScreenOrientation.Sensor",
+    "placeId": 86507299893768,
+    "remotes": [
+      "ReplicatedStorage.FlightGame.Command",
+      "ReplicatedStorage.FlightGame.Snapshot",
+      "ReplicatedStorage.FlightGame.BattleCommand",
+      "ReplicatedStorage.FlightGame.BattleSnapshot"
+    ],
+    "creatorId": 4979831885
+  },
+  "changedScriptPaths": [
+    "ReplicatedStorage.FlightGame.BattleSimulation",
+    "ReplicatedStorage.FlightGame.BattleSkills",
+    "ReplicatedStorage.FlightGame.SkillCatalog",
+    "ServerStorage.BattleSimulationTests",
+    "StarterPlayer.StarterPlayerScripts.BattleLab",
+    "StarterPlayer.StarterPlayerScripts.BattleView",
+    "StarterPlayer.StarterPlayerScripts.BattleAudio"
+  ],
+  "runtimeProbes": [
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"fighters\":{\"1\":{\"offenceId\":\"Meteor\",\"wildIds\":[],\"phase\":\"Windup\",\"armor\":1},\"2\":{\"offenceId\":\"Firework\",\"wildIds\":[],\"phase\":\"Approach\",\"armor\":2}},\"events\":{\"hit:meteor\":true,\"windup:\":true,\"dive:meteor\":true,\"rocket:\":true,\"hit:rocket\":true,\"miss:\":true,\"dodge:\":true,\"launch:\":true},\"chargeSamples\":133,\"phases\":{\"Fight\":true},\"dodgeSamples\":19,\"movingWhileCharging\":133}"
+        }
+      ],
+      "isError": false
+    },
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"fighters\":{\"1\":{\"offenceId\":\"Meteor\",\"wildIds\":[\"Afterburner\"],\"phase\":\"Recover\",\"armor\":1},\"2\":{\"offenceId\":\"Firework\",\"wildIds\":[\"SpringBumper\"],\"phase\":\"Windup\",\"armor\":2}},\"events\":{\"launch:\":true,\"hit:meteor\":true,\"blocked:SpringBumper\":true,\"rocket:\":true,\"dodge:\":true,\"miss:\":true,\"hit:rocket\":true,\"skill:Afterburner\":true,\"windup:\":true,\"dive:meteor\":true},\"chargeSamples\":146,\"phases\":{\"Fight\":true},\"dodgeSamples\":26,\"movingWhileCharging\":143}"
+        }
+      ],
+      "isError": false
+    }
+  ],
+  "actualInputSmoke": "Selected Stormcrown Eagle with hangar arrows, started guided Meteor/Firework match, selected and locked Afterburner. Completed 0-2 with +50 session-only coins, clicked Rematch and saw fresh armor, score0-0 and normal five-attack draft. Probe snapshots separately confirm movement during charging and dodge events. No diagnostic override used. UI smoke precedes the narrow Eject/dodge-bonus fixes; final native regressions cover these differences.",
+  "console": "SKYBOUND_SERVER_READY and SKYBOUND_CLIENT_READY only; no game-script errors observed.",
+  "notVerified": [
+    "physical phone",
+    "heard audio",
+    "published independent-account gameplay",
+    "live persistence/rejoin",
+    "full two-wild balance"
+  ],
+  "publishedVersion": 23,
+  "publishedAtUTC": "2026-10-11T08:51:09Z"
+}
