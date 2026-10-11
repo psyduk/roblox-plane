@@ -133,6 +133,13 @@ function BattleLab.new(World,shared)
     self.status.BackgroundColor3=Color3.fromRGB(31,49,69); self.status.BackgroundTransparency=0.08; corner(self.status,10)
     self.statusEdge=surface(self.status,Color3.fromRGB(118,154,187),2)
     self.statusScale=make("UIScale",self.status,"Pop")
+    -- A first match gets one plain sentence at the bottom of the screen that
+    -- says what to watch for right now.
+    self.coach=label(self.panel,"Coach",16,WHITE); self.coach.Visible=false; self.coach.ZIndex=12
+    self.coach.BackgroundColor3=NAVY; self.coach.BackgroundTransparency=0.1; corner(self.coach,12)
+    self.coachEdge=make("UIStroke",self.coach,"Edge"); self.coachEdge.ApplyStrokeMode=Enum.ApplyStrokeMode.Border
+    self.coachEdge.Thickness=3; self.coachEdge.Color=GOLD
+    self.coachScale=make("UIScale",self.coach,"Pop")
     self.experimental=label(self.panel,"ExperimentalRoster",11,GOLD); self.experimental.Text="EXPERIMENTAL ROSTER"
     self.experimental.BackgroundColor3=NAVY; self.experimental.BackgroundTransparency=0.08; corner(self.experimental,8)
     -- The draft: three big illustrated cards, one tap to choose, one to lock.
@@ -562,7 +569,9 @@ function BattleLab:showResult(data,accents,width,height,top,compact,short)
         showStats(y+4,{taken(2),taken(1),tostring(math.floor(sim.elapsed or 0)).."s"},{"YOUR HITS","RIVAL HITS","ROUND TIME"})
         y=y+statHeight+10
         place(self.resultHint,x,y,content,24); self.resultHint.TextSize=compact and 13 or 16
-        self.resultHint.Text=winner==0 and "Same builds. Going again!" or "Next up: both pilots add a wild card"
+        self.resultHint.Text=winner==0 and "Same builds. Going again!"
+            or (data.guided and ((data.stage or 1)<=1 and "Next: pick a trick for your plane!" or "Next: pick one more trick!")
+                or "Next up: both pilots add a wild card")
         local plateWidth=math.min(width-16,math.max(3*statWidth+48,compact and 0 or 560))
         place(self.roundPlate,(width-plateWidth)/2,lineTop-8,plateWidth,y+30-lineTop+8)
         self.roundPlateEdge.Color=outcome=="draw" and WHITE or accents[winner]
@@ -607,7 +616,8 @@ function BattleLab:showResult(data,accents,width,height,top,compact,short)
     y=y+buttonsHeight+4
     place(self.resultHint,x,y,content,22); self.resultHint.TextSize=compact and 11 or 13
     self.resultHint.Text=gone and "Choose Next rival to find a new match."
-        or (gift and "Your first-match gift is below ↓" or "Rematch keeps this rival. Both pilots start a fresh build.")
+        or (data.guided and "Next match you pick your attack too!"..(gift and " Your gift is below ↓" or "")
+            or (gift and "Your first-match gift is below ↓" or "Rematch keeps this rival. Both pilots start a fresh build."))
     local endY=self:showRewards(data,x,y+28,content)
     self.result.CanvasSize=UDim2.fromOffset(0,endY>area and endY+8 or 0)
     self:reportRewardShown(data)
@@ -620,6 +630,23 @@ function BattleLab:showResult(data,accents,width,height,top,compact,short)
             piece.frame.Rotation=age*piece.spin
         end
     end
+end
+-- The one sentence a first-time pilot needs at this moment, or nil. It only
+-- reads the server snapshot, so it can never promise something untrue.
+function BattleLab:coachText(data)
+    if not data or data.guided~=true then return nil end
+    local fighting=data.phase=="Fight"
+    if not fighting and data.phase~="Countdown" then return nil end
+    local build=(data.settings or {})[1] or {}
+    local newest=self.skills.get((build.wildIds or {})[#(build.wildIds or {})] or "")
+    if newest then return "Watch for your "..newest.icon.." "..newest.name..": "..(newest.when or newest.promise).."!" end
+    if not fighting then return "Your plane flies and attacks by itself. Just watch this one!" end
+    local fighters=(data.simulation or {}).fighters or {}
+    if ((fighters[1] or {}).armor or 3)<3 or ((fighters[2] or {}).armor or 3)<3 then
+        return "Each hit breaks one armor block. Break all 3 to win the round!"
+    end
+    local offence=self.skills.get(build.offenceId or "")
+    return "You start on the left. Your "..(offence and offence.icon.." "..offence.name or "plane").." attacks by itself!"
 end
 -- Turns fresh authoritative combat events into the play-by-play and HUD
 -- flashes. A louder call is never talked over by a quieter one.
@@ -875,12 +902,15 @@ function BattleLab:update(dt)
         local panel=math.min(width-24,880); local x=(width-panel)/2; local y=2
         local titleHeight=short and 30 or 50
         place(self.pickTitle,x,y,panel,titleHeight); self.pickTitle.TextSize=math.min(short and 24 or (compact and 28 or 40),panel*0.085)
-        self.pickTitle.Text=locked and "LOCKED IN!" or (data.slot=="offence" and "PICK YOUR ATTACK" or "ADD A WILD CARD")
+        self.pickTitle.Text=locked and "LOCKED IN!" or (data.slot=="offence" and "PICK YOUR ATTACK"
+            or (data.guided and ((data.stage or 2)<=2 and "PICK A WILD CARD" or "PICK ONE MORE") or "ADD A WILD CARD"))
         self.pickTitle.TextColor3=locked and GOLD or WHITE
         y=y+titleHeight
         self.pickHint.Visible=not landscapeDraft
         place(self.pickHint,x,y,panel,short and 18 or (compact and 32 or 22)); self.pickHint.TextSize=short and 11 or (compact and 12 or 14)
         self.pickHint.Text=locked and (rivalLocked and "Both locked. Revealing together…" or "Waiting for your rival. Picks stay hidden until both lock.")
+            or data.guided and ((data.stage or 2)<=2 and "A wild card gives your plane a trick. Tap one, then tap LOCK IN!"
+                or "Your plane keeps both tricks. Tap one, then tap LOCK IN!")
             or ((data.slot~="offence" and self.lastRound and self.lastRound.matchId==data.matchId and not self.lastRound.draw)
                 and "Last round: "..self.lastRound.text.." Add a trick to change the next one."
                 or "Your plane fights on its own. Win 2 rounds to win the match!")
@@ -1010,7 +1040,8 @@ function BattleLab:update(dt)
         place(self.reveal,(width-revealWidth)/2,statusTop+statusHeight+8,revealWidth,revealHeight)
         -- On a short screen the status pill already makes the call.
         self.revealTitle.Visible=not short; place(self.revealTitle,0,0,revealWidth,titleHeight)
-        self.revealTitle.Text=self.sameBuildReplay and "DRAW · SAME BUILDS!" or (data.matchPoint and "MATCH POINT!" or "PICKS REVEALED!")
+        self.revealTitle.Text=self.sameBuildReplay and "DRAW · SAME BUILDS!" or (data.matchPoint and "MATCH POINT!"
+            or ((data.guided and data.stage==1) and "YOUR FIRST BATTLE!" or "PICKS REVEALED!"))
         self.revealTitle.TextSize=short and 20 or 30
         local slide=self.reducedMotion and 1 or popIn((now-(self.revealedAt or 0))/0.32)
         for side,item in ipairs(self.reveals) do
@@ -1055,11 +1086,22 @@ function BattleLab:update(dt)
         self.count.TextTransparency=math.clamp((age-0.45)/0.3,0,1)
         self.countEdge.Transparency=self.count.TextTransparency
     end
+    local coaching=self:coachText(data)
+    local coachHeight=compact and 50 or (short and 34 or 44)
+    self.coach.Visible=coaching~=nil
+    if coaching then
+        local coachWidth=math.min(width-24,compact and 420 or 660)
+        place(self.coach,(width-coachWidth)/2,height-coachHeight-10,coachWidth,coachHeight)
+        if coaching~=self.coachLine then self.coachLine=coaching; self.coachAt=now end
+        self.coach.Text=coaching; self.coach.TextSize=compact and 14 or (short and 15 or 18)
+        self.coachEdge.Color=accents[1]
+        self.coachScale.Scale=self.reducedMotion and 1 or 1+0.18*math.max(0,1-(now-(self.coachAt or 0))/0.25)^2
+    end
     local inset=GuiService:GetGuiInset(); place(self.scrim,-inset.X,-inset.Y,width+inset.X*2,height+inset.Y)
     self.scrim.BackgroundTransparency=pick and 0.3 or (searching and 0.45 or (self.result.Visible and (self.resultDim or 1) or 1))
     local origin=self.root.AbsolutePosition+inset
     self.view:update(data,dt,{left=origin.X+10,right=origin.X+width-10,
-        top=origin.Y+((pick or searching) and headerHeight+8 or statusTop+statusHeight+8),bottom=origin.Y+height-8})
+        top=origin.Y+((pick or searching) and headerHeight+8 or statusTop+statusHeight+8),bottom=origin.Y+height-8-(coaching and coachHeight+10 or 0)})
     self.flash.BackgroundTransparency=self.reducedMotion and 1 or (1-math.min(0.7,self.view.screenFlash*0.7))
 end
 return BattleLab

@@ -109,5 +109,16 @@ return function(Client,Skills)
         assert(#commands==2,"New match reward was not reported")
         ui.data.matchId=10;ui:reportRewardShown(ui.data);assert(#commands==2,"Old reward retransmission repeated")
     end)
+    test("first-match coaching follows the snapshot and stays silent otherwise",function(ui)
+        local data={phase="Countdown",settings={{offenceId="Meteor",wildIds={}},{offenceId="Firework",wildIds={}}},
+            simulation={fighters={{armor=3},{armor=3}}}}
+        assert(ui:coachText(data)==nil,"A normal match was coached")
+        data.guided=true;assert(string.find(ui:coachText(data),"by itself",1,true))
+        data.phase="Fight";assert(string.find(ui:coachText(data),"Meteor",1,true) and string.find(ui:coachText(data),"left",1,true))
+        data.simulation.fighters[2].armor=2;assert(string.find(ui:coachText(data),"armor",1,true))
+        data.settings[1].wildIds={"SpringBumper"};assert(string.find(ui:coachText(data),"Spring Bumper: FIRST HIT ON YOU",1,true))
+        data.settings[1].wildIds={"SpringBumper","Afterburner"};assert(string.find(ui:coachText(data),"Afterburner",1,true))
+        for _,phase in ipairs({"Pick","RoundOver","MatchOver","Searching"}) do data.phase=phase;assert(ui:coachText(data)==nil,phase.." was coached") end
+    end)
     return string.format("BattleClient: %d command and feedback tests passed",passed)
 end

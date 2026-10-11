@@ -15,6 +15,12 @@ BattleLab.PICK_ANYS = 0
 BattleLab.ROUND_OVER_SECONDS = 3.5
 BattleLab.MATCH_SECONDS = 240
 BattleLab.MAX_ROUNDS = 5
+-- A pilot's first match is guided: it starts at once against a bot, the first
+-- round has no pick, and each later pick offers a small hand with a longer
+-- clock. Everything after that match is the normal draft.
+BattleLab.GUIDE_INTRO_SECONDS = 5
+BattleLab.GUIDE_PICK_SECONDS = 40
+local GUIDE = {offences={"Meteor","Firework"},wilds={"SpringBumper","Afterburner","FizzyFuel","Magnet"},hand={[2]=2,[3]=3}}
 local PUBLIC = {offences={"Meteor","Firework","MachineGun","Pinball"},
     wilds={"Afterburner","SpringBumper","FizzyFuel","Magnet","SecondWind"}}
 local function finite(value)
@@ -98,7 +104,7 @@ function BattleLab:identity(player)
 end
 function BattleLab:event(player,name,m,extra)
     if not self.deps.onEvent or not player then return end
-    local data={matchId=m and m.id or 0,roundId=m and m.roundId or 0,roundNumber=m and m.roundNumber or 0,
+    local data={guided=m and m.guided==true,matchId=m and m.id or 0,roundId=m and m.roundId or 0,roundNumber=m and m.roundNumber or 0,
         stage=m and m.stage or 0,mode=m and m.mode or "public",rosterVersion=m and m.roster.version or self.ROSTER_VERSION,
         opponentType=m and (m.participants[2].player and "human" or "bot") or "unknown",
         elapsed=m and self.deps.now()-m.startedAt or 0,queueSeconds=m and m.queueSeconds or 0,
@@ -134,14 +140,22 @@ function BattleLab:changePhase(m,phase,endsAt)
     m.phase=phase; m.phaseAt=self.deps.now(); m.endsAt=endsAt or 0
 end
 function BattleLab:startPick(m)
-    self:changePhase(m,"Pick",self.deps.now()+self.PICK_SECONDS)
+    self:changePhase(m,"Pick",self.deps.now()+(m.guided and self.GUIDE_PICK_SECONDS or self.PICK_SECONDS))
     m.selected={}; m.locked={false,false}; m.offers={}; m.offerRevision={1,1}; m.pickAnyActive={false,false}
     for side,participant in ipairs(m.participants) do
-        m.offers[side]=self:offer(self:eligible(m,side))
+        local eligible=self:eligible(m,side)
+        if m.guided then
+            -- The first cards a pilot ever reads: the plainest ones, in a fixed order.
+            local hand={}
+            for _,id in ipairs(GUIDE.wilds) do
+                if #hand<(GUIDE.hand[m.stage] or 3) and contains(eligible,id) then hand[#hand+1]=id end
+            end
+            m.offers[side]=hand
+        else m.offers[side]=self:offer(eligible) end
         if not participant.player then m.selected[side]=m.offers[side][self:random(#m.offers[side])]; m.locked[side]=true end
     end
 end
-function BattleLab:startRound(m)
+function BattleLab:startRound(m,countdown)
     self.roundSequence=self.roundSequence+1
     m.roundId=self.roundSequence; m.roundNumber=m.roundNumber+1
     local seed
@@ -149,7 +163,7 @@ function BattleLab:startRound(m)
     else seed=(self.seedBase+self.roundSequence*7919)%2147483646+1 end
     m.simulation=self.deps.simulation.newRound(seed,m.settings[1],m.settings[2])
     m.roundEvents={}; m.eventSerial=0; m.accumulator=0
-    self:changePhase(m,"Countdown",self.deps.now()+2.4)
+    self:changePhase(m,"Countdown",self.deps.now()+(countdown or 2.4))
 end
 function BattleLab:reveal(m)
     for side=1,2 do
@@ -162,8 +176,10 @@ end
 function BattleLab:createMatch(a,b,mode,botIdentity)
     if not a or not self.sessions[a.player.UserId] then return nil end
     self.sequence=self.sequence+1
+    local guided=a.guided==true and not b
+    if guided then mode="practice" end
     local m={id=self.sequence,participants={{player=a.player},{player=b and b.player}},identities={self:identity(a.player),copy(botIdentity) or self:identity(b and b.player)},
-        roster=copy(a.roster),mode=mode or a.roster.mode,diagnostic=a.roster.mode=="experimental" or (self.deps.allowFixedSeed and finite(self.deps.fixedSeed)),startedAt=self.deps.now(),score={0,0},stage=1,
+        roster=copy(a.roster),guided=guided,mode=mode or a.roster.mode,diagnostic=a.roster.mode=="experimental" or (self.deps.allowFixedSeed and finite(self.deps.fixedSeed)),startedAt=self.deps.now(),score={0,0},stage=1,
         roundNumber=0,roundId=0,settings={{wildIds={},angle=35},{wildIds={},angle=35}},resources={{reroll=self.REROLLS,pickAny=self.PICK_ANYS},{reroll=self.REROLLS,pickAny=self.PICK_ANYS}},
         votes={false,false},rewards={},rounds={},completedRounds=0,decisiveRounds=0,fightSeconds=0,draftSeconds=0,transitionSeconds=0,
         queueSeconds=math.max(0,self.deps.now()-a.queuedAt)}
@@ -177,7 +193,14 @@ function BattleLab:createMatch(a,b,mode,botIdentity)
             self:event(p.player,"match_accepted",m)
         end
     end
-    self:startPick(m); self:emitMatch(m)
+    if guided then
+        -- Round one is dealt, not picked, so the first thing a new pilot does
+        -- is watch a fight. The round winner still earns the first wild card.
+        m.settings[1].offenceId=GUIDE.offences[1]; m.settings[2].offenceId=GUIDE.offences[2]
+        m.selected={}; m.locked={true,true}; m.offers={{},{}}; m.offerRevision={0,0}; m.pickAnyActive={false,false}
+        self:startRound(m,self.GUIDE_INTRO_SECONDS)
+    else self:startPick(m) end
+    self:emitMatch(m)
     return m
 end
 function BattleLab:compactQueue()
@@ -203,8 +226,13 @@ function BattleLab:enter(player)
     self:cancelInviteFor(player,"unavailable","A pilot entered matchmaking.")
     self.queueSequence=self.queueSequence+1
     local entry={player=player,queuedAt=self.deps.now(),queueId=self.queueSequence,roster=roster}
-    self.sessions[player.UserId]=entry; table.insert(self.queue,entry)
+    entry.guided=roster.mode=="public" and self.deps.firstMatch~=nil and self.deps.firstMatch(player)==true
+        and contains(roster.offences,GUIDE.offences[1]) and contains(roster.offences,GUIDE.offences[2])
+    self.sessions[player.UserId]=entry
     self.deps.entered(player); self:event(player,"queue",nil,{queueId=entry.queueId,mode=roster.mode,rosterVersion=roster.version})
+    -- A first-timer never waits in the queue or meets a human before learning the game.
+    if entry.guided then self:createMatch(entry,nil); return end
+    table.insert(self.queue,entry)
     self:matchQueue()
 end
 function BattleLab:facts(m,result,side)
@@ -260,7 +288,7 @@ function BattleLab:snapshot(player)
         simulation=perspective(m.simulation,side),endsAt=m.endsAt,pickDeadline=m.phase=="Pick" and m.endsAt or 0,
         fightDeadline=m.phase=="Fight" and m.fightDeadline or 0,
         matchDeadline=m.startedAt+self.MATCH_SECONDS,serverTime=self.deps.now(),simulatedOpponent=m.identities[3-side].bot,
-        offer=m.phase=="Pick" and copy(m.offers[side]) or {},offerRevision=m.offerRevision[side],eligible=eligible,
+        guided=m.guided==true,offer=m.phase=="Pick" and copy(m.offers[side]) or {},offerRevision=m.offerRevision[side],eligible=eligible,
         selected=m.phase=="Pick" and m.selected[side] or nil,locked=pair(m.locked or {false,false},side),
         resources=resources,pickAnyActive=m.pickAnyActive[side],rerollReason=reason,matchPoint=m.score[1]==1 or m.score[2]==1,
         result=self:viewResult(m,m.result,side),roundResult=self:viewResult(m,m.roundResult,side),reward=copy(m.rewards[side]),
@@ -434,7 +462,7 @@ function BattleLab:command(player,payload)
             if m.votes[1] and m.votes[2] then
                 local a={player=m.participants[1].player,queuedAt=time,roster=m.roster}
                 local b=m.participants[2].player and {player=m.participants[2].player,queuedAt=time,roster=m.roster} or nil
-                self.matches[m.id]=nil; self:createMatch(a,b,m.mode,not b and m.identities[2] or nil)
+                self.matches[m.id]=nil; self:createMatch(a,b,not m.guided and m.mode or nil,not b and m.identities[2] or nil)
             end
         elseif m.phase=="Pick" and time<m.endsAt and payload.stage==m.stage and payload.offerRevision==m.offerRevision[side] and not m.locked[side]
             and payload.side==nil and payload.userId==nil and payload.playerId==nil and payload.settings==nil then

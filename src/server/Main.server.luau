@@ -487,6 +487,10 @@ local battleLab=BattleLab.new({simulation=BattleSimulation,skills=SkillCatalog,n
             color=p and p.settings.color or 1,trailId=p and p.settings.trailId or CosmeticCatalog.DEFAULT_ID}
     end,
     onEvent=function(player,event,data) telemetry:battleEvent(player,event,data) end,
+    firstMatch=function(player)
+        local p=profiles[player.UserId]
+        return script:GetAttribute("BattleGuidedFirstMatch")~=false and p~=nil and statsService:getBattle(p.statsHandle).matches==0
+    end,
     onTerminal=function(player,result)
         local p=profiles[player.UserId]
         if not p then return nil end

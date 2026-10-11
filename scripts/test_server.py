@@ -19,7 +19,7 @@ except ImportError as error:
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def make_runtime(studio=True, published=False, distance_mode=None):
+def make_runtime(studio=True, published=False, distance_mode=None, guided=False):
     L=LuaRuntime(unpack_returned_tuples=True)
     L.execute(r'''
     Harness={time=10,sent={},battleSent={},logs={},delays={}}
@@ -128,6 +128,8 @@ def make_runtime(studio=True, published=False, distance_mode=None):
     L.globals().game.GameId = 123 if published else 0
     if distance_mode is not None:
         L.globals().script.attributes.DistanceModeEnabled = distance_mode
+    # Most scenarios cover the normal draft, so the guided first match is opt-in.
+    L.globals().script.attributes.BattleGuidedFirstMatch = guided
     L.execute('function Harness.services.RunService:IsStudio()return Harness.studio end')
     simulation, catalog = load_simulation(L)
     L.globals().Harness.shared.Simulation.module=simulation
@@ -908,6 +910,29 @@ BATTLE_LIVE_SCENARIOS = {
     ''',
 }
 
+GUIDED_SCENARIOS = {
+    'a first-time pilot gets one guided bot match, then the normal queue': r'''
+        local a=Harness.add(101)
+        Harness.send(a,'play');local s=Harness.battleLatest(a)
+        assert(s.phase=='Countdown' and s.guided and s.simulatedOpponent and s.roundNumber==1)
+        assert(s.settings[1].offenceId=='Meteor' and s.settings[2].offenceId=='Firework')
+        local first=s.matchId
+        for _=1,2400 do
+            Harness.advance(.1);s=Harness.battleLatest(a)
+            if s.phase=='Pick' and not s.locked[1] then
+                assert(s.slot=='wild' and #s.offer==(s.stage==2 and 2 or 3))
+                Harness.battleSend(a,'lock',{matchId=s.matchId,stage=s.stage,offerRevision=s.offerRevision,slot=s.slot,skillId=s.offer[1]})
+            end
+            if s.phase=='MatchOver' then break end
+        end
+        assert(s.phase=='MatchOver' and s.reward.eligible and s.economy.progression.matches==1)
+        Harness.battleSend(a,'rematch',{matchId=first});Harness.advance(.1);s=Harness.battleLatest(a)
+        assert(s.phase=='Pick' and not s.guided and s.slot=='offence' and #s.offer==4)
+        Harness.battleSend(a,'exit');Harness.advance(.1)
+        Harness.send(a,'play');assert(Harness.battleLatest(a).phase=='Searching')
+    ''',
+}
+
 
 def main():
     runtime = make_runtime()
@@ -938,6 +963,13 @@ def main():
         except Exception as error:
             raise AssertionError(f"FAILED: {name}\n{error}") from error
         print(f"PASS: {name}")
+    for name, scenario in GUIDED_SCENARIOS.items():
+        runtime = make_runtime(guided=True)
+        try:
+            runtime.execute(scenario)
+        except Exception as error:
+            raise AssertionError(f"FAILED: {name}\n{error}") from error
+        print(f"PASS: {name}")
     for name, scenario in SCENARIOS.items():
         runtime = make_runtime(distance_mode=True)
         assert runtime.globals().Harness.shared.attributes.DistanceModeEnabled is True
@@ -961,8 +993,8 @@ def main():
         except Exception as error:
             raise AssertionError(f"FAILED: {name}\n{error}") from error
         print(f"PASS: {name}")
-    print(f"{len(DEFAULT_SCENARIOS) + len(SCENARIOS) + len(LIVE_SCENARIOS) + len(BATTLE_LIVE_SCENARIOS)} server scenarios passed "
-          f"({len(DEFAULT_SCENARIOS) + len(BATTLE_LIVE_SCENARIOS)} default battle mode; {len(SCENARIOS) + len(LIVE_SCENARIOS)} explicit distance mode)")
+    print(f"{len(DEFAULT_SCENARIOS) + len(GUIDED_SCENARIOS) + len(SCENARIOS) + len(LIVE_SCENARIOS) + len(BATTLE_LIVE_SCENARIOS)} server scenarios passed "
+          f"({len(DEFAULT_SCENARIOS) + len(GUIDED_SCENARIOS) + len(BATTLE_LIVE_SCENARIOS)} default battle mode; {len(SCENARIOS) + len(LIVE_SCENARIOS)} explicit distance mode)")
 
 
 if __name__ == "__main__":

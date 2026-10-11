@@ -1,3 +1,13 @@
+# Guided first match — October 10, 2026 (not published)
+
+A pilot with no completed battles now gets one guided match. PLAY skips the queue and starts against a bot. Round one has no pick: the pilot is dealt Meteor, the bot Firework (46% for Meteor over 180 sampled rounds, no draws). The first wild-card pick offers two cards (Spring Bumper, Afterburner), the second offers three, and the pick clock is 40 seconds instead of 15. A sentence at the bottom of the screen says what to watch for. The match pays the normal rewards and counts as the first match; every later match uses the full draft. Challenges, returning pilots and experimental rosters are never guided. `BattleGuidedFirstMatch=false` on the server script turns it off. Telemetry records these matches with mode `practice`.
+
+- **Checks:** 35 match-orchestration cases (2 new), 12 client cases (1 new), 45 full-server scenarios (1 new, a whole guided match then a normal rematch and queue), 41 simulation and 5 catalog tests, and the package check all pass.
+- **Seen in local Studio play** with real clicks, three complete guided matches (two wins, one loss), no script errors: desktop, and the battle UI laid out at 390×780 and 780×360. [Watch](previews/guided-first-match-1-watch.jpg), [armor](previews/guided-first-match-2-armor.jpg), [two cards](previews/guided-first-match-3-two-cards.jpg), [watch for your card](previews/guided-first-match-4-watch-for.jpg), [phone pick](previews/guided-first-match-5-phone-pick.jpg).
+- **Not checked:** a physical phone or Studio's device emulator (the phone sizes were set on the battle UI only), the three-card second pick on screen (both seen matches ended 2–0; the server cases cover it), native Studio specs, and whether a new player actually understands more. The published place is still version 10.
+
+---
+
 # Version 7 republication — October 10, 2026
 
 **Skybound Test version 7 published successfully** to the same place `86507299893768`, universe `10770074500`, at **2026-10-10T18:58:42Z** (11:58:42 PDT). Creator Dashboard showed version 7 with its Published checkmark and last-saved time 11:57. Source commit: **`6b4648f774361a3254929bedb5b990f5ecfa2811`**. Current package SHA-256: **`5c94d4dbaeea3e6aee079e0c30ef51cd6b185642bf482aa64278a3074fb1ca14`**. [Publication proof](docs/validation/qa-2026-10-10/published-version-7.jpg), [manifest](docs/validation/sky-battle-build.json), [checks and limitations](docs/QA-2026-10-10.md#version-7-republication--october-10-2026).
