@@ -925,6 +925,22 @@ return function(Simulation, Catalog, Skills)
 		check(state.finished and state.winner == 1 and b.armor == 0, "The pilot had more than one life")
 	end)
 
+	test("ejecting during a Meteor dive leaves the pilot unable to ram", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Meteor", wildIds = { "Eject" } })
+		local a, b = state.fighters[1], state.fighters[2]
+		passive(a, -40, 80, 0); armed(b, 30, 0); b.armor = 1
+		shoot(state, 30, 50)
+		check(b.ejected and b.armor == 1 and b.form == "PeaShooter", "The diving plane did not eject")
+		-- Put the rival ahead of the pilot during the old dive's remaining time.
+		passive(a, b.x + 7, b.y, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(a.armor == 3 and b.hits == 0 and not b.armed, "An ejected pilot dealt ram damage")
+		passive(a, -40, 80, 0); passive(b, 30, 50, math.pi)
+		b.phase, b.phaseLeft = "Windup", 0
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.projectiles[1] and state.projectiles[1].source == "pea", "Disarming the old dive disabled the pilot's next shot")
+	end)
+
 	test("named builds are announced once and every new card finishes inside the cap", function()
 		local state = Simulation.newRound(7, { offenceId = "Meteor", wildIds = { "Vampire", "Squadron" } }, { offenceId = "Pinball" })
 		local shout = said(state, "combo")
@@ -1147,6 +1163,46 @@ return function(Simulation, Catalog, Skills)
 				check(state.projectiles[1] and state.projectiles[1].owner == 2 and state.projectiles[1].wraps == 2, "The retained Wrap could not mark its next shot")
 			end
 		end
+	end)
+
+	test("theft preserves retained and active dodge bonuses without activating a new Second Wind", function()
+		local function setup(mine, theirs)
+			local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = mine }, { offenceId = "Firework", wildIds = theirs })
+			passive(state.fighters[1], -40, 80, 0); passive(state.fighters[2], 30, 50, 0)
+			return state, state.fighters[1], state.fighters[2]
+		end
+		local function rollCooldown(state, id)
+			local target, rival = state.fighters[id], state.fighters[3 - id]
+			passive(target, 0, 50, math.pi / 2); passive(rival, -60, 80, 0)
+			target.dodgeCool, target.dodgeLeft = 0, 0
+			local before = target.dodges
+			state.projectiles = { projectile(990, 3 - id, -16, 52, 60, 0) }
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(target.dodges == before + 1, "The cooldown fixture did not roll")
+			return target.dodgeCool / Simulation.DODGE_COOLDOWN / (target.armor <= 1 and Simulation.DANGER_DODGE or 1)
+		end
+		-- The hit activates Second Wind, then takes only Afterburner away.
+		local state, a, b = setup({ "Thief" }, { "Afterburner", "SecondWind" })
+		b.armor = 2; shoot(state, 30, 50)
+		check(b.secondWind and #b.wildIds == 1 and b.wildIds[1] == "SecondWind", "The wrong power was retained")
+		check(close(rollCooldown(state, 2), Skills.wild.SecondWind.dodge), "Stealing Afterburner removed the retained Second Wind's dodge bonus")
+		check(close(rollCooldown(state, 1), Skills.wild.Afterburner.dodge), "The thief did not gain Afterburner's dodge bonus")
+		-- An already-active Second Wind stays stronger when its owner steals Afterburner.
+		state, a, b = setup({ "Thief", "SecondWind" }, { "Afterburner" })
+		a.armor = 2
+		state.projectiles = { projectile(991, 2, -36, 80, -60, 0) }
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(a.secondWind, "The thief's Second Wind did not activate")
+		passive(a, -40, 80, 0); passive(b, 30, 50, 0); state.projectiles = {}
+		shoot(state, 30, 50)
+		check(close(rollCooldown(state, 1), Skills.wild.SecondWind.dodge), "Acquiring Afterburner weakened active Second Wind")
+		-- Holding Afterburner makes Thief take Second Wind instead. The victim
+		-- keeps Afterburner; the stolen Second Wind starts inactive as before.
+		state, a, b = setup({ "Thief", "Afterburner" }, { "Afterburner", "SecondWind" })
+		b.armor = 2; shoot(state, 30, 50)
+		check(not a.secondWind and not b.secondWind and b.wildIds[1] == "Afterburner", "Theft changed Second Wind activation rules")
+		check(close(rollCooldown(state, 2), Skills.wild.Afterburner.dodge), "Stealing Second Wind removed retained Afterburner's dodge bonus")
+		check(close(rollCooldown(state, 1), Skills.wild.Afterburner.dodge), "An unused stolen Second Wind granted its dodge bonus")
 	end)
 
 	test("Boomerang flies out, turns back to its thrower and is caught", function()

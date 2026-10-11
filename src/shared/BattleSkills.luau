@@ -44,6 +44,17 @@ local BattleSkills = { offence = {}, wild = {}, form = {} }
 
 local PI = math.pi
 
+-- These powers share a cooldown bonus. Recompute it when cards or activation
+-- state change so taking one card cannot erase the other card's benefit.
+local function refreshDodgeScale(fighter)
+	local scale = 1
+	for _, id in ipairs(fighter.wildIds) do
+		if id == "Afterburner" then scale = math.min(scale, BattleSkills.wild.Afterburner.dodge)
+		elseif id == "SecondWind" and fighter.secondWind then scale = math.min(scale, BattleSkills.wild.SecondWind.dodge) end
+	end
+	fighter.dodgeScale = scale < 1 and scale or nil
+end
+
 BattleSkills.offence.Meteor = {
 	windup = 1, aimTime = 0.4, attackTime = 1.05, attackSpeed = 75,
 	earliest = 1.05, leadSpeed = 75, leadFactor = 0.85, ram = "meteor", approachTime = 1.3,
@@ -182,7 +193,7 @@ BattleSkills.wild.Afterburner = {
 	start = function(_, _, fighter)
 		fighter._boostPending = false
 		-- Spare thrust: the plane is ready to roll again much sooner.
-		fighter.dodgeScale = BattleSkills.wild.Afterburner.dodge
+		refreshDodgeScale(fighter)
 	end,
 	attack = function(_, _, fighter)
 		fighter._boostPending = true
@@ -257,11 +268,14 @@ BattleSkills.wild.Magnet = {
 BattleSkills.wild.SecondWind = {
 	steal = true,
 	dodge = 0.5,
-	start = function(_, _, fighter) fighter.secondWind = false end,
+	start = function(_, _, fighter)
+		fighter.secondWind = false
+		refreshDodgeScale(fighter)
+	end,
 	damaged = function(api, state, fighter)
 		if fighter.armor ~= 1 or fighter.secondWind then return end
 		fighter.secondWind = true
-		fighter.dodgeScale = math.min(fighter.dodgeScale or 1, BattleSkills.wild.SecondWind.dodge)
+		refreshDodgeScale(fighter)
 		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "secondwind", "SecondWind")
 	end,
 }
@@ -327,11 +341,13 @@ BattleSkills.wild.Eject = {
 		local self = BattleSkills.wild.Eject
 		fighter.ejected, fighter.armor = true, 1
 		fighter.form, fighter.windupDuration = "PeaShooter", BattleSkills.form.PeaShooter.windup
+		fighter.armed = false -- The lost plane's dive cannot become a pilot ram.
 		fighter.squad, fighter.shotScale = 0, 1
 		fighter.radius = self.hitbox
 		fighter.scale, fighter.speedScale = self.size, self.speed
 		fighter.invulnerable = self.protection
 		fighter.chickenLeft, fighter.secondWind = 0, false
+		refreshDodgeScale(fighter)
 		api.event(state, "skill", fighter.x, fighter.y, fighter.id, 0, "eject", "Eject")
 	end,
 }
@@ -513,14 +529,15 @@ BattleSkills.wild.Thief = {
 		target.wildIds, fighter.wildIds = kept, mine
 		-- Stop only the stolen card; the rival's other card keeps its state.
 		-- Existing shots/clouds and an already-ejected pilot keep their form.
-		if taken == "Afterburner" then target._boostPending, target.boostLeft, target.tempo, target.dodgeScale = false, 0, nil, nil
+		if taken == "Afterburner" then target._boostPending, target.boostLeft, target.tempo = false, 0, nil
 		elseif taken == "SpringBumper" then target.bumperReady = false
 		elseif taken == "Chicken" then target.chickenReady = false
-		elseif taken == "SecondWind" then target.secondWind, target.dodgeScale = false, nil
+		elseif taken == "SecondWind" then target.secondWind = false
 		elseif taken == "Wrap" then target.wrapShots = false
 		elseif taken == "Magnet" then target.magnetLeft = 0
 		elseif taken == "FizzyFuel" then target._wakeLeft, target._wakeNext = 0, 0
 		elseif taken == "Rewind" then target.rewindReady = false end
+		refreshDodgeScale(target)
 		if BattleSkills.wild[taken].start then BattleSkills.wild[taken].start(api, state, fighter) end
 		api.event(state, "skill", fighter.x, fighter.y, fighter.id, target.id, "thief", "Thief").stolen = taken
 	end,
