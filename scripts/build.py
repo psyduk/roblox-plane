@@ -19,7 +19,7 @@ def build(output: Path):
         return node,props
     def source(parent,kind,name,path):
         _,props=item(parent,kind,name)
-        ET.SubElement(props,"ProtectedString",{"name":"Source"}).text=(ROOT/path).read_text()
+        ET.SubElement(props,"ProtectedString",{"name":"Source"}).text=(ROOT/path).read_text(encoding="utf-8")
     workspace,props=item(doc,"Workspace","Workspace")
     ET.SubElement(props,"float",{"name":"FallenPartsDestroyHeight"}).text="-80"
     replicated,_=item(doc,"ReplicatedStorage","ReplicatedStorage")

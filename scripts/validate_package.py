@@ -103,15 +103,15 @@ def validate(place):
         else:
             candidates = list((ROOT / "src").glob(f"*/{name}.luau"))
             # BattleLab has server and client modules; contents disambiguate.
-            candidates = [p for p in candidates if p.read_text() == source.text]
+            candidates = [p for p in candidates if p.read_text(encoding="utf-8") == source.text]
             assert len(candidates) == 1, f"Missing, stale or ambiguous source: {name}"
-            relative = str(candidates[0].relative_to(ROOT))
-        expected = (ROOT / relative).read_text()
+            relative = candidates[0].relative_to(ROOT).as_posix()
+        expected = (ROOT / relative).read_text(encoding="utf-8")
         assert expected == source.text, f"Packaged source differs: {relative}"
         assert relative not in packaged, f"Duplicate packaged script: {relative}"
         packaged[relative] = digest(expected.encode())
-    expected = {str(p.relative_to(ROOT)) for p in (ROOT / "src").glob("*/*.luau")}
-    expected |= {str(p.relative_to(ROOT)) for p in (ROOT / "tests").glob("*.spec.luau")}
+    expected = {p.relative_to(ROOT).as_posix() for p in (ROOT / "src").glob("*/*.luau")}
+    expected |= {p.relative_to(ROOT).as_posix() for p in (ROOT / "tests").glob("*.spec.luau")}
     assert set(packaged) == expected, f"Missing/extra modules: {expected ^ set(packaged)}"
     return {"place": place.name, "placeSha256": digest(place.read_bytes()),
             "sourceCount": len(packaged), "sources": dict(sorted(packaged.items())),
