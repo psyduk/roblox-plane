@@ -479,7 +479,7 @@ function BattleLab:factText(result)
     end
     if #facts>0 then return table.concat(facts,"  ") end
     local reason=result.reason
-    if reason=="timeout" then return "The 35-second clock ended. More armor wins; equal armor draws." end
+    if reason=="timeout" then return "Time ran out. More armor wins; equal armor goes to sudden death." end
     if reason=="disconnect" or reason=="forfeit" or reason=="departure" then return "The rival left before the match finished." end
     if reason=="round_cap" then return "Five rounds played. Completed round wins decide the match." end
     if reason=="match_cap" or reason=="match_timeout" then return "The match clock ended. Only completed round wins count." end
@@ -663,6 +663,8 @@ function BattleLab:feedback(data)
                     self:call((mine and "YOUR " or rival.."'S ")..string.upper(skill.name)..": "..skill.word,mine and "you" or "rival",2,1)
                     self.wildTimes[mine and 1 or 2][skill.id]=os.clock()
                 end
+            elseif event.kind=="sudden_death" then
+                self:call("SUDDEN DEATH! NEXT HIT WINS","good",3,2)
             elseif event.kind=="miss" then
                 local name=attack(mine and 1 or 2,event)
                 self:call(mine and "YOUR "..name.." MISSED" or "YOU DODGED "..rival.."'S "..name.."!",mine and "you" or "rival",1,0.9)
@@ -771,10 +773,14 @@ function BattleLab:update(dt)
     end
     -- The clock is the centre of the bar and gets loud in the last ten seconds.
     local left=self:clockSeconds(workspace:GetServerTimeNow())
-    local urgent=(fighting and left<=10) or (pick and not locked and left<=3)
+    -- The clock counts down to the armor check; sudden death then runs on
+    -- what is left before the hard stop.
+    local suddenDeath=fighting and sim.suddenDeath==true
+    if fighting and not suddenDeath and sim.regulationTime and sim.maxTime then left=math.max(0,left-(sim.maxTime-sim.regulationTime)) end
+    local urgent=suddenDeath or (fighting and left<=5) or (pick and not locked and left<=3)
     local clockHeight=headerHeight-(short and 14 or 26)
     place(self.clock,width/2-60,2,120,clockHeight)
-    self.clock.Text=(fighting or pick) and tostring(left) or (results and (sim.reason=="timeout" and "TIME!" or (sim.reason=="knockout" and "K.O." or "VS")) or "VS")
+    self.clock.Text=(fighting or pick) and tostring(left) or (results and (sim.reason=="timeout" and "TIME!" or (sim.reason=="knockout" and "K.O." or (sim.reason=="sudden_death" and "HIT!" or "VS"))) or "VS")
     self.clock.TextSize=(compact and 26 or (short and 40 or 52))*(#self.clock.Text>2 and 0.7 or 1)
     self.clock.TextColor3=urgent and RED or (results and GOLD or WHITE)
     self.clockScale.Scale=(urgent and not self.reducedMotion) and 1+0.14*math.abs(math.sin(now*math.pi)) or 1
@@ -827,7 +833,10 @@ function BattleLab:update(dt)
                 end
             end
         end
-        if line then
+        if suddenDeath and not (line and side==1) then
+            self.status.Text="SUDDEN DEATH · NEXT HIT WINS"; self.status.TextColor3=GOLD
+            self.statusEdge.Color=GOLD; self.statusEdge.Transparency=0.1
+        elseif line then
             self.status.Text=line; self.status.TextColor3=accents[side]:Lerp(WHITE,0.35)
             self.statusEdge.Color=accents[side]; self.statusEdge.Transparency=0.1
         else
@@ -875,7 +884,7 @@ function BattleLab:update(dt)
         local choices=data.pickAnyActive and data.eligible or data.offer or {}
         local stackedCards=compact and not landscapeDraft
         -- One row while each card keeps a readable width, then even rows.
-        local fit=math.max(1,math.floor((panel-12+12)/(150+12)))
+        local fit=math.max(1,math.floor(panel/((landscapeDraft and 120 or 150)+12)))
         local rows=stackedCards and #choices or math.max(1,math.ceil(#choices/fit))
         local cols=stackedCards and 1 or math.max(1,math.ceil(#choices/rows))
         local gap=12
@@ -906,19 +915,32 @@ function BattleLab:update(dt)
                 local bounce=chosen and math.max(0,1-(now-(self.pickedAt or 0))/0.2) or 0
                 card.scale.Scale=math.max(0.01,deal)*((chosen and 1.03 or (selected and 0.95 or 1))+bounce*0.07)
                 card.button.ZIndex=chosen and 3 or 2
-                local roomy=not stackedCards and cardHeight>=170 and cardWidth>=150
+                local roomy=not stackedCards and cardHeight>=150 and cardWidth>=120
                 card.tag.Visible=roomy; card.word.Visible=roomy and cardWidth>=190; card.promise.Visible=true
                 if roomy then
                     place(card.tag,12,10,math.min(cardWidth-24,card.spec.when and 160 or 132),22)
                     card.tag.Text=chosen and "✓ YOUR PICK" or (card.spec.when or "TAP TO PICK")
+                    card.tag.TextSize=cardWidth<150 and 9 or 12
                     card.tag.BackgroundTransparency=chosen and 0 or 0.45
                     place(card.icon,0,34,cardWidth,cardHeight*0.36); card.icon.TextSize=math.clamp(cardHeight*0.3,28,84)
                     place(card.word,cardWidth-math.min(150,cardWidth*0.5),40,math.min(140,cardWidth*0.46),28)
                     card.word.TextSize=math.clamp(cardWidth*0.075,14,22)
                     local nameTop=34+cardHeight*0.36
                     place(card.name,8,nameTop,cardWidth-16,36); card.name.TextSize=math.clamp(cardWidth*0.115,18,32)
+                    -- A narrow card shrinks its longest name to stay on one line.
+                    if cardWidth<190 then card.name.TextSize=math.clamp((cardWidth-16)/(#card.spec.name*0.62),11,20) end
                     card.name.TextXAlignment=Enum.TextXAlignment.Center
-                    place(card.promise,14,nameTop+38,cardWidth-28,cardHeight-nameTop-46); card.promise.TextSize=15
+                    place(card.promise,14,nameTop+38,cardWidth-28,cardHeight-nameTop-46); card.promise.TextSize=math.clamp(cardWidth*0.085,11,15)
+                    card.promise.TextXAlignment=Enum.TextXAlignment.Center; card.promise.TextYAlignment=Enum.TextYAlignment.Top
+                elseif not stackedCards and cardWidth<170 then
+                    -- A short, narrow card (a phone on its side) stacks icon, name
+                    -- and promise so no word has to break.
+                    local iconBox=math.clamp(cardHeight*0.36,20,44)
+                    place(card.icon,0,3,cardWidth,iconBox); card.icon.TextSize=iconBox*0.8
+                    place(card.name,4,iconBox+4,cardWidth-8,16)
+                    card.name.TextSize=math.clamp((cardWidth-8)/(#card.spec.name*0.62),9,15)
+                    card.name.TextXAlignment=Enum.TextXAlignment.Center
+                    place(card.promise,6,iconBox+21,cardWidth-12,cardHeight-iconBox-24); card.promise.TextSize=11
                     card.promise.TextXAlignment=Enum.TextXAlignment.Center; card.promise.TextYAlignment=Enum.TextYAlignment.Top
                 else
                     local iconBox=math.min(cardHeight-12,64)

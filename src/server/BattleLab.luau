@@ -216,7 +216,7 @@ function BattleLab:facts(m,result,side)
     if result.winner==0 then
         return {reason=="knockout" and "Both planes lost their final armor together." or "Equal armor: this round gave neither pilot a point."}
     end
-    if reason=="timeout" or reason=="time" then return {"At 35 seconds, the plane with more armor won."} end
+    if reason=="timeout" or reason=="time" then return {"Time ran out: the plane with more armor won."} end
     local facts={}
     for index=#(result.events or {}),1,-1 do
         local event=result.events[index]
@@ -234,6 +234,7 @@ function BattleLab:facts(m,result,side)
         end
     end
     if #facts==0 then facts[1]="The round ended with more armor on the winning plane." end
+    if reason=="sudden_death" then facts[1]="Sudden death! "..facts[1] end
     return facts
 end
 function BattleLab:viewResult(m,result,side)

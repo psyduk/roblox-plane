@@ -92,7 +92,7 @@ BattleSkills.offence.Firework = {
 BattleSkills.offence.MachineGun = {
 	windup = 0.65, attackTime = 0.65, attackSpeed = 25,
 	earliest = 1.0, leadSpeed = 90, leadFactor = 0.35,
-	approachTime = 4, recoveryTime = 2.6,
+	approachTime = 3, recoveryTime = 2,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 68 * 68 end,
 	attack = function(api, state, fighter, opponent)
 		fighter._burstNext, fighter._burstShots = 0, 0
@@ -114,6 +114,8 @@ BattleSkills.offence.MachineGun = {
 BattleSkills.offence.Pinball = {
 	windup = 2.4, attackTime = 1.3, attackSpeed = 65,
 	earliest = 1.6, leadSpeed = 72, leadFactor = 0.45, ram = "pinball", wallRam = true,
+	-- The rebound is the hardest attack to dodge, so it comes round less often.
+	approachTime = 3.2, recoveryTime = 2.2,
 	inPosition = function(_, _, _, _, dx, dy) return dx * dx + dy * dy < 85 * 85 end,
 	windupStart = function(_, state, fighter, opponent)
 		local b = state.bounds

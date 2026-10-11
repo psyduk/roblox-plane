@@ -12,13 +12,16 @@ BattleSimulation.MAX_TURN_RATE = 9.6
 BattleSimulation.MAGNET_SPEED = 7
 BattleSimulation.FIXED_DT = 1 / 60
 BattleSimulation.MAX_STEP_DT = 0.25
+-- A round is decided on armor at REGULATION_TIME. Level armor goes to sudden
+-- death, where the next armor lost ends it; MAX_TIME is the hard stop.
+BattleSimulation.REGULATION_TIME = 22
 BattleSimulation.MAX_TIME = 35
-BattleSimulation.PRESSURE_START = 18
+BattleSimulation.PRESSURE_START = 10
 BattleSimulation.ARENA = { left = -72, right = 72, bottom = 8, top = 96 }
 BattleSimulation.PLANE_RADIUS = 5
 BattleSimulation.IMPACT_PROTECTION = 0.85
-BattleSimulation.APPROACH_TIME = 4
-BattleSimulation.RECOVERY_TIME = 2.6
+BattleSimulation.APPROACH_TIME = 3
+BattleSimulation.RECOVERY_TIME = 2
 BattleSimulation.MAX_WILD = 2
 BattleSimulation.METEOR_WINDUP = Skills.offence.Meteor.windup
 BattleSimulation.WAKE_LIFE = 0.9
@@ -106,7 +109,7 @@ end
 
 local function updateBounds(state)
 	local pressure = clamp((state.elapsed - BattleSimulation.PRESSURE_START) /
-		(BattleSimulation.MAX_TIME - BattleSimulation.PRESSURE_START), 0, 1)
+		(BattleSimulation.REGULATION_TIME - BattleSimulation.PRESSURE_START), 0, 1)
 	state.pressure = pressure
 	state.bounds = { left = -72 + 24 * pressure, right = 72 - 24 * pressure,
 		bottom = 8 + 10 * pressure, top = 96 - 14 * pressure }
@@ -165,7 +168,7 @@ function BattleSimulation.newRound(seed, settingsA, settingsB)
 	local state = {
 		seed = seed, elapsed = 0, finished = false, winner = nil, reason = nil,
 		fighters = {}, projectiles = {}, wakes = {}, events = {}, eventSerial = 0,
-		pressure = 0, _accumulator = 0, _projectileSerial = 0, _bumpCooldown = 0,
+		pressure = 0, regulationTime = BattleSimulation.REGULATION_TIME, maxTime = BattleSimulation.MAX_TIME, _accumulator = 0, _projectileSerial = 0, _bumpCooldown = 0,
 		_wakeSerial = 0,
 	}
 	updateBounds(state)
@@ -505,6 +508,15 @@ local function tick(state)
 	elseif state.elapsed >= BattleSimulation.MAX_TIME - EPSILON then
 		state.elapsed = BattleSimulation.MAX_TIME
 		finish(state, "timeout")
+	elseif state.suddenDeath then
+		if a.armor ~= b.armor then finish(state, "sudden_death") end
+	elseif state.elapsed >= BattleSimulation.REGULATION_TIME - EPSILON then
+		if a.armor ~= b.armor then
+			finish(state, "timeout")
+		else
+			state.suddenDeath = true
+			event(state, "sudden_death", (a.x + b.x) / 2, (a.y + b.y) / 2, 0, 0)
+		end
 	end
 end
 

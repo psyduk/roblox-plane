@@ -249,16 +249,37 @@ return function(Simulation, Catalog, Skills)
 
 	test("pressure visibly shrinks bounds without dealing damage", function()
 		local state = Simulation.newRound(1)
-		state.elapsed = 26.5
+		state.elapsed = 16.5
 		passive(state.fighters[1], -72, 8, math.pi)
 		passive(state.fighters[2], 72, 96, 0)
 		Simulation.step(state, Simulation.FIXED_DT)
-		check(close(state.pressure, (state.elapsed - 18) / 17), "Pressure timing differs")
+		check(close(state.pressure, (state.elapsed - Simulation.PRESSURE_START) / (Simulation.REGULATION_TIME - Simulation.PRESSURE_START)), "Pressure timing differs")
 		check(close(state.bounds.left, -72 + 24 * state.pressure) and close(state.bounds.top, 96 - 14 * state.pressure), "Rendered bounds contract differs")
 		for _, fighter in ipairs(state.fighters) do
 			check(fighter.x >= state.bounds.left and fighter.x <= state.bounds.right and fighter.y >= state.bounds.bottom and fighter.y <= state.bounds.top, "Plane escaped pressure")
 			check(fighter.armor == 3, "Invisible edge damage")
 		end
+	end)
+
+	test("regulation time awards higher armor and level armor goes to sudden death", function()
+		local state = Simulation.newRound(1)
+		state.elapsed = Simulation.REGULATION_TIME - 0.005
+		passive(state.fighters[1], -40, 50, math.pi)
+		passive(state.fighters[2], 40, 50, 0)
+		state.fighters[2].armor = 2
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.finished and state.winner == 1 and state.reason == "timeout", "Regulation did not award the armor lead")
+		state = Simulation.newRound(1)
+		state.elapsed = Simulation.REGULATION_TIME - 0.005
+		passive(state.fighters[1], -40, 50, math.pi)
+		passive(state.fighters[2], 40, 50, 0)
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(not state.finished and state.suddenDeath == true, "Level armor did not start sudden death")
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(not state.finished, "Sudden death ended without a hit")
+		state.fighters[1].armor = 2
+		Simulation.step(state, Simulation.FIXED_DT)
+		check(state.finished and state.winner == 2 and state.reason == "sudden_death", "The next armor lost did not end sudden death")
 	end)
 
 	test("time cap awards higher armor and preserves equal armor draws", function()

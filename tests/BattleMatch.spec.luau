@@ -151,7 +151,7 @@ return function(BattleLab, Skills)
         for _,player in ipairs({a,b})do
             local result=t.lab:snapshot(player).result
             assert(result.reason=="first_to_two" and result.decidingRoundReason=="timeout")
-            assert(result.facts[1]=="At 35 seconds, the plane with more armor won.","Last hit misrepresented the armor win")
+            assert(result.facts[1]=="Time ran out: the plane with more armor won.","Last hit misrepresented the armor win")
         end
     end)
     test("draw and terminal caps explain the actual deciding rule",function()
