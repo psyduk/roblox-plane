@@ -2,13 +2,13 @@
 
 This is a free playtest candidate with the revised loadout draft and expanded power roster. Monetization, daily rewards and season passes remain outside scope. Passing local tests does not close the published/phone or unfamiliar-player gates.
 
-**Current published build:** Skybound Test, place **86507299893768**, universe **10770074500**, published **version 15** at **2026-10-11 05:01:10 UTC** (October 10, 22:01:10 PDT), from source commit **`752ed54ca67ff6d223aee88e3fee5f93874ef72e`**, based on feature commit `f952aaa`. Native Studio confirmed publication and playtester availability. [Version 15 publication proof](validation/qa-2026-10-10/published-version-15.jpg).
+**Current published build:** Skybound Test, place **86507299893768**, universe **10770074500**, published **version 17** at **2026-10-11 06:06:05 UTC** (October 10, 23:06:05 PDT), from source commit **`76bc8a51d2297f47781587a0aa18e262e95b2cde`**, based on feature commit `21e369a`. Native Studio confirmed publication. [Version 17 publication proof](validation/qa-2026-10-10/published-version-17.jpg).
 
-Version 15 contains the new 20-second loadout draft, six attacks and eighteen wild cards, including the Thief fix. Local SHA-256: **`bfdf320737b0ef0b2e312905528be6d0265d1f19a04a3f4aa80434453d32aabf`**. All **35 cloud sources** matched, with **zero extra scripts or diagnostic flags**, the four required remotes and Sensor orientation. This verifies source synchronization, not byte identity between the local XML and the published native file.
+Version 17 contains **eight attacks and twenty wild cards**, the 28-power discovery wall and NEW! badges, plus the final Meteor-drone and stolen-Rewind fixes. Local SHA-256: **`37827f68092a386794ab1fb44234f2006f93702a3889ccb847f723032c357c4e`**. All **35 cloud sources** matched UTF-8 checksums and byte lengths, with **zero extra scripts or diagnostic flags**, the four required remotes and Sensor orientation. This verifies source synchronization, not byte identity between the local XML and the published native file.
 
-Access was left unchanged. Studio confirmed availability to playtesters; Creator Dashboard was not refreshed during version 15 publication. The earlier dashboard observation was **Limited**, with **Playtesters enabled** and **Friends disabled**. Independent-account gameplay, physical-phone and live-save checks below remain unverified.
+The last recorded dashboard access observation was **Limited**, with **Playtesters enabled** and **Friends disabled**. Publication does not establish independent-account gameplay, physical-phone quality or live saving; those checks below remain unverified.
 
-**Previous recorded publication:** version **13**, published **2026-10-11T03:24:05Z** (October 10, 20:24:05 PDT), from source commit **`fc2cb0b86897ff77f89c511fab6572f6915d41a5`**. Its checks are retained below; no intermediate version history is inferred.
+**Previous recorded publication:** version **15**, published **2026-10-11T05:01:10Z** (October 10, 22:01:10 PDT), from source commit **`752ed54ca67ff6d223aee88e3fee5f93874ef72e`**. Its checks are retained below; no intermediate version history is inferred.
 
 ## Build and launch
 
@@ -16,11 +16,28 @@ Access was left unchanged. Studio confirmed availability to playtesters; Creator
 2. Run `python3 scripts/build.py`, then `python3 scripts/validate_package.py --place build/Sky-Battle-Playtest.rbxlx`. Open **`/Users/andrew/Documents/ChatGPT/color-switch/build/Sky-Battle-Playtest.rbxlx`** in Studio. The build refreshes this distinctly named copy and canonical `Skybound.rbxlx` with identical bytes. Stop old play sessions and reopen this exact path after rebuilding; confirm **Sky-Battle-Playtest.rbxlx** in the Studio title. An older `Skybound.rbxlx` window may belong to another worktree. Building does not publish or update an already-open Studio document.
 3. Press Studio Play, then the main PLAY button. A new session-only Studio pilot, or a published pilot whose verified profile has no completed battles, immediately gets a **five-second guided countdown → Meteor versus Firework bot fight**. There is no opening pick. Coaching explains automatic combat, armor and the chosen wild card. Published profiles still loading or unavailable use the normal queue rather than being assumed new. Distance/launch-angle/furthest-flight screens mean the wrong mode or place is running.
 4. In the guided match, later loadout picks offer **Meteor and Firework** as attacks, **Spring Bumper and Afterburner** for the first wild slot, then **Spring Bumper, Afterburner and Fizzy Fuel** for two distinct wild slots. Each guided pick allows **40 seconds**. The previous loadout carries forward; tap its attack or wild-slot tile to change that slot, add the missing wild card, then LOCK IN.
-5. After completing the guide, normal PLAY waits up to eight seconds for a human, then clearly identifies a practice bot. Normal loadout picks allow **20 seconds** and deal **five of six attacks and five of eighteen wild cards**, always including cards already on the plane. The opening loadout is one attack with no wild slots. Each decisive round that continues the match opens one more wild slot, up to two. Keep or swap any offered attack/wild card using the slot tiles; wild cards must be distinct. LOCK IN submits the whole loadout. The deadline preserves valid choices and fills missing slots from the hand. There is no Reroll or Pick Any.
+5. After completing the guide, normal PLAY waits up to eight seconds for a human, then clearly identifies a practice bot. Normal loadout picks allow **20 seconds** and deal **five of eight attacks and five of twenty wild cards**, always including cards already on the plane. The opening loadout is one attack with no wild slots. Each decisive round that continues the match opens one more wild slot, up to two. Keep or swap any offered attack/wild card using the slot tiles; wild cards must be distinct. LOCK IN submits the whole loadout. The deadline preserves valid choices and fills missing slots from the hand. There is no Reroll or Pick Any. A card first dealt to this pilot carries a **NEW!** badge.
 6. Combat runs automatically. Base armor is three; powers can change starting/max armor, damage, size or form, and the HUD reflects that state. Two round wins take the match. At **22 seconds**, more armor wins; level armor enters sudden death until armor differs, with a **35-second hard stop**. A draw repeats the same builds with a fresh seed and no point or new draft. The match ends within **five physical rounds or 240 seconds**, using completed-round scores at the match limit.
 7. A completed guided match grants normal rewards and counts toward progression. REMATCH starts a fresh normal loadout draft; both humans must agree when playing a human rival. Next opponent returns to the public queue. Direct challenges also use the normal draft. Hangar is always an exit; Sound and Motion controls are available in battle. Exiting an unfinished guide does not mark it completed.
+8. The result screen has a **wall of all 28 powers**. Powers already seen show their icons; unseen powers show **?** and a one-line teaser when tapped. A card counts as seen when dealt, flown or faced. Discovery is stored in the profile; older profiles begin with no discovery record. Studio progression is session-only, and live discovery persistence still needs a save/rejoin check.
 
-## Version 15 powers and checks — October 10, 2026
+## Version 17 powers and checks — October 10, 2026
+
+The eight attacks are **Meteor, Firework, Machine Gun, Pinball, Sniper, Boomerang, Black Hole and UFO Beam**. The twenty wild cards are **Afterburner, Spring Bumper, Fizzy Fuel, Magnet, Second Wind, Squadron, Giant, Eject, Vampire, Chicken, Bug, Snowball, Swap, Gambler, Wrap, Hot Potato, Decoy, Thief, Mothership and Rewind**.
+
+- **Black Hole:** pulls both planes and bends nearby shots; shots reaching its core disappear. After a short arming delay, rival contact breaks one armor and closes the hole. It never damages its owner.
+- **UFO Beam:** grabs a nearby unprotected rival, holds it briefly, then throws it toward a wall for one armor of damage. Spring Bumper blocks the wall hit; a beam aimed at a Decoy pops it.
+- **Mothership:** makes the plane larger and slower. It launches pairs of drones that carry out its attack instead of attacking directly; Meteor drones ram. Enemy shots can destroy a drone.
+- **Rewind:** cancels the first hit and restores the round state from three seconds earlier, including both planes' armor and positions, shots, bombs and stolen cards. The clock, closing walls and event history continue. It works once per plane.
+- **Thief and presentation:** when no eligible wild card can be stolen, Thief delays the rival's next attack by 1.5 seconds. HUD chips now follow stolen cards, and the attack label changes to DRONES or PEA-SHOOTER when appropriate. Floating attack/combo words render over the planes; Chicken and the ejected pilot use models built from parts. [Detailed rules and provisional balance measurements](../VALIDATION.md).
+
+**Final checks:** offline checks passed **69 simulation, 6 catalog and 48 server scenarios** (15 current battle mode, 33 explicitly opted-in archived distance). All **69 native simulation** cases passed again after the Meteor-drone and stolen-Rewind fixes. The unchanged modules passed **6 catalog, 14 view, 24 audio, 35 match, 12 client and 52 profile** cases earlier in the same publication pass. Audio checks verify behavior, not heard sound. [Native/source evidence](validation/qa-2026-10-10/version-17-native.json).
+
+Actual desktop input completed a normal bot match using **UFO Beam, Thief and Rewind**, ending **1–2 with +50 session-only coins**. Runtime snapshots captured beam/throw/slam, Rewind and theft of Magnet. The result wall showed **17 of 28 powers found**; clicking the unknown Mothership tile displayed its teaser. This smoke check preceded the two narrow fixes, which received the final regression checks above; Rematch was not retested. It does not verify every power combination or continuous motion of the staged Black Hole/drone effects. The earlier implementation pass also recorded NEW! badges and the powers wall at desktop and 844×390 HUD sizes. Physical-phone touch/performance, heard audio, two independent published players, live saving/rejoining and unfamiliar-player comprehension remain open. Balance remains provisional; the full two-wild-card interaction space has not been signed off.
+
+## Historical version 15 powers and checks — October 10, 2026
+
+Published at **2026-10-11T05:01:10Z** from **`752ed54ca67ff6d223aee88e3fee5f93874ef72e`**, based on feature commit `f952aaa`. Local SHA-256: **`bfdf320737b0ef0b2e312905528be6d0265d1f19a04a3f4aa80434453d32aabf`**. All 35 cloud sources matched with no extra scripts or diagnostic flags, four remotes and Sensor orientation. Studio confirmed publication and playtester availability; dashboard access was not refreshed. [Version 15 publication proof](validation/qa-2026-10-10/published-version-15.jpg).
 
 The attack pool is **Meteor, Firework, Machine Gun, Pinball, Sniper and Boomerang**. Sniper locks its aim before a two-armor shot; Boomerang can hit while going out or returning, then is caught without hurting its owner. Magnet now pulls toward the owner's attack path.
 
@@ -66,7 +83,7 @@ Version 7 was published at **2026-10-10T18:58:42Z** (11:58:42 PDT), from source 
 
 ## Earlier full local QA — October 10, 2026
 
-The following five-match and two-client evidence belongs to the earlier `a0c9d9e` candidate, SHA-256 **`b0280d3c5a037e5364d260e488770a0bd84d5c73b1be7fa699c7c32c4f2d80db`**, published as version 6. It is retained as historical evidence, not a fresh visual pass of version 15. See [the full QA round](QA-2026-10-10.md).
+The following five-match and two-client evidence belongs to the earlier `a0c9d9e` candidate, SHA-256 **`b0280d3c5a037e5364d260e488770a0bd84d5c73b1be7fa699c7c32c4f2d80db`**, published as version 6. It is retained as historical evidence, not a fresh visual pass of the latest candidate. See [the full QA round](QA-2026-10-10.md).
 
 - **Visual and normal-input play:** five complete bot matches, four before the QA fixes and one on the final candidate. Desktop, iPhone landscape/portrait emulation and Samsung A06 emulation were inspected. Actual gameplay earned 275 coins, then buying Aurora for 250 left 25; gift, equip, rematch and exit paths were exercised. On the final candidate, a completed loss awarded 50, Blue Comet was claimed/equipped, and a rematch confirmed Reroll, Pick Any and locking Pinball. No normal visual draw was observed in this pass.
 - **Mechanical checks:** 200 native Studio checks and 44 full-server scenarios passed. The latter comprise 11 current PvP scenarios and 33 explicitly opted-in archived distance regressions; those archived checks do not make distance mode the default.
@@ -82,7 +99,7 @@ The opt-in scripts in `scripts/qa/SkyBattleNetwork.server.luau` and `.client.lua
 
 ## Published destination and future updates
 
-The existing limited test destination is **Skybound Test**, start place `86507299893768`, universe `10770074500`; version **15** contains the verified 35-script source from commit `752ed54ca67ff6d223aee88e3fee5f93874ef72e`. For future updates, verify the owner/destination, synchronize and compare the intended candidate, publish to this existing place, then record the new version and UTC time. Do not substitute an old open tab or create a public release. [Roblox publishing/access instructions](https://create.roblox.com/docs/production/publishing/publish-games-and-places). Keep the experience Limited/Playtesters and verify both test accounts have Playtest access; prior access records alone are not proof of today's permissions. No purchases or paid products are required.
+The existing limited test destination is **Skybound Test**, start place `86507299893768`, universe `10770074500`; version **17** contains the verified 35-script source from commit `76bc8a51d2297f47781587a0aa18e262e95b2cde`. For future updates, verify the owner/destination, synchronize and compare the intended candidate, publish to this existing place, then record the new version and UTC time. Do not substitute an old open tab or create a public release. [Roblox publishing/access instructions](https://create.roblox.com/docs/production/publishing/publish-games-and-places). Keep the experience Limited/Playtesters and verify both test accounts have Playtest access; prior access records alone are not proof of today's permissions. No purchases or paid products are required.
 
 Restart existing game servers so both devices load that version. Record each account role, device model, OS, client version and network. Use one real phone and one independently connected desktop or second phone. A Studio client and the device emulator do not meet this gate.
 
@@ -94,17 +111,18 @@ Restart existing game servers so both devices load that version. Record each acc
 | Guided progression | Two attack options; first wild hand has two cards, second has three; 40-second clock, readable coaching and usable slot tiles/Lock; completion gives normal rewards and the next match uses the normal draft | Both guided wild stages, reward and next opening |
 | Public pairing | After completing guidance, both press PLAY within eight seconds and see each other's correct names/skins | Match/round IDs; both screens; verified returning profiles |
 | Hidden picks | Only prior revealed builds show until both lock in a normal match | Both screens before/after reveal |
-| Normal offers | Five attacks and five wild cards dealt from pools of six/eighteen; held cards remain offered; 20-second clock; no Reroll/Pick Any or duplicate wilds | Opening attack, both wild slots, attack swap and wild replacement |
+| Normal offers | Five attacks and five wild cards dealt from pools of eight/twenty; held cards remain offered; 20-second clock; no Reroll/Pick Any or duplicate wilds | Opening attack, both wild slots, attack swap and wild replacement |
 | Complete rivalry | Both clients agree on hits, round winners, score and match end; turning point matches visible event | Winning and losing perspective |
 | Draw and caps | At 22s more armor wins; level armor enters sudden death; draw grants no point/pick; ≤35s physical round, ≤5 rounds and ≤240s accepted→terminal | Normal observation plus separate deterministic Studio fixtures |
 | Mutual rematch | One vote waits; two votes start fresh builds and a normal five-attack hand with no wild slots; decline/exit leaves usable controls | Result→actual next launch time |
 | Challenge | Available player receives named Accept/Decline; expiry/cancel/crossing invites/departure cannot force or duplicate a match | Accept, decline, expiry and crossing attempts |
 | Departure | Leave during draft and combat; survivor can start another match; leaver rejoins cleanly | Both clients, errors and reward eligibility |
 | Phone UI | All cards and controls readable/tappable in landscape and portrait; no clipping or jump/control overlap | Screenshots and model/orientation |
-| Combat tells | Identify attacks, multi-armor hits, blocks, changed forms, bomb holder, decoy and stolen card; chosen side stays recognizable | Explain one event and current loadout without coaching |
+| Combat tells | Identify attacks, multi-armor hits, blocks, changed forms, bomb holder, decoy, stolen card, beam throw, drones and Rewind; chosen side stays recognizable | Explain one event and current loadout without coaching |
+| Power discovery | First-dealt cards show NEW!; dealt/flown/faced powers appear on the 28-power result wall; unseen powers show a tappable teaser | Before/after count, teaser and next-draft badges on phone |
 | Audio | Hear charge/release/hit, harmless rocket fizzle, result and mute; no oppressive music or masking | Listener judgement and sound/permission errors |
 | Progression | Win 75, completed loss/draw 50; first-match cosmetic choice; five qualifying losses reach 250 from zero | Balances, starter claim, goal buy and equip |
-| Persistence | Wait for Saved, leave, rejoin: coins, owned/equipped trail and mastery survive; repeat result gives no extra award | Before/after confirmed save; store warnings |
+| Persistence | Wait for Saved, leave, rejoin: coins, owned/equipped trail, mastery and discovered powers survive; repeat result gives no extra award | Before/after confirmed save; store warnings |
 | Accessibility | Motion off suppresses camera shake/flash/confetti; mute stays respected; controls remain usable | Phone capture |
 | Performance | Watch several complete matches; note frame stability, thermal slowdown and network stalls | Device model, approximate frame rate, client/server errors |
 
@@ -118,12 +136,12 @@ Predeclared discovery targets: at least 80% reach a first fight within 20 second
 
 ## Result record (fill during the published test)
 
-- Candidate build SHA-256: `bfdf320737b0ef0b2e312905528be6d0265d1f19a04a3f4aa80434453d32aabf` (verify against manifest after any rebuild)
+- Candidate build SHA-256: `37827f68092a386794ab1fb44234f2006f93702a3889ccb847f723032c357c4e` (verify against manifest after any rebuild)
 - Local candidate path: `/Users/andrew/Documents/ChatGPT/color-switch/build/Sky-Battle-Playtest.rbxlx`
 - Published place / universe: `86507299893768` / `10770074500` (Skybound Test)
-- Published place version / UTC: **15** / **2026-10-11T05:01:10Z**; Studio success confirmation observed; Creator Dashboard not refreshed ([publication proof](validation/qa-2026-10-10/published-version-15.jpg))
-- Published source commit: `752ed54ca67ff6d223aee88e3fee5f93874ef72e` (35 scripts matched UTF-8 FNV checksums and byte lengths; zero extra scripts; the local XML hash is not a published native-file hash)
-- Access retained: unchanged; Studio confirmed playtester availability. Last dashboard observation was Limited, Playtesters enabled and Friends disabled; individual test-account access still to verify
+- Published place version / UTC: **17** / **2026-10-11T06:06:05Z**; native Studio success confirmation observed ([publication proof](validation/qa-2026-10-10/published-version-17.jpg))
+- Published source commit: `76bc8a51d2297f47781587a0aa18e262e95b2cde` (35 scripts matched UTF-8 checksums and byte lengths; zero extra scripts; the local XML hash is not a published native-file hash)
+- Access: last dashboard observation was Limited, Playtesters enabled and Friends disabled; individual test-account access still to verify
 - Accounts / roles / fresh or progressed:
 - Phone and other device / OS / orientation / network:
 - Unfamiliar tester count / recruitment:

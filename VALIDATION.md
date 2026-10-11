@@ -1,4 +1,16 @@
-# Fourth batch: Mothership, Rewind, Black Hole, UFO Beam and the powers wall — October 10, 2026 (not published; version 15 does not contain this)
+# Version 17 publication — final power batch and collection wall, October 10, 2026
+
+**Published to Skybound Test**, place `86507299893768` / universe `10770074500`, source **`76bc8a51d2297f47781587a0aa18e262e95b2cde`** (feature base `21e369a`). Studio confirmed publication, Playtester availability and **v17** at **2026-10-11T06:06:05Z** (October 10, 23:06:05 PDT). [Publication proof](docs/validation/qa-2026-10-10/published-version-17.jpg).
+
+This includes Black Hole, UFO Beam, Mothership, Rewind, discovery tracking and the 28-power wall. Review reproduced two rule bugs: a destroyed Meteor drone could still ram on the next tick, and repeatedly stealing Rewind could rearm a plane that had already used it. Both received narrow fixes and regression tests that fail against the original code.
+
+Fresh Python checks passed **69 simulation, 6 catalog and 48 full-server scenarios** (15 battle, 33 archived distance). Native checks passed **69 simulation, 6 catalog, 14 view, 24 audio, 35 match, 12 client and 52 profile cases**. Simulation was rerun after the fixes; the other native suites passed earlier this turn. Profile tests use injected stores and audio tests use doubles. All **35 cloud sources** matched checksums/byte lengths after fourteen script updates, with zero extra scripts or diagnostic flags, four remotes and Sensor orientation. Final local package SHA-256: **`37827f68092a386794ab1fb44234f2006f93702a3889ccb847f723032c357c4e`**. Existing native lighting/protected metadata were preserved; native-file byte identity is not claimed. [Native/source evidence](docs/validation/qa-2026-10-10/version-17-native.json).
+
+Actual desktop mouse input selected UFO Beam, then Thief, then Rewind through the normal draft and completed a **1–2** bot loss with **+50 session-only coins**. Read-only snapshots observed grabs, throws, wall hits, Magnet theft and Rewind. The powers wall showed **17 of 28** found; scrolling reached it, and clicking an unknown Mothership tile displayed its teaser. [Combat](docs/validation/qa-2026-10-10/version-17-combat-smoke.jpg), [result](docs/validation/qa-2026-10-10/version-17-result-smoke.jpg), [wall](docs/validation/qa-2026-10-10/version-17-powers-smoke.jpg). No game-script console errors appeared. This smoke preceded the two narrow fixes; final regressions cover those differences. The runtime-only guidance override was discarded on Stop and final Edit flags were empty.
+
+**Still unverified:** physical phone, heard audio, published two-human play, live discovery/profile saving and full balance. The simultaneous UFO Beam seat priority and matchup imbalance remain documented below. Access settings were unchanged; dashboard permissions were not rechecked.
+
+# Fourth batch: Mothership, Rewind, Black Hole, UFO Beam and the powers wall — October 10, 2026 (implementation notes; included in version 17)
 
 Finishes Linear AND-234. All nineteen planned powers now exist: 8 attacks and 20 wild cards. Local package SHA-256 **`d5d5d87a36837ac81ac20a9f329dca05c38a0ef18f4573f1aae1fad1e425ff01`**.
 
