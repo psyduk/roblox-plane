@@ -626,11 +626,12 @@ BattleSkills.wild.Rewind = {
 	steal = true,
 	back = 3,
 	start = function(_, state, fighter)
-		fighter.rewindReady = true
+		-- Theft can be undone and repeated; the plane's spent rewind cannot.
+		fighter.rewindReady = not (state.rewound and state.rewound[fighter.id])
 		state.recording = true
 	end,
 	hit = function(api, state, target, actor, x, y, _, _, source)
-		if not target.rewindReady or state._rewind then return false end
+		if not target.rewindReady or state._rewind or (state.rewound and state.rewound[target.id]) then return false end
 		target.rewindReady = false
 		state._rewind = target.id
 		target.invulnerable = api.IMPACT_PROTECTION

@@ -763,7 +763,7 @@ local function tick(state)
 		local speed = carrier.droneSpeed
 		drone.age = drone.age + dt
 		if drone.dead or owner.armor <= 0 then
-			drone.mode, drone.left = "gone", 0
+			drone.mode, drone.left, drone.armed = "gone", 0, false
 		elseif drone.mode == "fly" then
 			drone.heading = turn(drone.heading, atan2(target.y - drone.y, target.x - drone.x), carrier.droneTurn * dt)
 			local range = math.min(carrier.range, offence.range and offence.range - 6 or carrier.range)

@@ -1341,7 +1341,7 @@ local function tick(state)
 		local speed = carrier.droneSpeed
 		drone.age = drone.age + dt
 		if drone.dead or owner.armor &lt;= 0 then
-			drone.mode, drone.left = "gone", 0
+			drone.mode, drone.left, drone.armed = "gone", 0, false
 		elseif drone.mode == "fly" then
 			drone.heading = turn(drone.heading, atan2(target.y - drone.y, target.x - drone.x), carrier.droneTurn * dt)
 			local range = math.min(carrier.range, offence.range and offence.range - 6 or carrier.range)
@@ -2255,11 +2255,12 @@ BattleSkills.wild.Rewind = {
 	steal = true,
 	back = 3,
 	start = function(_, state, fighter)
-		fighter.rewindReady = true
+		-- Theft can be undone and repeated; the plane's spent rewind cannot.
+		fighter.rewindReady = not (state.rewound and state.rewound[fighter.id])
 		state.recording = true
 	end,
 	hit = function(api, state, target, actor, x, y, _, _, source)
-		if not target.rewindReady or state._rewind then return false end
+		if not target.rewindReady or state._rewind or (state.rewound and state.rewound[target.id]) then return false end
 		target.rewindReady = false
 		state._rewind = target.id
 		target.invulnerable = api.IMPACT_PROTECTION
@@ -8084,6 +8085,61 @@ return function(Simulation, Catalog, Skills)
 		Simulation.step(swat, Simulation.FIXED_DT)
 		check(#swat.drones == 0 and #swat.projectiles == 0 and said(swat, "drone_pop") and swat.fighters[2].armor == 3,
 			"A shot that met a drone did not pop it and stop there")
+	end)
+
+	test("a shot-down Meteor drone cannot ram after its destruction", function()
+		for _, destroyed in ipairs({ false, true }) do
+			local state = Simulation.newRound(4, { offenceId = "Firework" }, { offenceId = "Meteor", wildIds = { "Mothership" } })
+			local a, b = state.fighters[1], state.fighters[2]
+			passive(a, -40, 80, 0); passive(b, 40, 20, 0)
+			local drone = { id = 5, owner = 2, mode = "fire", left = 1, armed = true, age = 1,
+				x = 0, y = 50, heading = math.pi, vx = 0, vy = 0 }
+			state.drones = { drone }
+			if destroyed then state.projectiles = { projectile(7, 1, -6, 50, 60, 0) } end
+			Simulation.step(state, Simulation.FIXED_DT)
+			if destroyed then
+				check(drone.dead and said(state, "drone_pop") and #state.projectiles == 0, "The shot did not destroy the armed drone")
+			end
+			-- The rival enters the drone's path on the following tick. A live drone
+			-- must hit here, but its destroyed counterpart must already be harmless.
+			passive(a, drone.x, drone.y, 0)
+			Simulation.step(state, Simulation.FIXED_DT)
+			check(a.armor == (destroyed and 3 or 2) and b.hits == (destroyed and 0 or 1),
+				destroyed and "A destroyed drone dealt ram damage" or "The live control drone did not ram")
+			check(#state.drones == 0, "The resolved drone survived")
+		end
+	end)
+
+	test("stealing Rewind again cannot reset a plane's consumed rewind", function()
+		local state = Simulation.newRound(4, { offenceId = "Firework", wildIds = { "Thief" } },
+			{ offenceId = "Firework", wildIds = { "Rewind" } })
+		local function resetPositions()
+			passive(state.fighters[1], -40, 80, 0); passive(state.fighters[2], 30, 50, 0)
+			state.fighters[1].invulnerable, state.fighters[2].invulnerable = 0, 0
+			state.projectiles = {}
+		end
+		local function shootThief()
+			state.projectiles = { projectile(999, 2, -36, 80, -60, 0) }
+			Simulation.step(state, Simulation.FIXED_DT)
+		end
+		for _ = 1, 20 do resetPositions(); Simulation.step(state, Simulation.FIXED_DT) end
+		resetPositions(); shoot(state, 30, 50)
+		check(state.rewound and state.rewound[2], "The rival did not consume its rewind")
+		-- Record a state before the theft, after the rival's own rewind is spent.
+		resetPositions(); Simulation.step(state, Simulation.FIXED_DT)
+		resetPositions(); shoot(state, 30, 50)
+		check(state.fighters[1].rewindReady and said(state, "skill", "Thief").stolen == "Rewind", "The first theft did not arm Rewind")
+		resetPositions(); shootThief()
+		local a, b = state.fighters[1], state.fighters[2]
+		check(state.rewound[1] and a.thiefReady and #a.wildIds == 1 and a.wildIds[1] == "Thief",
+			"Rewind did not restore the state before the theft")
+		check(b.wildIds[1] == "Rewind" and not b.rewindReady, "The rival's spent card was not restored")
+		resetPositions(); shoot(state, 30, 50)
+		check(#state.fighters[1].wildIds == 2 and not state.fighters[1].rewindReady, "A second theft rearmed a consumed rewind")
+		resetPositions(); shootThief()
+		local rewinds = 0
+		for _, entry in ipairs(state.events) do if entry.kind == "rewind" then rewinds = rewinds + 1 end end
+		check(state.fighters[1].armor == 2 and rewinds == 2, "A plane rewound more than once")
 	end)
 
 	test("Rewind cancels the first hit and puts the whole round back three seconds, but not the clock", function()
