@@ -1,6 +1,6 @@
 --!nonstrict
--- Local presentation for Sky Battle: two spinning tops in a walled stadium in
--- the sky. The simulation owns every hit and outcome; this file only draws
+-- Local presentation for Sky Battle: two spinning tops in a walled stadium,
+-- staged as a night tournament in a neon city. The simulation owns every hit and outcome; this file only draws
 -- what the latest snapshot says. The caller owns the render connection and
 -- must skip its normal camera while calling update. viewportRect uses
 -- Camera.ViewportSize pixel coordinates.
@@ -26,11 +26,11 @@ local COLORS = {
 	fire = Color3.fromRGB(255, 145, 54), purple = Color3.fromRGB(184, 138, 255),
 	ink = Color3.fromRGB(14, 22, 44), steel = Color3.fromRGB(168, 176, 188),
 	gunmetal = Color3.fromRGB(70, 78, 92), rubber = Color3.fromRGB(28, 30, 36),
-	deck = Color3.fromRGB(36, 44, 62), deckLight = Color3.fromRGB(58, 70, 96),
+	deck = Color3.fromRGB(24, 30, 58), deckLight = Color3.fromRGB(60, 78, 130),
 	danger = Color3.fromRGB(214, 70, 78), gold = Color3.fromRGB(214, 176, 84),
-	skyTop = Color3.fromRGB(30, 78, 186), skyMid = Color3.fromRGB(78, 158, 236),
-	horizon = Color3.fromRGB(255, 216, 176), cloud = Color3.fromRGB(255, 247, 232),
-	cloudShade = Color3.fromRGB(255, 205, 196), lime = Color3.fromRGB(196, 255, 91),
+	night = Color3.fromRGB(6, 8, 22), dusk = Color3.fromRGB(26, 18, 64),
+	glow = Color3.fromRGB(255, 64, 170), tower = Color3.fromRGB(14, 18, 40),
+	line = Color3.fromRGB(70, 220, 255), lime = Color3.fromRGB(196, 255, 91),
 	claw = Color3.fromRGB(96, 230, 170), jet = Color3.fromRGB(120, 200, 255),
 }
 -- Same order as the hangar's paint swatch, so a pilot's paint carries over.
@@ -41,7 +41,7 @@ local CAMERA_DISTANCE = 190
 local GRAVITY = 110
 local SPARK_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
 local SMOKE_TEXTURE = "rbxasset://textures/particles/smoke_main.dds"
-local RING_POOL, WORD_POOL = 6, 3
+local RING_POOL, WORD_POOL, STREAK_POOL = 6, 3, 14
 local WALL_SEGMENTS = 72
 
 local function part(parent, name, size, pose, color, material, shape)
@@ -72,14 +72,6 @@ local function disc(parent, name, radius, height, y, color, material)
 	return part(parent, name, Vector3.new(height, radius * 2, radius * 2), discPose(0, y, 0), color, material, Enum.PartType.Cylinder)
 end
 
-local function ellipsoid(parent, name, size, pose, color, material)
-	local object = part(parent, name, size, pose, color, material)
-	local mesh = Instance.new("SpecialMesh")
-	mesh.MeshType = Enum.MeshType.Sphere
-	mesh.Parent = object
-	return object
-end
-
 local function numeric(value, fallback)
 	return type(value) == "number" and value == value and math.abs(value) < 1e7 and value or fallback
 end
@@ -105,9 +97,10 @@ local function fade(from, to)
 	return NumberSequence.new({ NumberSequenceKeypoint.new(0, from), NumberSequenceKeypoint.new(1, to) })
 end
 
-local function makeSky(scenery)
-	-- A painted late-afternoon sky behind a cloud sea the platform floats above.
-	local sky = part(scenery, "Sky", Vector3.new(2400, 1500, 4), CFrame.new(ORIGIN + Vector3.new(0, 120, -420)), COLORS.skyMid)
+-- The setting: a tournament stadium at night, high above a city of dark
+-- towers picked out in neon, with stands and light rigs round the bowl.
+local function makeArena(scenery)
+	local sky = part(scenery, "Sky", Vector3.new(2600, 1500, 4), CFrame.new(ORIGIN + Vector3.new(0, 120, -520)), COLORS.night)
 	local gui = Instance.new("SurfaceGui")
 	gui.Face = Enum.NormalId.Back
 	gui.LightInfluence = 0
@@ -121,35 +114,70 @@ local function makeSky(scenery)
 	local gradient = Instance.new("UIGradient")
 	gradient.Rotation = 90
 	gradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, COLORS.skyTop), ColorSequenceKeypoint.new(0.5, COLORS.skyMid),
-		ColorSequenceKeypoint.new(0.72, COLORS.horizon), ColorSequenceKeypoint.new(1, COLORS.cloudShade),
+		ColorSequenceKeypoint.new(0, COLORS.night), ColorSequenceKeypoint.new(0.55, COLORS.dusk),
+		ColorSequenceKeypoint.new(0.72, COLORS.glow:Lerp(COLORS.dusk, 0.55)), ColorSequenceKeypoint.new(1, COLORS.night),
 	})
 	gradient.Parent = wash
-	-- The camera looks down, so most of what it sees behind the platform is
-	-- this floor of soft cloud far below.
-	part(scenery, "CloudFloor", Vector3.new(2400, 2, 1400), CFrame.new(ORIGIN + Vector3.new(0, -150, -120)), COLORS.skyMid)
-	local clouds = {}
-	local seed = 11
+	-- The city floor far below, ruled with a faint grid of light.
+	part(scenery, "CityFloor", Vector3.new(2600, 2, 1600), CFrame.new(ORIGIN + Vector3.new(0, -170, -150)), COLORS.night)
+	for index = -8, 8 do
+		local across = part(scenery, "GridLine", Vector3.new(2600, 0.4, 1.4), CFrame.new(ORIGIN + Vector3.new(0, -168.6, -150 + index * 70)), COLORS.line, Enum.Material.Neon)
+		across.Transparency = 0.72
+		local along = part(scenery, "GridLine", Vector3.new(1.4, 0.4, 1600), CFrame.new(ORIGIN + Vector3.new(index * 110, -168.6, -150)), COLORS.glow, Enum.Material.Neon)
+		along.Transparency = 0.78
+	end
+	local seed = 23
 	local function roll()
 		seed = (seed * 16807) % 2147483647
 		return (seed - 1) / 2147483646
 	end
-	for index = 1, 14 do
-		local size = 26 + roll() * 34
-		local x, y, z = (roll() * 2 - 1) * 330, -90 - roll() * 50, -260 + roll() * 330
-		-- Keep the air round and under the stadium clear, so it stands alone
-		-- against the sky and tops fall into nothing.
-		if math.abs(x) < 130 and math.abs(z) < 150 then x = x + (x < 0 and -150 or 150) end
-		local model = Instance.new("Model")
-		model.Name = "Cloud"
-		model.Parent = scenery
-		local core = ellipsoid(model, "Puff", Vector3.new(size * 2.2, size * 0.7, size * 1.3), CFrame.new(ORIGIN + Vector3.new(x, y, z)), COLORS.cloud)
-		model.PrimaryPart = core
-		ellipsoid(model, "Puff", Vector3.new(size * 1.3, size * 0.85, size), CFrame.new(ORIGIN + Vector3.new(x - size * 0.45, y + size * 0.2, z + 2)), COLORS.cloud)
-		ellipsoid(model, "Puff", Vector3.new(size * 1.1, size * 0.7, size * 0.9), CFrame.new(ORIGIN + Vector3.new(x + size * 0.5, y + size * 0.12, z - 2)), COLORS.cloud)
-		clouds[index] = { model = model, x = x, y = y, z = z, drift = 1 + roll() * 2.5 }
+	local neon = { COLORS.line, COLORS.glow, COLORS.yellow, COLORS.purple }
+	-- Towers stand well back and to the sides, never between camera and bowl.
+	for index = 1, 34 do
+		local angle = index / 34 * math.pi * 2 + roll() * 0.12
+		local reach = 250 + roll() * 240
+		local x, z = math.cos(angle) * reach, math.sin(angle) * reach * 0.8 - 120
+		if z < 40 then
+			local width, height = 26 + roll() * 34, 90 + roll() * 210
+			local centre = ORIGIN + Vector3.new(x, -170 + height / 2, z)
+			part(scenery, "Tower", Vector3.new(width, height, width), CFrame.new(centre), COLORS.tower)
+			local tint = neon[index % #neon + 1]
+			local strip = part(scenery, "TowerLight", Vector3.new(1.6, height * (0.5 + roll() * 0.4), 1.6),
+				CFrame.new(centre + Vector3.new((roll() - 0.5) * width * 0.6, 0, width / 2 + 0.6)), tint, Enum.Material.Neon)
+			strip.Transparency = 0.15
+			part(scenery, "TowerCrown", Vector3.new(width + 1, 1.2, width + 1), CFrame.new(centre + Vector3.new(0, height / 2, 0)), tint, Enum.Material.Neon).Transparency = 0.35
+		end
 	end
-	return clouds
+	-- Three tiers of stands round the bowl, and a crowd of small lights on
+	-- them that jumps when something happens.
+	local crowd = {}
+	for tier = 1, 3 do
+		local radius, y = RING + 9 + tier * 8, -4.5 + tier * 2.2
+		local stand = disc(scenery, "Stand" .. tier, radius, 2, 0, COLORS.tower)
+		stand.CFrame = discPose(ORIGIN.X, ORIGIN.Y + y - 1 - tier * 0.01, ORIGIN.Z)
+		local count = 20 + tier * 8
+		for index = 1, count do
+			local angle = (index + roll() * 0.6) / count * math.pi * 2
+			local fan = part(scenery, "Fan", Vector3.one * (0.6 + roll() * 0.4),
+				CFrame.new(ORIGIN + Vector3.new(math.cos(angle) * (radius - 4), y + 0.7, math.sin(angle) * (radius - 4))), neon[(index + tier) % #neon + 1], Enum.Material.Neon, Enum.PartType.Ball)
+			fan.Transparency = 0.45
+			crowd[#crowd + 1] = { part = fan, base = fan.CFrame, phase = roll() * 6.28 }
+		end
+	end
+	-- Two light rigs lean in over the far stands.
+	for index = 2, 3 do
+		local angle = math.pi / 4 + index * math.pi / 2
+		local foot = ORIGIN + Vector3.new(math.cos(angle) * (RING + 52), 0, math.sin(angle) * (RING + 52))
+		part(scenery, "Rig", Vector3.new(2.4, 46, 2.4), CFrame.new(foot + Vector3.new(0, 16, 0)), COLORS.tower)
+		local bar = part(scenery, "RigLight", Vector3.new(7, 0.8, 1.2), CFrame.lookAt(foot + Vector3.new(0, 40, 0), ORIGIN), COLORS.cream, Enum.Material.Neon)
+		bar.Transparency = 0.3
+		local light = Instance.new("SpotLight")
+		light.Face = Enum.NormalId.Front
+		light.Angle, light.Range, light.Brightness, light.Shadows = 70, 120, 1.2, false
+		light.Color = index % 2 == 0 and COLORS.line or COLORS.glow
+		light.Parent = bar
+	end
+	return crowd
 end
 
 local function inGap(angle)
@@ -159,33 +187,43 @@ local function inGap(angle)
 	return false
 end
 
--- The stadium: a dark dish with a low wall round it, broken by three exits.
+-- The stadium: a black glass dish ruled with light, inside a low clear wall
+-- that is broken by three lit exits.
 local function makeStadium(parent)
 	local scenery = Instance.new("Folder")
 	scenery.Name = "Stadium"
 	scenery.Parent = parent
-	local clouds = makeSky(scenery)
+	local crowd = makeArena(scenery)
 	local function layer(name, radius, height, y, color, material)
 		local object = disc(scenery, name, radius, height, 0, color, material)
 		object.CFrame = discPose(ORIGIN.X, ORIGIN.Y + y, ORIGIN.Z)
 		return object
 	end
 	-- The outer tray is where a knocked-out top lands before it drops away.
-	layer("Tray", RING + 5, 1.4, -2.2, COLORS.gunmetal, Enum.Material.Metal)
+	layer("TrayGlow", RING + 5.5, 0.5, -2.6, COLORS.glow, Enum.Material.Neon)
+	layer("Tray", RING + 5, 1.4, -2.2, COLORS.tower, Enum.Material.Metal)
 	layer("Deck", RING, 2.4, -1.2, COLORS.deck)
 	local sheen = layer("DeckSheen", RING - 0.4, 0.1, 0.02, COLORS.deckLight, Enum.Material.Glass)
-	sheen.Transparency, sheen.Reflectance = 0.55, 0.25
-	-- Faint rings give the eye something to judge distance from the middle by.
-	for index, fraction in ipairs({ 0.72, 0.44 }) do
-		layer("Ring" .. index, RING * fraction, 0.1, 0.05 + index * 0.02, COLORS.deckLight)
-		layer("RingFill" .. index, RING * fraction - 0.45, 0.1, 0.06 + index * 0.02, COLORS.deck)
+	sheen.Transparency, sheen.Reflectance = 0.6, 0.3
+	-- Rings and spokes of light: something to judge distance and speed by.
+	for index, fraction in ipairs({ 0.98, 0.72, 0.44 }) do
+		local ring = layer("Ring" .. index, RING * fraction, 0.1, 0.05 + index * 0.02, COLORS.line, Enum.Material.Neon)
+		ring.Transparency = 0.2
+		layer("RingFill" .. index, RING * fraction - 0.3, 0.1, 0.06 + index * 0.02, COLORS.deck)
 	end
-	local mark = layer("CentreMark", RING * 0.1, 0.1, 0.12, COLORS.steel, Enum.Material.Metal)
-	mark.Reflectance = 0.3
-	layer("Keel", RING * 0.75, 9, -7.4, COLORS.ink)
-	layer("KeelTip", RING * 0.4, 9, -15.4, COLORS.ink)
-	-- The wall is a ring of short straight pieces; the ones in front of a gap
-	-- are left out, and the deck there is painted as an exit.
+	for index = 0, 11 do
+		local angle = index * math.pi / 6
+		local spoke = part(scenery, "Spoke", Vector3.new(RING * 0.84, 0.06, 0.22),
+			CFrame.new(ORIGIN + Vector3.new(math.cos(angle) * RING * 0.56, 0.16, math.sin(angle) * RING * 0.56)) * CFrame.Angles(0, -angle, 0), COLORS.line, Enum.Material.Neon)
+		spoke.Transparency = 0.3
+	end
+	local mark = layer("CentreMark", RING * 0.1, 0.1, 0.18, COLORS.line, Enum.Material.Neon)
+	mark.Transparency = 0.2
+	layer("Keel", RING * 0.75, 9, -7.4, COLORS.night)
+	layer("KeelTip", RING * 0.4, 9, -15.4, COLORS.night)
+	layer("KeelGlow", RING * 0.42, 0.6, -20.2, COLORS.line, Enum.Material.Neon)
+	-- The wall is a ring of short straight panes; the ones in front of a gap
+	-- are left out, and the deck there is lit as an exit.
 	local step = math.pi * 2 / WALL_SEGMENTS
 	local length = 2 * (RING + 0.6) * math.tan(step / 2) + 0.05
 	for index = 0, WALL_SEGMENTS - 1 do
@@ -195,30 +233,31 @@ local function makeStadium(parent)
 		if inGap(angle) then
 			part(scenery, "Exit", Vector3.new(length, 0.12, 2.6), pose * CFrame.new(0, 0.08, 0.6), COLORS.danger)
 		else
-			local wall = part(scenery, "Wall", Vector3.new(length, WALL_HEIGHT, 1.2), pose * CFrame.new(0, WALL_HEIGHT / 2, 0), COLORS.steel, Enum.Material.Metal)
-			wall.Reflectance = 0.2
-			part(scenery, "WallCap", Vector3.new(length, 0.25, 1.4), pose * CFrame.new(0, WALL_HEIGHT + 0.12, 0), COLORS.cream, Enum.Material.Metal).Reflectance = 0.3
+			local wall = part(scenery, "Wall", Vector3.new(length, WALL_HEIGHT, 0.8), pose * CFrame.new(0, WALL_HEIGHT / 2, 0), COLORS.line, Enum.Material.Glass)
+			wall.Transparency = 0.6
+			part(scenery, "WallCap", Vector3.new(length, 0.14, 0.4), pose * CFrame.new(0, WALL_HEIGHT + 0.07, 0), COLORS.line, Enum.Material.Neon)
 		end
 	end
 	-- A post at each side of every exit, lit so the gaps read from any angle.
 	for _, middle in ipairs(GAPS) do
 		for _, side in ipairs({ -1, 1 }) do
 			local angle = middle + side * (GAP_HALF + step * 0.2)
-			part(scenery, "ExitPost", Vector3.new(1.3, WALL_HEIGHT + 0.8, 1.3),
-				CFrame.new(ORIGIN + Vector3.new(math.cos(angle) * (RING + 0.6), (WALL_HEIGHT + 0.8) / 2, math.sin(angle) * (RING + 0.6))), COLORS.danger, Enum.Material.Neon)
+			part(scenery, "ExitPost", Vector3.new(0.7, WALL_HEIGHT + 1.2, 0.7),
+				CFrame.new(ORIGIN + Vector3.new(math.cos(angle) * (RING + 0.6), (WALL_HEIGHT + 1.2) / 2, math.sin(angle) * (RING + 0.6))), COLORS.danger, Enum.Material.Neon)
 		end
 	end
 	local lamp = Instance.new("PointLight")
-	lamp.Color, lamp.Brightness, lamp.Range, lamp.Shadows = COLORS.cream, 0.6, 60, false
+	lamp.Color, lamp.Brightness, lamp.Range, lamp.Shadows = COLORS.cream, 0.9, 70, false
 	lamp.Parent = mark
-	return scenery, clouds
+	return scenery, crowd
 end
 
 function BattleView.new(World, onPresentationCue, options)
 	local self = setmetatable({
 		World = World, fighters = {}, roundId = nil, lastEvent = 0, clock = 0, realClock = 0,
 		sampleElapsed = nil, sampleAge = 0, destroyed = false,
-		shake = 0, punch = 0, screenFlash = 0, hype = 0, ringCursor = 0, wordCursor = 0,
+		shake = 0, punch = 0, screenFlash = 0, hype = 0, ringCursor = 0, wordCursor = 0, streakCursor = 0,
+		freeze = 0, intro = 0,
 		onPresentationCue = type(onPresentationCue) == "function" and onPresentationCue or nil,
 		-- SkillCatalog, for the words a top shouts. Optional in tests.
 		skills = type(options) == "table" and options.skills or nil,
@@ -227,15 +266,24 @@ function BattleView.new(World, onPresentationCue, options)
 	self.folder = Instance.new("Folder")
 	self.folder.Name = "SkyboundBattleView"
 	self.folder.Parent = Workspace
-	self.scenery, self.clouds = makeStadium(self.folder)
-	-- Glow and grade belong to this view and leave with it.
+	self.scenery, self.crowd = makeStadium(self.folder)
+	-- The arena makes its own night. Everything changed in Lighting is put
+	-- back, and the glow and grade removed, when this view goes.
+	self.daylight = {}
+	for name, value in pairs({ ClockTime = 0, Brightness = 0, ExposureCompensation = 0,
+		Ambient = Color3.fromRGB(128, 132, 170), OutdoorAmbient = Color3.fromRGB(128, 132, 170) }) do
+		pcall(function()
+			self.daylight[name] = Lighting[name]
+			Lighting[name] = value
+		end)
+	end
 	self.bloom = Instance.new("BloomEffect")
 	self.bloom.Name = "SkyboundBattleBloom"
-	self.bloom.Intensity, self.bloom.Size, self.bloom.Threshold = 0.3, 18, 1.4
+	self.bloom.Intensity, self.bloom.Size, self.bloom.Threshold = 0.3, 14, 1.9
 	self.bloom.Parent = Lighting
 	self.grade = Instance.new("ColorCorrectionEffect")
 	self.grade.Name = "SkyboundBattleGrade"
-	self.grade.Saturation, self.grade.Contrast = 0.02, 0.1
+	self.grade.Saturation, self.grade.Contrast = 0.12, 0.08
 	self.grade.Parent = Lighting
 	self.groundY = ORIGIN.Y
 	self.folder:SetAttribute("GroundY", self.groundY)
@@ -260,7 +308,14 @@ function BattleView.new(World, onPresentationCue, options)
 		wave.CFrame, wave.Transparency = PARKED, 1
 		self.rings[index] = { part = wave, start = -100, life = 0.4, radius = 10, x = 0, y = 0 }
 	end
-	-- Comic words that pop up where something happened.
+	-- Speed lines: thin bars of light thrown out from a big hit.
+	self.streaks = {}
+	for index = 1, STREAK_POOL do
+		local bar = part(self.dynamic, "SpeedLine", Vector3.one, PARKED, COLORS.cream, Enum.Material.Neon)
+		bar.Transparency = 1
+		self.streaks[index] = { part = bar, start = -100, life = 0.2, x = 0, y = 0, dx = 1, dy = 0, length = 10 }
+	end
+	-- Words that flash up where something happened.
 	self.words = {}
 	for index = 1, WORD_POOL do
 		local anchor = part(self.dynamic, "WordAnchor", Vector3.one, PARKED, COLORS.cream)
@@ -274,7 +329,7 @@ function BattleView.new(World, onPresentationCue, options)
 		local label = Instance.new("TextLabel")
 		label.Size = UDim2.fromScale(1, 1)
 		label.BackgroundTransparency = 1
-		label.Font = Enum.Font.FredokaOne
+		label.Font = Enum.Font.Michroma
 		label.TextSize = 40
 		label.Parent = board
 		local stroke = Instance.new("UIStroke")
@@ -292,11 +347,13 @@ function BattleView:_resetRound(roundId)
 	self.roundId, self.lastEvent, self.sampleElapsed, self.sampleAge = roundId, 0, nil, 0
 	self.finishReal = nil
 	self.shake, self.punch, self.screenFlash = 0, 0, 0
-	self.grade.Brightness, self.grade.Contrast, self.grade.Saturation = 0, 0.1, 0.02
+	self.grade.Brightness, self.grade.Contrast, self.grade.Saturation = 0, 0.08, 0.12
+	self.freeze = 0
 	for _, fighter in pairs(self.fighters) do fighter.model:Destroy() end
 	self.fighters = {}
 	for _, wave in ipairs(self.rings) do wave.start, wave.part.Transparency = -100, 1 end
 	for _, word in ipairs(self.words) do word.start, word.board.Enabled = -100, false end
+	for _, streak in ipairs(self.streaks) do streak.start, streak.part.Transparency = -100, 1 end
 end
 
 function BattleView:_look(index)
@@ -376,6 +433,14 @@ local function buildTop(parent, state, color, accent)
 	round("Layer", radius * 0.9, 0.7, 2.95, color)
 	round("LayerInner", radius * 0.58, 0.3, 3.4, color:Lerp(COLORS.ink, 0.35))
 	round("Hub", radius * 0.26, 0.5, 3.7, accent)
+	-- The aura: a ring of light in the pilot's colour that burns as bright as
+	-- the top has spin left.
+	local parts = {}
+	parts.aura = round("Aura", radius * 1.04, 0.12, 1.95, color, Enum.Material.Neon)
+	parts.auraInner = round("AuraInner", radius * 0.96, 0.14, 1.95, COLORS.rubber)
+	parts.glow = Instance.new("PointLight")
+	parts.glow.Color, parts.glow.Range, parts.glow.Brightness, parts.glow.Shadows = color, 12, 0.35, false
+	parts.glow.Parent = root
 	-- One bright bar across the hub keeps the spin readable at any speed.
 	solid("SpinStripe", Vector3.new(radius * 1.1, 0.14, radius * 0.16), CFrame.new(0, 3.6, 0), COLORS.cream)
 	if kind == "Bolt" then
@@ -402,11 +467,10 @@ local function buildTop(parent, state, color, accent)
 	if has(wilds, "Spikes") then
 		around("Spike", 8, radius * 1.02, Vector3.new(radius * 0.34, 0.4, 0.5), 2.3, COLORS.steel, 0.5, Enum.Material.Metal)
 	end
-	local parts = {}
 	if has(wilds, "Guard") then
 		-- A loose outer ring that does not turn with the top.
-		parts.guard = round("GuardRing", radius * 1.08, 0.35, 2.3, COLORS.lime, Enum.Material.Glass)
-		parts.guard.Transparency = 0.35
+		parts.guard = round("GuardRing", radius * 1.18, 0.3, 2.3, COLORS.lime, Enum.Material.Neon)
+		parts.guard.Transparency = 0.45
 	end
 	if has(wilds, "Flywheel") then
 		metal(round("Flywheel", radius * 0.5, 0.35, 3.45, COLORS.gold), 0.45)
@@ -421,17 +485,6 @@ local function buildTop(parent, state, color, accent)
 			parts.pieces[#parts.pieces + 1] = { part = piece, rest = piece.CFrame }
 		end
 	end
-	-- A ribbon in the pilot's trail colours follows the top round the bowl.
-	local low, high = Instance.new("Attachment"), Instance.new("Attachment")
-	low.Position, high.Position = Vector3.new(0, 2, 0), Vector3.new(0, 3.2, 0)
-	low.Parent, high.Parent = root, root
-	local trail = Instance.new("Trail")
-	trail.Name = "Ribbon"
-	trail.Attachment0, trail.Attachment1 = low, high
-	trail.MinLength = 0.2
-	trail.FaceCamera = true
-	trail.Parent = root
-	parts.trail = trail
 	return model, parts, radius
 end
 
@@ -442,14 +495,27 @@ function BattleView:_fighter(state, index)
 	local skill = self.skills and self.skills.get(state.offenceId or "")
 	local accent = skill and Color3.fromRGB(skill.color.r, skill.color.g, skill.color.b) or COLORS.cream
 	local model, parts, radius = buildTop(self.dynamic, state, look.color, accent)
-	parts.trail.Color, parts.trail.Lifetime, parts.trail.LightEmission = look.trailColor, look.trailLife, look.trailEmission
-	parts.trail.Transparency = NumberSequence.new(0.55, 1)
 	-- A paint-coloured ring on the deck says whose top this is, and stays on
 	-- the ground when the top jumps.
 	local halo = disc(model, "Halo", radius * 1.2, 0.1, 0, look.color, Enum.Material.Neon)
 	halo.Transparency = 0.6
 	local tagAnchor = part(model, "TagAnchor", Vector3.one * 0.4, PARKED, look.color)
 	tagAnchor.Transparency = 1
+	-- A long ribbon of light on the deck draws the path the top has taken.
+	-- It hangs from the anchor, which follows the top but does not spin.
+	local near, far = Instance.new("Attachment"), Instance.new("Attachment")
+	near.Position, far.Position = Vector3.new(-radius * 0.3, 0.5, 0), Vector3.new(radius * 0.3, 0.5, 0)
+	near.Parent, far.Parent = tagAnchor, tagAnchor
+	local trail = Instance.new("Trail")
+	trail.Name = "Ribbon"
+	trail.Attachment0, trail.Attachment1 = near, far
+	trail.MinLength = 0.2
+	trail.FaceCamera = true
+	trail.Color, trail.Lifetime, trail.LightEmission = look.trailColor, 1.1 + look.trailLife, 1
+	trail.Transparency = NumberSequence.new(0.15, 1)
+	trail.WidthScale = NumberSequence.new(1, 0.15)
+	trail.Parent = tagAnchor
+	parts.trail = trail
 	local board = Instance.new("BillboardGui")
 	board.Name = "Tag"
 	board.Size = UDim2.fromOffset(220, 34)
@@ -459,8 +525,8 @@ function BattleView:_fighter(state, index)
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.fromScale(1, 1)
 	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.FredokaOne
-	label.TextSize = 20
+	label.Font = Enum.Font.Michroma
+	label.TextSize = 14
 	label.TextColor3 = look.color:Lerp(Color3.new(1, 1, 1), 0.35)
 	label.Parent = board
 	local stroke = Instance.new("UIStroke")
@@ -498,6 +564,18 @@ function BattleView:_wave(x, y, radius, color, life)
 	wave.part.Color = color
 end
 
+function BattleView:_lines(x, y, color, count, length)
+	if self.reducedMotion then return end
+	for index = 1, count do
+		self.streakCursor = self.streakCursor % STREAK_POOL + 1
+		local streak = self.streaks[self.streakCursor]
+		local angle = index / count * math.pi * 2 + self.realClock * 7
+		streak.start, streak.life, streak.x, streak.y = self.realClock, 0.16 + (index % 3) * 0.04, x, y
+		streak.dx, streak.dy, streak.length = math.cos(angle), math.sin(angle), length * (0.7 + (index % 4) * 0.15)
+		streak.part.Color = index % 2 == 0 and color or COLORS.cream
+	end
+end
+
 function BattleView:_word(x, y, text, color, size)
 	self.wordCursor = self.wordCursor % WORD_POOL + 1
 	local word = self.words[self.wordCursor]
@@ -525,7 +603,14 @@ function BattleView:_events(simulation)
 				self:_jolt(math.min(1.3, power / 50), big and 0.5 or 0.1, big and 0.5 or 0, big and 0.3 or 0.05)
 				if target then target.hitTime, target.jolt = self.realClock, math.min(0.5, power / 90) end
 				if actor then actor.jolt = math.max(actor.jolt, math.min(0.25, power / 180)) end
-				if big then self:_wave(x, y, 5 + power * 0.08, COLORS.cream, 0.25) end
+				if big then
+					local tint = actor and actor.color or COLORS.cream
+					self:_wave(x, y, 7 + power * 0.12, tint, 0.3)
+					self:_wave(x, y, 4 + power * 0.06, COLORS.cream, 0.18)
+					self:_lines(x, y, tint, power >= 50 and 10 or 7, 9 + power * 0.1)
+					-- Hold the frame for an instant, the way a drawn impact does.
+					if not self.reducedMotion then self.freeze = power >= 50 and 0.11 or 0.07 end
+				end
 			elseif event.kind == "wall" then
 				self:_burst(x, y, COLORS.cream, math.clamp(math.floor(numeric(event.power, 10) / 4), 2, 12), 0)
 				if actor then actor.jolt = math.max(actor.jolt, 0.15) end
@@ -534,6 +619,8 @@ function BattleView:_events(simulation)
 				self:_jolt(0, 0, 0, 0.25)
 			elseif event.kind == "ringout" then
 				self:_burst(x, y, COLORS.cream, 24, 6)
+				self:_wave(x, y, 12, COLORS.danger, 0.45)
+				self:_lines(x, y, COLORS.danger, 8, 16)
 				self:_jolt(1.4, 0.8, 0.8, 1)
 			elseif event.kind == "spinout" then
 				self:_jolt(0.3, 0.2, 0.2, 0.6)
@@ -607,10 +694,15 @@ function BattleView:_pose(fighter, state, simulation, moving, dt, realDt)
 		local still = Vector3.new(1, 0, 0) - up * up.X
 		parts.guard.CFrame = CFrame.fromMatrix(ORIGIN + position + lift, still.Unit, up) * discPose(0, 2.3, 0)
 	end
+	-- The aura dims with the spin and gutters when the top is nearly done.
+	local flicker = (share < 0.25 and not self.reducedMotion) and 0.5 + 0.5 * math.sin(self.realClock * 34) or 1
+	local burn = (0.15 + 0.85 * share) * flicker * (1 - toppled)
+	parts.aura.Transparency = 1 - burn * 0.7
+	parts.glow.Brightness = 0.15 * burn
 	parts.trail.Enabled = not fighter.fall and toppled == 0
 	local flash = math.max(0, 1 - (self.realClock - fighter.hitTime) / 0.2)
 	fighter.halo.CFrame = discPose(ORIGIN.X + position.X, ORIGIN.Y + 0.22, ORIGIN.Z + position.Z)
-	fighter.halo.Transparency = fighter.fall and 1 or (0.6 - flash * 0.4)
+	fighter.halo.Transparency = fighter.fall and 1 or (0.88 - flash * 0.6)
 	fighter.halo.Color = fighter.color:Lerp(Color3.new(1, 1, 1), flash)
 	fighter.tagAnchor.CFrame = CFrame.new(ORIGIN + position)
 	local tag = fighter.index == 1 and "YOU" or string.upper(fighter.name or "RIVAL")
@@ -620,10 +712,22 @@ function BattleView:_pose(fighter, state, simulation, moving, dt, realDt)
 end
 
 function BattleView:_effects(realDt)
-	for _, cloud in ipairs(self.clouds) do
-		cloud.x = cloud.x + cloud.drift * realDt
-		if cloud.x > 340 then cloud.x = -340 end
-		cloud.model:PivotTo(CFrame.new(ORIGIN + Vector3.new(cloud.x, cloud.y, cloud.z)))
+	for _, fan in ipairs(self.crowd) do
+		local hop = self.reducedMotion and 0 or math.abs(math.sin(self.realClock * (3 + self.hype * 8) + fan.phase)) * (0.15 + self.hype * 1.6)
+		fan.part.CFrame = fan.base + Vector3.new(0, hop, 0)
+	end
+	for _, streak in ipairs(self.streaks) do
+		local age = (self.realClock - streak.start) / streak.life
+		if age >= 0 and age < 1 then
+			local from, to = 2 + streak.length * age * 0.8, 2 + streak.length * (0.35 + age)
+			local a = worldPoint(streak.x + streak.dx * from, streak.y + streak.dy * from, 1.2)
+			local b = worldPoint(streak.x + streak.dx * to, streak.y + streak.dy * to, 1.2)
+			streak.part.Size = Vector3.new(0.28, 0.12, (b - a).Magnitude)
+			streak.part.CFrame = CFrame.lookAt((a + b) / 2, b)
+			streak.part.Transparency = 0.1 + 0.9 * age
+		else
+			streak.part.Transparency = 1
+		end
 	end
 	for _, wave in ipairs(self.rings) do
 		local age = (self.realClock - wave.start) / wave.life
@@ -631,7 +735,7 @@ function BattleView:_effects(realDt)
 			local radius = math.max(0.5, wave.radius * (0.25 + 0.75 * age))
 			wave.part.Size = Vector3.new(0.15, radius * 2, radius * 2)
 			wave.part.CFrame = discPose(ORIGIN.X + wave.x, ORIGIN.Y + 0.4, ORIGIN.Z + wave.y)
-			wave.part.Transparency = 0.6 + 0.4 * age
+			wave.part.Transparency = 0.35 + 0.65 * age
 		else
 			wave.part.Transparency = 1
 		end
@@ -660,13 +764,17 @@ function BattleView:_camera(rect, simulation, dt)
 	local bottom = math.clamp(numeric(rect and rect.bottom, height - 40), top + 1, height)
 	local aspect = width / height
 	-- The whole stadium stays in frame for the whole round.
-	local span = (RING + 4) * (1 - 0.04 * self.punch)
+	-- Before the launch the camera sits low and close on the two tops, then
+	-- pulls up to the fight.
+	local intro = self.reducedMotion and 0 or self.intro
+	local elevation = ELEVATION - intro * math.rad(16)
+	local span = (RING + 4) * (1 - 0.04 * self.punch) * (1 - 0.34 * intro)
 	-- Seen from above at an angle the ring is an ellipse: full width, and its
 	-- depth squashed by the camera's tilt. Jumps need a little headroom.
 	local fullWidth = 2 * span / ((right - left) / width)
-	local fullHeight = math.max(fullWidth / aspect, (2 * span * math.sin(ELEVATION) + 7) / ((bottom - top) / height))
+	local fullHeight = math.max(fullWidth / aspect, (2 * span * math.sin(elevation) + 7) / ((bottom - top) / height))
 	local fieldOfView = math.clamp(math.deg(2 * math.atan(fullHeight / (2 * CAMERA_DISTANCE))), 10, 110)
-	local back = Vector3.new(0, math.sin(ELEVATION), math.cos(ELEVATION))
+	local back = Vector3.new(0, math.sin(elevation), math.cos(elevation))
 	local rightAxis = Vector3.new(1, 0, 0)
 	local upAxis = back:Cross(rightAxis)
 	-- Shift the aim so the ring sits in the middle of the free part of the screen.
@@ -714,8 +822,8 @@ function BattleView:update(snapshot, dt, viewportRect)
 	self.screenFlash = self.screenFlash * math.exp(-11 * realDt)
 	self.hype = self.hype * math.exp(-0.9 * realDt)
 	self.grade.Brightness = self.screenFlash * 0.16
-	self.grade.Contrast = 0.1 + self.screenFlash * 0.15
-	self.grade.Saturation = slowMotion and -0.3 or 0.02
+	self.grade.Contrast = 0.08 + self.screenFlash * 0.15
+	self.grade.Saturation = slowMotion and -0.2 or 0.12
 	local elapsed = numeric(simulation.elapsed, 0)
 	if elapsed ~= self.sampleElapsed then
 		self.sampleElapsed, self.sampleAge = elapsed, 0
@@ -723,12 +831,17 @@ function BattleView:update(snapshot, dt, viewportRect)
 		self.sampleAge = self.sampleAge + dt
 	end
 	local moving = snapshot.phase == "Fight" and simulation.finished ~= true
+	self.freeze = math.max(0, self.freeze - realDt)
+	local introGoal = snapshot.phase == "Countdown" and 1 or 0
+	self.intro = self.intro + (introGoal - self.intro) * (1 - math.exp(-(introGoal == 1 and 30 or 3.5) * realDt))
 	local shown = snapshot.phase == "Fight" or snapshot.phase == "Countdown" or snapshot.phase == "RoundOver"
 		or snapshot.phase == "MatchOver" or snapshot.phase == "Results"
 	for index, state in ipairs(simulation.fighters or {}) do
 		if index > 2 then break end
 		local fighter = self:_fighter(state, index)
-		if shown then
+		if shown and self.freeze > 0 and fighter.position then
+			-- Held on the frame of a big hit.
+		elseif shown then
 			self:_pose(fighter, state, simulation, moving, dt, realDt)
 		else
 			-- While pilots are still choosing, last round's tops are put away.
@@ -752,6 +865,9 @@ function BattleView:destroy()
 	self.folder:Destroy()
 	self.bloom:Destroy()
 	self.grade:Destroy()
+	for name, value in pairs(self.daylight) do
+		pcall(function() Lighting[name] = value end)
+	end
 	table.clear(self.fighters)
 	-- The normal client camera resumes on its next render. No connections,
 	-- lighting effects, delayed callbacks, or external instances survive.

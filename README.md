@@ -4,7 +4,9 @@ Pick a spinning top and launch it into a walled stadium in the sky. Nobody steer
 
 **October 11, 2026: the game changed, twice.** Sky Battle was a plane auto-battler with eight attacks, twenty wild cards and armor. Playtest feedback was that a fight was too complicated to follow, so it became a ring-out game between tops. That first pass looked cartoony and the tops only drove straight at each other, so it was rebuilt on how real battling tops behave: a bowl, tip-driven movement, spin as stamina, spin direction, and a wall with exits. The match flow, draft, rewards, saving, hangar and cosmetics are unchanged. This source is **not published**; the Skybound Test place is still version 23, the plane fight. The rules are in [the combat contract](docs/COMBAT-CONTRACT.md), the numbers in [the balance report](docs/BALANCE-REPORT.md), and what has and has not been checked in [VALIDATION.md](VALIDATION.md).
 
-![A big hit and a near miss at a gap](previews/tops-1-big-hit-close-call.jpg)
+The fight is staged as a night tournament: a glass stadium ruled with light, neon exits, an aura on each top that burns as bright as its spin, and a held frame with speed lines on a big hit.
+
+![Two tops lined up before the launch](previews/neon-1-intro.jpg)
 
 ## Play
 

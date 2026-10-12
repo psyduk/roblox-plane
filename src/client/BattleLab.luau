@@ -8,21 +8,27 @@ local BattleAudio=require(script.Parent:WaitForChild("BattleAudio"))
 local PilotAvatar=require(script.Parent:WaitForChild("PilotAvatar"))
 local BattleLab={}
 BattleLab.__index=BattleLab
-local NAVY=Color3.fromRGB(18,31,51)
+-- Tournament-broadcast styling: near-black panels, hard corners and a
+-- condensed italic headline face.
+-- (The pure command checks load this module with no engine behind it.)
+local HEADLINE=Enum and Enum.Font.Oswald
+local NAVY=Color3.fromRGB(9,12,28)
 local WHITE=Color3.fromRGB(255,245,221)
 local MUTED=Color3.fromRGB(190,208,226)
 local GOLD=Color3.fromRGB(255,221,87)
 local GREEN=Color3.fromRGB(74,201,96)
 local RED=Color3.fromRGB(255,96,84)
-local EMPTY=Color3.fromRGB(36,44,62)
+local EMPTY=Color3.fromRGB(24,28,52)
 local function make(class,parent,name)
     local item=Instance.new(class); item.Name=name; item.Parent=parent; return item
 end
+-- Panels have hard, barely eased corners. Only things meant to be round
+-- (portraits, score dots) pass no radius.
 local function corner(item,radius)
-    make("UICorner",item,"Corner").CornerRadius=radius and UDim.new(0,radius) or UDim.new(1,0)
+    make("UICorner",item,"Corner").CornerRadius=radius and UDim.new(0,math.min(radius,4)) or UDim.new(1,0)
 end
--- Chunky cartoon lettering: every floating word carries a thick navy outline
--- so it reads over bright sky without a panel behind it.
+-- Every floating word carries a dark outline so it reads over the arena's
+-- lights without a panel behind it.
 local function outline(item,thickness,color)
     local stroke=make("UIStroke",item,"Outline"); stroke.Thickness=thickness; stroke.Color=color or NAVY
     return stroke
@@ -40,14 +46,18 @@ local function label(parent,name,size,color,font)
     local item=make("TextLabel",parent,name)
     item.BackgroundTransparency=1; item.TextColor3=color or WHITE
     item.TextSize=size; item.Font=font or Enum.Font.GothamBold; item.TextWrapped=true; item.Text=""
+    if font==HEADLINE then
+        -- Slanted where the engine has the face; upright otherwise.
+        pcall(function() item.FontFace=Font.new("rbxasset://fonts/families/Oswald.json",Enum.FontWeight.Bold,Enum.FontStyle.Italic) end)
+    end
     return item
 end
 local function button(parent,name,text,callback)
     local item=make("TextButton",parent,name)
-    item.BackgroundColor3=Color3.fromRGB(44,63,86); item.BorderSizePixel=0
+    item.BackgroundColor3=Color3.fromRGB(26,34,70); item.BorderSizePixel=0
     item.TextColor3=WHITE; item.Font=Enum.Font.GothamBold; item.TextSize=16; item.Text=text
     item.AutoButtonColor=true; item.Selectable=true; item.TextWrapped=true
-    corner(item,12); surface(item,Color3.fromRGB(132,169,201),2)
+    corner(item,12); surface(item,Color3.fromRGB(70,220,255),2)
     item.Activated:Connect(callback); return item
 end
 local function place(item,x,y,w,h)
@@ -92,7 +102,7 @@ function BattleLab.new(World,shared)
         local player=Players.LocalPlayer; player:SetAttribute("SkyboundReducedMotion",player:GetAttribute("SkyboundReducedMotion")~=true); self.audio:ui("tap")
     end)
     for _,item in ipairs({self.exit,self.mute,self.motion}) do item.ZIndex=30; item.TextSize=19 end
-    self.clock=label(self.header,"Clock",52,WHITE,Enum.Font.FredokaOne); self.clock.TextWrapped=false
+    self.clock=label(self.header,"Clock",52,WHITE,HEADLINE); self.clock.TextWrapped=false
     outline(self.clock,5); self.clockScale=make("UIScale",self.clock,"Pulse")
     self.wins={}
     for side=1,2 do
@@ -110,7 +120,7 @@ function BattleLab.new(World,shared)
         local ringEdge=make("UIStroke",ring,"Edge"); ringEdge.Thickness=4
         local face=make("ImageLabel",ring,"Face"); face.BackgroundTransparency=1; face.Size=UDim2.fromScale(1,1); corner(face)
         local bot=label(ring,"Bot",28); bot.Size=UDim2.fromScale(1,1); bot.TextWrapped=false
-        local name=label(frame,"PilotName",24,WHITE,Enum.Font.FredokaOne); name.TextWrapped=false; name.TextTruncate=Enum.TextTruncate.AtEnd
+        local name=label(frame,"PilotName",24,WHITE,HEADLINE); name.TextWrapped=false; name.TextTruncate=Enum.TextTruncate.AtEnd
         outline(name,3)
         -- The top's pill doubles as its spin meter.
         local power=make("Frame",frame,"Power"); power.BorderSizePixel=0; corner(power,8)
@@ -124,9 +134,9 @@ function BattleLab.new(World,shared)
         end
         self.fighters[i]={frame=frame,ring=ring,ringEdge=ringEdge,face=face,bot=bot,name=name,power=power,charge=charge,powerText=powerText,wilds=wilds}
     end
-    self.status=label(self.panel,"Status",22,WHITE,Enum.Font.FredokaOne); self.status.TextWrapped=false
-    self.status.BackgroundColor3=Color3.fromRGB(31,49,69); self.status.BackgroundTransparency=0.08; corner(self.status,10)
-    self.statusEdge=surface(self.status,Color3.fromRGB(118,154,187),2)
+    self.status=label(self.panel,"Status",22,WHITE,HEADLINE); self.status.TextWrapped=false
+    self.status.BackgroundColor3=NAVY; self.status.BackgroundTransparency=0.12; corner(self.status,10)
+    self.statusEdge=surface(self.status,Color3.fromRGB(70,220,255),2)
     self.statusScale=make("UIScale",self.status,"Pop")
     -- A first match gets one plain sentence at the bottom of the screen that
     -- says what to watch for right now.
@@ -141,7 +151,7 @@ function BattleLab.new(World,shared)
     -- one tap to choose, one to lock.
     self.picker=make("ScrollingFrame",self.panel,"Picker"); self.picker.BackgroundTransparency=1; self.picker.BorderSizePixel=0
     self.picker.ScrollBarThickness=3; self.picker.CanvasSize=UDim2.fromOffset(0,0); self.picker.ScrollingDirection=Enum.ScrollingDirection.Y
-    self.pickTitle=label(self.picker,"Title",40,WHITE,Enum.Font.FredokaOne); self.pickTitle.TextWrapped=false; outline(self.pickTitle,4)
+    self.pickTitle=label(self.picker,"Title",40,WHITE,HEADLINE); self.pickTitle.TextWrapped=false; outline(self.pickTitle,4)
     self.pickHint=label(self.picker,"Hint",14,WHITE); outline(self.pickHint,2)
     self.cardList=make("ScrollingFrame",self.picker,"Cards"); self.cardList.BackgroundTransparency=1
     self.cardList.BorderSizePixel=0; self.cardList.ScrollBarThickness=4; self.cardList.ScrollBarImageColor3=GOLD
@@ -157,13 +167,13 @@ function BattleLab.new(World,shared)
         shade.Color=ColorSequence.new(Color3.new(1,1,1),Color3.fromRGB(200,196,214))
         local tag=label(card,"Tag",12,NAVY); tag.BackgroundColor3=WHITE; tag.BackgroundTransparency=0; tag.TextWrapped=false; corner(tag,9)
         local icon=label(card,"Icon",60); icon.TextWrapped=false
-        local word=label(card,"Word",20,WHITE,Enum.Font.FredokaOne); word.Rotation=index%2==0 and 9 or -9
+        local word=label(card,"Word",20,WHITE,HEADLINE); word.Rotation=index%2==0 and 9 or -9
         word.TextWrapped=false; word.Text=spec.word or ""; outline(word,3)
-        local name=label(card,"SkillName",30,NAVY,Enum.Font.FredokaOne); name.Text=string.upper(spec.name)
+        local name=label(card,"SkillName",30,NAVY,HEADLINE); name.Text=string.upper(spec.name)
         local promise=label(card,"Promise",14,NAVY); promise.Text=spec.promise
         local scale=make("UIScale",card,"Pop")
         -- A card this pilot has never been dealt before wears a gold star.
-        local badge=label(card,"New",12,NAVY,Enum.Font.FredokaOne); badge.Text="NEW!"; badge.TextWrapped=false
+        local badge=label(card,"New",12,NAVY,HEADLINE); badge.Text="NEW!"; badge.TextWrapped=false
         badge.BackgroundColor3=GOLD; badge.BackgroundTransparency=0; badge.Rotation=8; badge.ZIndex=4; badge.Visible=false; corner(badge,8)
         card.Activated:Connect(function() self:choose(spec.id) end)
         icon.Text=spec.icon
@@ -177,17 +187,17 @@ function BattleLab.new(World,shared)
         tile.Text=""; tile.AutoButtonColor=false; tile.BorderSizePixel=0; tile.Selectable=true; corner(tile,12)
         local edge=make("UIStroke",tile,"Edge"); edge.ApplyStrokeMode=Enum.ApplyStrokeMode.Border
         local caption=label(tile,"Caption",10,WHITE); caption.TextWrapped=false
-        local value=label(tile,"Value",15,WHITE,Enum.Font.FredokaOne); value.TextWrapped=false
+        local value=label(tile,"Value",15,WHITE,HEADLINE); value.TextWrapped=false
         tile.Activated:Connect(function() self:focusSlot(slot) end)
         self.slotTiles[slot]={button=tile,edge=edge,caption=caption,value=value,scale=make("UIScale",tile,"Pop")}
     end
     self.fightButton=button(self.picker,"Lock","LOCK IN",function() self:fight() end)
-    self.fightButton.BackgroundColor3=GREEN; self.fightButton.Font=Enum.Font.FredokaOne
+    self.fightButton.BackgroundColor3=GREEN; self.fightButton.Font=HEADLINE
     self.fightButton.Edge.Color=WHITE; self.fightButton.Edge.Transparency=0.1; self.fightButton.Edge.Thickness=3
     -- Both picks slam in from the sides while the countdown runs.
     self.reveal=make("Frame",self.panel,"SimultaneousReveal"); self.reveal.BackgroundTransparency=1; self.reveal.Visible=false
-    self.revealTitle=label(self.reveal,"Title",30,GOLD,Enum.Font.FredokaOne); self.revealTitle.TextWrapped=false; outline(self.revealTitle,4)
-    self.revealVs=label(self.reveal,"Versus",34,WHITE,Enum.Font.FredokaOne); self.revealVs.Text="VS"; self.revealVs.TextWrapped=false
+    self.revealTitle=label(self.reveal,"Title",30,GOLD,HEADLINE); self.revealTitle.TextWrapped=false; outline(self.revealTitle,4)
+    self.revealVs=label(self.reveal,"Versus",34,WHITE,HEADLINE); self.revealVs.Text="VS"; self.revealVs.TextWrapped=false
     self.revealVs.Rotation=-8; outline(self.revealVs,4)
     self.revealPersonality=label(self.reveal,"Personality",13,WHITE); outline(self.revealPersonality,2)
     self.reveals={}
@@ -199,11 +209,11 @@ function BattleLab.new(World,shared)
         local name=label(frame,"Identity",11,NAVY); name.BackgroundColor3=WHITE; name.BackgroundTransparency=0; name.TextWrapped=false
         name.TextTruncate=Enum.TextTruncate.AtEnd; corner(name,8)
         local icon=label(frame,"Icon",40); icon.TextWrapped=false
-        local skill=label(frame,"Skill",26,NAVY,Enum.Font.FredokaOne); skill.TextWrapped=false; skill.TextXAlignment=Enum.TextXAlignment.Left
+        local skill=label(frame,"Skill",26,NAVY,HEADLINE); skill.TextWrapped=false; skill.TextXAlignment=Enum.TextXAlignment.Left
         self.reveals[side]={frame=frame,name=name,icon=icon,skill=skill}
     end
     self.search=make("Frame",self.panel,"Searching"); self.search.BackgroundTransparency=1
-    self.searchTitle=label(self.search,"Title",46,WHITE,Enum.Font.FredokaOne); self.searchTitle.TextWrapped=false; outline(self.searchTitle,5)
+    self.searchTitle=label(self.search,"Title",46,WHITE,HEADLINE); self.searchTitle.TextWrapped=false; outline(self.searchTitle,5)
     self.searchScale=make("UIScale",self.searchTitle,"Pulse")
     self.searchHint=label(self.search,"Hint",16,WHITE); outline(self.searchHint,2)
     self.cancel=button(self.search,"Cancel","Cancel search",function() self.audio:ui("back"); self:send("exit") end)
@@ -218,7 +228,7 @@ function BattleLab.new(World,shared)
         item.BackgroundColor3=({GOLD,Color3.fromRGB(255,113,111),Color3.fromRGB(70,221,234),WHITE,Color3.fromRGB(160,128,255)})[n%5+1]
         self.confetti[n]={frame=item,x=math.random(),speed=120+math.random()*200,offset=math.random(),spin=(math.random()-0.5)*500,sway=math.random()*6}
     end
-    self.banner=label(self.result,"Banner",96,GOLD,Enum.Font.FredokaOne); self.banner.TextWrapped=false
+    self.banner=label(self.result,"Banner",96,GOLD,HEADLINE); self.banner.TextWrapped=false
     self.banner.ZIndex=22; self.banner.Rotation=-3; outline(self.banner,8)
     self.bannerScale=make("UIScale",self.banner,"Slam")
     self.resultLine=label(self.result,"Line",18,WHITE); self.resultLine.ZIndex=22; outline(self.resultLine,3)
@@ -238,12 +248,12 @@ function BattleLab.new(World,shared)
         local chip=make("Frame",self.result,"Stat"..index); chip.BackgroundColor3=Color3.fromRGB(30,46,72); chip.BorderSizePixel=0; chip.ZIndex=21
         corner(chip,12)
         local edge=make("UIStroke",chip,"Edge"); edge.Thickness=3
-        local value=label(chip,"Value",28,WHITE,Enum.Font.FredokaOne); value.ZIndex=22; value.TextWrapped=false
+        local value=label(chip,"Value",28,WHITE,HEADLINE); value.ZIndex=22; value.TextWrapped=false
         local caption=label(chip,"Caption",11,MUTED); caption.ZIndex=22; caption.TextWrapped=false
         self.stats[index]={frame=chip,value=value,caption=caption,edge=edge}
     end
     self.replay=button(self.result,"Replay","REMATCH",function() self:rematch() end)
-    self.replay.BackgroundColor3=GREEN; self.replay.Font=Enum.Font.FredokaOne
+    self.replay.BackgroundColor3=GREEN; self.replay.Font=HEADLINE
     self.replay.Edge.Color=WHITE; self.replay.Edge.Transparency=0.1; self.replay.Edge.Thickness=3
     self.edit=button(self.result,"NextOpponent","Next rival",function() self.audio:ui("confirm"); self:send("again") end)
     self.leave=button(self.result,"Leave","Hangar",function()
@@ -254,7 +264,7 @@ function BattleLab.new(World,shared)
     self.rewardCard=make("Frame",self.result,"CosmeticRewards"); self.rewardCard.BackgroundColor3=Color3.fromRGB(24,38,62)
     self.rewardCard.BorderSizePixel=0; self.rewardCard.ZIndex=21; corner(self.rewardCard,16)
     local rewardEdge=make("UIStroke",self.rewardCard,"Edge"); rewardEdge.Thickness=3; rewardEdge.Color=GOLD
-    self.rewardTitle=label(self.rewardCard,"Earned",22,GOLD,Enum.Font.FredokaOne); self.rewardTitle.ZIndex=22; self.rewardTitle.TextWrapped=false
+    self.rewardTitle=label(self.rewardCard,"Earned",22,GOLD,HEADLINE); self.rewardTitle.ZIndex=22; self.rewardTitle.TextWrapped=false
     self.rewardStatus=label(self.rewardCard,"SaveStatus",11,MUTED); self.rewardStatus.ZIndex=22
     self.goalName=label(self.rewardCard,"Goal",14); self.goalName.ZIndex=22; self.goalName.TextWrapped=false
     self.goalPreview=make("Frame",self.rewardCard,"GoalProgress"); self.goalPreview.BorderSizePixel=0; self.goalPreview.ZIndex=22
@@ -263,7 +273,7 @@ function BattleLab.new(World,shared)
     self.goalFill.BackgroundColor3=Color3.new(1,1,1); corner(self.goalFill)
     self.goalGradient=make("UIGradient",self.goalFill,"TrailColors")
     self.goalAction=button(self.rewardCard,"GoalAction","",function() self:goalActionRequested() end); self.goalAction.ZIndex=22
-    self.starterTitle=label(self.rewardCard,"FirstMatchGift",15,GOLD,Enum.Font.FredokaOne); self.starterTitle.ZIndex=22
+    self.starterTitle=label(self.rewardCard,"FirstMatchGift",15,GOLD,HEADLINE); self.starterTitle.ZIndex=22
     self.starterCards={}
     for _,id in ipairs(self.cosmetics.STARTER_CHOICES or {}) do
         local item=self.cosmetics.get(id)
@@ -279,12 +289,12 @@ function BattleLab.new(World,shared)
     self.powersCard=make("Frame",self.result,"Powers"); self.powersCard.BackgroundColor3=Color3.fromRGB(24,38,62)
     self.powersCard.BorderSizePixel=0; self.powersCard.ZIndex=21; self.powersCard.Visible=false; corner(self.powersCard,16)
     local powersEdge=make("UIStroke",self.powersCard,"Edge"); powersEdge.Thickness=3; powersEdge.Color=Color3.fromRGB(118,154,187)
-    self.powersTitle=label(self.powersCard,"Found",18,GOLD,Enum.Font.FredokaOne); self.powersTitle.ZIndex=22; self.powersTitle.TextWrapped=false
+    self.powersTitle=label(self.powersCard,"Found",18,GOLD,HEADLINE); self.powersTitle.ZIndex=22; self.powersTitle.TextWrapped=false
     self.powersDetail=label(self.powersCard,"Detail",13,WHITE); self.powersDetail.ZIndex=22
     self.powerTiles={}
     for index,spec in ipairs(self.skills.all()) do
         local tile=make("TextButton",self.powersCard,"Power"..spec.id)
-        tile.BorderSizePixel=0; tile.AutoButtonColor=false; tile.Font=Enum.Font.FredokaOne; tile.ZIndex=22; corner(tile,10)
+        tile.BorderSizePixel=0; tile.AutoButtonColor=false; tile.Font=HEADLINE; tile.ZIndex=22; corner(tile,10)
         local edge=make("UIStroke",tile,"Edge"); edge.ApplyStrokeMode=Enum.ApplyStrokeMode.Border; edge.Thickness=2
         tile.Activated:Connect(function() self.powerFocus=spec.id; self.audio:ui("tap") end)
         self.powerTiles[index]={button=tile,edge=edge,spec=spec,color=tint(spec.color)}
@@ -292,7 +302,7 @@ function BattleLab.new(World,shared)
     -- Full-screen beats: a white impact flash and the 3-2-1-FIGHT call.
     self.flash=make("Frame",self.panel,"ImpactFlash"); self.flash.Size=UDim2.fromScale(1,1)
     self.flash.BorderSizePixel=0; self.flash.Active=false; self.flash.BackgroundColor3=Color3.new(1,1,1); self.flash.BackgroundTransparency=1; self.flash.ZIndex=40
-    self.count=label(self.panel,"Countdown",150,GOLD,Enum.Font.FredokaOne)
+    self.count=label(self.panel,"Countdown",150,GOLD,HEADLINE)
     self.count.TextWrapped=false; self.count.ZIndex=41; self.count.AnchorPoint=Vector2.new(0.5,0.5)
     self.count.Size=UDim2.fromOffset(900,220); self.count.Visible=false
     self.countEdge=outline(self.count,8); self.countScale=make("UIScale",self.count,"Pop")
@@ -908,7 +918,7 @@ function BattleLab:update(dt)
     local statusHeight=(compact or short) and 30 or 40
     place(self.status,(width-statusWidth)/2,statusTop,statusWidth,statusHeight)
     self.status.Visible=fighting or countdown
-    self.status.TextColor3=WHITE; self.statusEdge.Color=Color3.fromRGB(118,154,187); self.statusEdge.Transparency=0.4
+    self.status.TextColor3=WHITE; self.statusEdge.Color=Color3.fromRGB(70,220,255); self.statusEdge.Transparency=0.4
     self.statusScale.Scale=1
     if countdown then
         self.status.Text=data.matchPoint and "MATCH POINT · GET READY" or ("ROUND "..tostring(math.max(1,data.roundNumber or 1)).." · GET READY")

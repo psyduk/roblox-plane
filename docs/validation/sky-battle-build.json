@@ -1,11 +1,11 @@
 {
   "place": "Skybound.rbxlx",
-  "placeSha256": "d92bbd3494e2afbc252c63854d82cd1639e9d8bead44467d9146a839e530cc07",
+  "placeSha256": "df3c9df198577a4bd09e6dc65d71f5155ea296fbf72e6fcae82f50da3f0ce553",
   "sourceCount": 37,
   "sources": {
     "src/client/BattleAudio.luau": "0c466e1b7e70879f3978632a759592fff1c6e443ec8cb3a938495fa30327e67c",
-    "src/client/BattleLab.luau": "bcab49989f391c32067f9100d89ba47e92e5d41db43196d3e0b4dbab376d2c0e",
-    "src/client/BattleView.luau": "6be18fa1ac53791e2477e8f984f709053b4b7303f54157516c94382cabfd3dc1",
+    "src/client/BattleLab.luau": "96d69cdeb1244bdd60cbb2169396d9858680b6a0a96899e7dd82894f07cc0874",
+    "src/client/BattleView.luau": "53952285fa6d32f90194f1154c69c723c18fe1cc594de4cda641e8b87341dff9",
     "src/client/ChallengePanel.luau": "1faedc580536a3a64b3cbe7a616bc2e8992635efc1fc507354dddfa0801e500d",
     "src/client/EffectsShop.luau": "2890c1890315ff7043b93bc54c71a5d542f5daba0ad00222ae81245f3907c0a6",
     "src/client/FlightAudio.luau": "f1a65191ce2122bb1ac32e088d0d7f1c144f030dc6aa06b1672021b8fb571a0e",
@@ -30,7 +30,7 @@
     "tests/BattleClient.spec.luau": "2c2744bbe58149f8f1b8fdbaee4bc5c4412d76e80f6b1bc3d83bcfd4bb4a3ccd",
     "tests/BattleMatch.spec.luau": "5e4926d4c5f2938f898e7a7e4db5ce5c19c4daabffe4368b174308c3958a8b76",
     "tests/BattleSimulation.spec.luau": "8a8b52fa603d0d2bb784a3c9da2a454e704cd3cb586efc69c6b8fcede384f6ca",
-    "tests/BattleView.spec.luau": "53773edba7442dbbe8306d55eb04a17a1c8715f8821743a5c8d86d06c6d23d47",
+    "tests/BattleView.spec.luau": "5fb535d6bb381fa8dc7800017150274291bc8eba1ca6468bbfbccf9481f23b5f",
     "tests/CosmeticCatalog.spec.luau": "b61e7a1f079c261a686ae44e149f4905ebe77a5e5811dd4788e2e154769e38a8",
     "tests/FlightAudio.spec.luau": "5be5da7f6ed4a06a414b2957c34f76a75af82f442de22c56f1f3d2806ec5bb34",
     "tests/MountVisuals.spec.luau": "8c6fa0f90d33641f4a61602561d1e4e418f190384c9a2f8ef7aa1160ead989b9",

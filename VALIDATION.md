@@ -1,3 +1,9 @@
+# Night-tournament restyle — October 11, 2026 (not published)
+
+The fight's look was changed to a neon night arena with broadcast-style HUD lettering; the rules did not change. Python checks passed **17 simulation, 7 catalog and 48 server scenarios**. In a freshly started Studio Play session native checks passed **12 view, 22 audio and 12 client cases**; the view suite failed one camera case when run in a session where a match had already been played, and passed twice more on fresh sessions. Four guided rounds were watched: the close low intro shot, the lit stadium and exits, auras, a close call, a spin-out and a knock-out with its flash. [Frames](previews/neon-1-intro.jpg).
+
+Weak or unchecked: the city skyline, floor grid and light trails are faint or not visible in the frames; speed lines and the held frame are covered by a test but were not caught in a still; tops lose some colour at fight distance; no phone, sound or second player was checked.
+
 # Real top physics — October 11, 2026 (not published)
 
 The first ring-out pass was rebuilt on how real battling tops behave: a walled bowl with three exits, movement that comes from the tip, spin that runs down, spin direction, and tops that wobble and fall over. Nothing was published; Skybound Test is still version 23.

@@ -174,6 +174,35 @@ return function(View, World, Simulation)
         view:update(s,1/60)
         assert(view.shake<0.5,"Reduced motion still shakes hard")
     end)
+    test("a big hit holds the frame, throws speed lines, and the aura dims with the spin",function(view,cues,advance,snapshot)
+        local s=snapshot(1,"Fight")
+        advance(s,0.2)
+        local fighter=view.fighters[2]
+        local bright=fighter.model.Aura.Transparency
+        s.simulation.elapsed=4.1
+        s.simulation.events={{serial=5,kind="clash",at=4.1,x=0,y=0,actor=1,target=2,power=60,source="smash"}}
+        view:update(s,1/60)
+        assert(view.freeze>0,"A big hit did not hold the frame")
+        local before=fighter.model.PrimaryPart.CFrame
+        view:update(s,1/60)
+        assert(fighter.model.PrimaryPart.CFrame==before,"The top kept turning during the held frame")
+        local lines=0
+        for _,piece in ipairs(view.folder.Combat:GetChildren()) do if piece.Name=="SpeedLine" and piece.Transparency<1 then lines+=1 end end
+        assert(lines>=6,"No speed lines on a big hit")
+        advance(s,0.3);assert(view.freeze==0 and fighter.model.PrimaryPart.CFrame~=before,"The frame never released")
+        s.simulation.fighters[2].spin=20
+        view.reducedMotion=true;advance(s,0.1)
+        assert(fighter.model.Aura.Transparency>bright+0.3,"The aura does not dim as spin runs down")
+    end)
+    test("before the launch the camera sits closer and lower, then pulls up",function(view,cues,advance,snapshot)
+        local s=snapshot(1,"Countdown")
+        advance(s,0.4)
+        local camera=workspace.CurrentCamera
+        local close,low=view.folder:GetAttribute("VisibleHeight"),camera.CFrame.LookVector.Y
+        s.phase="Fight";advance(s,2)
+        assert(view.folder:GetAttribute("VisibleHeight")>close*1.2,"The intro shot is no closer than the fight")
+        assert(camera.CFrame.LookVector.Y<low-0.1,"The intro shot is no lower than the fight")
+    end)
     test("an old event is not replayed and effects leave with the view",function(view,cues,advance,snapshot)
         local s=snapshot(1,"Fight")
         s.simulation.elapsed=10
@@ -181,8 +210,10 @@ return function(View, World, Simulation)
         view:update(s,1/60)
         assert(view.shake==0 and view.lastEvent==3,"A stale event shook the screen or was not consumed")
         assert(Lighting:FindFirstChild("SkyboundBattleBloom") and Lighting:FindFirstChild("SkyboundBattleGrade"))
+        assert(Lighting.ClockTime==0 and view.daylight.ClockTime~=nil,"The arena is not lit as night")
         view:destroy();view:destroy()
         assert(not Lighting:FindFirstChild("SkyboundBattleBloom") and not Lighting:FindFirstChild("SkyboundBattleGrade"),"Lighting effects outlived the view")
+        assert(Lighting.ClockTime==view.daylight.ClockTime and Lighting.Brightness==view.daylight.Brightness,"The arena's night outlived the view")
         view:update(s,1/60)
     end)
     return tostring(passed).." battle-view tests passed"
