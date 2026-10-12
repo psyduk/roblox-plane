@@ -1,20 +1,21 @@
 # Sky Battle
 
-Pick a spinning top, drop it on a platform in the sky, and knock your rival off. Last top on the ring wins the round; first to two rounds wins the match. There is no health bar: how close a top is to the edge is how much trouble it is in.
+Pick a spinning top and launch it into a walled stadium in the sky. Nobody steers: each top goes where its tip and the bowl take it. Knock your rival out through a gap in the wall, or still be spinning when they stop. First to two rounds wins the match.
 
-**October 11, 2026: the game changed.** Sky Battle was a plane auto-battler with eight attacks, twenty wild cards and armor. Playtest feedback was that a fight was too complicated to follow, so the fight was replaced with the ring-out game described here. The match flow, draft, rewards, saving, hangar and cosmetics are unchanged. This source is **not published**; the Skybound Test place is still version 23, the plane fight. The rules are in [the combat contract](docs/COMBAT-CONTRACT.md), the numbers in [the balance report](docs/BALANCE-REPORT.md), and what has and has not been checked in [VALIDATION.md](VALIDATION.md).
+**October 11, 2026: the game changed, twice.** Sky Battle was a plane auto-battler with eight attacks, twenty wild cards and armor. Playtest feedback was that a fight was too complicated to follow, so it became a ring-out game between tops. That first pass looked cartoony and the tops only drove straight at each other, so it was rebuilt on how real battling tops behave: a bowl, tip-driven movement, spin as stamina, spin direction, and a wall with exits. The match flow, draft, rewards, saving, hangar and cosmetics are unchanged. This source is **not published**; the Skybound Test place is still version 23, the plane fight. The rules are in [the combat contract](docs/COMBAT-CONTRACT.md), the numbers in [the balance report](docs/BALANCE-REPORT.md), and what has and has not been checked in [VALIDATION.md](VALIDATION.md).
 
-![A Bolt charging its dash at a Boulder](previews/ring-out-1-bolt-charging.jpg)
+![A big hit and a near miss at a gap](previews/tops-1-big-hit-close-call.jpg)
 
 ## Play
 
-Build with the commands below, then open **`build/Sky-Battle-Playtest.rbxlx` from this checkout** in Roblox Studio. Press Studio **Play**, then the hangar's main **PLAY** button. The expected flow is **rival search → pick a top → first-to-two ring-out match**.
+Build with the commands below, then open **`build/Sky-Battle-Playtest.rbxlx` from this checkout** in Roblox Studio. Press Studio **Play**, then the hangar's main **PLAY** button. The expected flow is **rival search → pick a top → first-to-two match**.
 
-A human searching in the same server joins immediately; after eight seconds alone you get a named, clearly labelled bot. A pilot's first match is guided: it starts at once against a bot with a Boulder against a Bolt, and the picks that follow offer a short hand.
+A human searching in the same server joins immediately; after eight seconds alone you get a named, clearly labelled bot. A pilot's first match is guided: it starts at once against a bot with a Bolt against a Cyclone, and the picks that follow offer a short hand.
 
-- **Four tops.** Boulder is big and heavy. Bolt is light, charges up and dashes. Cyclone is fast and swoops in. Pogo jumps and lands with a shockwave. Every top chases its rival by itself; nobody steers during a round.
-- **Six upgrades.** Heavy Core, Spikes, Turbo, Claws, Spring Bumper and Jetpack. Each winner-decided round opens one upgrade slot, up to two. New picks stay hidden until both pilots lock, then reveal together. Anything already chosen can be swapped.
-- **The ring closes.** After 8 seconds the platform starts to shrink, and bumps get harder as the round goes on. A round cannot last longer than 26 seconds; one that somehow reaches the limit goes to the top nearer the middle.
+- **Four tops, one of each type.** Bolt is the attacker: a grippy tip and a jagged rim, fast and hard-hitting but quick to burn its spin. Cyclone is stamina: a needle tip that spins for ages but slides when hit. Boulder is defense: heavy, smooth and hard to move. Drifter is the all-rounder.
+- **Two ways to lose a round.** Be thrown out through one of the three gaps in the wall, or run out of spin and fall over. A top's pill at the top of the screen is its spin meter, and a top that is running down visibly wobbles.
+- **Six parts.** Metal Weight, Jagged Rim, Rubber Tip, Free-Spin Guard, Flywheel and Left Spin. Each winner-decided round opens one part slot, up to two. New picks stay hidden until both pilots lock, then reveal together. Anything already chosen can be swapped.
+- **Spin direction matters.** Two tops turning the same way smash apart. With Left Spin on one of them, touches grind instead and the slower top takes spin from the faster one.
 - **Same rival:** REMATCH requires both humans. Next opponent searches again. The hangar's **Challenge a pilot** invites someone in the same server.
 - **Automatic participation counts.** A qualifying completion gives 50 coins, plus 25 for a win. See [the eligibility rules](docs/ECONOMY-CONTRACT.md).
 - **Paint and trail carry over.** A top wears its pilot's paint and leaves their trail. The hangar's planes and legendary mounts are still there and still cosmetic, but they are not shown in the fight any more; that is an open question for the hangar, not a bug.
@@ -43,7 +44,7 @@ build/testenv/bin/python scripts/test_server.py
 build/testenv/bin/python scripts/sample_battle.py --samples 60 --upgrades
 ```
 
-The sampler runs the pure specs, then every top against every top in both seats; `--upgrades` adds each upgrade against a bare top. `scripts/qa/ring_feel.py` is the same measurement with `NAME=value` overrides for tuning. [Balance report](docs/BALANCE-REPORT.md) records the latest numbers; they describe the simulation, not whether people enjoy it.
+The sampler runs the pure specs, then every top against every top in both seats; `--upgrades` adds each part against a bare top. `scripts/qa/ring_feel.py` is the same measurement with `NAME=value` overrides for tuning. [Balance report](docs/BALANCE-REPORT.md) records the latest numbers; they describe the simulation, not whether people enjoy it.
 
 Native Studio **server** command-bar checks during Play:
 
@@ -73,13 +74,13 @@ For an isolated Studio roster experiment, set `BattleExperimental=true`, `Battle
 
 | Area | Source |
 | --- | --- |
-| Tops, upgrades and build rules | `src/shared/SkillCatalog.luau` |
-| What each top and upgrade is made of; the ring-out physics | `BattleSkills.luau`, `BattleSimulation.luau`; [combat contract](docs/COMBAT-CONTRACT.md) |
+| Tops, parts and build rules | `src/shared/SkillCatalog.luau` |
+| What each top and part is made of; the physics | `BattleSkills.luau`, `BattleSimulation.luau`; [combat contract](docs/COMBAT-CONTRACT.md) |
 | Queues, invitations, hidden draft, caps and authoritative results | `src/server/BattleLab.luau` |
 | Profiles, fenced saving, reward receipts and cosmetic/mastery progression | `src/server/PlayerStats.luau` |
 | Main integration and bounded replay funnel | `src/server/Main.server.luau`, `Telemetry.luau` |
 | Draft, reveal, result, reward and replay interface | `src/client/BattleLab.luau` |
-| The platform, the tops, hits and falls | `src/client/BattleView.luau` |
+| The stadium, the tops, wobble, hits and falls | `src/client/BattleView.luau` |
 | Shared sound vocabulary and combat audio | `src/client/BattleAudio.luau` |
 | Same-server invitation interface | `src/client/ChallengePanel.luau` |
 | Cosmetic preview, goal selection and hangar | `EffectsShop.luau`, `HangarBay.luau`, `World.luau` |

@@ -1,51 +1,70 @@
-# Ring-out contract
+# Combat contract: spinning tops
 
-Contract `sky-battle-ring-v1`, roster `sky-battle-tops-v1`. This replaced the plane fight on October 11, 2026; that contract is in git history before this file changed. Exact numbers live in `src/shared/BattleSimulation.luau` and `BattleSkills.luau`; this page says what they mean.
+Contract `sky-battle-ring-v2`, roster `sky-battle-tops-v2`, October 11, 2026. Earlier contracts (the plane fight, and the first ring-out pass with steering tops and a shrinking platform) are in git history. Exact numbers live in `src/shared/BattleSimulation.luau` and `BattleSkills.luau`; this page says what they mean. The model borrows from how real battling tops behave; it is a game model, not a physics simulation.
 
 ## The round
 
-- Two tops share a round platform, radius 40, centred on the origin. They start 18 from the middle on opposite sides and are launched across the ring at a seeded angle.
-- **A top whose centre leaves the platform is out, and the round ends at once.** The other top wins. Two tops leaving on the same tick draw. There is no health, armor or damage.
-- After 8 seconds the platform shrinks steadily, reaching radius 8 at 26 seconds. A round still going at 26 seconds goes to the top nearer the middle; level is a draw. In 960 sampled rounds none reached the limit.
-- From 6 seconds every kick grows by 6% per second ("heat"), so late hits throw further.
+- Two tops are launched into a round bowl, radius 24, with a wall round its rim. They start 12 from the middle on opposite sides and are launched across the bowl at a seeded angle.
+- The wall has **three gaps**, each 0.4 radians wide, placed so neither seat is nearer to one.
+- A round is lost in one of two ways:
+  - **Knocked out.** A top that has been thrown (moving more than 2 faster than its own cruise speed) and reaches a gap goes out. A top under its own power follows the rim past a gap and never leaves by itself.
+  - **Out-spun.** Every top starts with 100 spin. At zero it falls over.
+- Two tops out on the same tick draw. If one touch stops both, the one it took more out of loses; only a dead heat draws. A ring-out on the same tick as a spin-out wins over it.
+- A round still going at 40 seconds goes to the top with the larger share of its spin left. In 960 sampled rounds none got there.
 - The simulation is pure and deterministic: the same seed and builds always play out the same way. It runs at 60 ticks a second on the server; clients only draw snapshots.
 
-## How tops move
+## How a top moves
 
-Nobody steers. A free top turns toward its rival at its own turn rate and spins itself back up to its own cruise speed. The platform is slightly dished and leans every top back toward the middle. A top that has just been thrown cannot turn or drive for a moment (about a third of a second, longer for a harder throw) and simply slides.
+Nobody steers and no top aims at its rival. Three things act on a top every tick:
+
+- **The bowl** pulls it toward the middle, harder the further out it is.
+- **Its tip** drives it up to its cruise speed, bends its path a little (always the way it spins), and keeps turning it back toward the middle. Together these make a top dive through the centre, out to the wall and back, each pass turned slightly from the last: the petal pattern real tops trace.
+- **After a hit** the tip scrubs the extra speed off again. A grippy tip does that quickly; a needle tip barely at all, so it slides.
+
+All of it fades as the spin does. A top with little spin left crawls, brakes badly and is thrown further by every touch (up to 2.6 times as far with none left).
+
+## Spin
+
+Spin drains constantly, at a rate set by the tip, and faster as it runs down (a wobbling top loses spin up to 2.2 times as fast). Touches and wall bounces cost more.
 
 ## A touch
 
-When two tops touch they first share their speed along the line between them (a heavier or faster top carries the other with it), then each kicks the other away. A kick is the base kick, times the top's own kick, times heat, and **grows with speed: a top driving into the touch at 25 kicks twice as hard as one standing still, at 50 three times**. A seeded share of luck, up to half either way, decides which top catches the other cleanly. The top thrown away faster is the one that "took the hit"; that is the top named as the target of the `clash` event.
+When two rims meet, three things happen:
+
+1. An ordinary bounce along the line between them.
+2. **Recoil**, in proportion to how fast the two rims are sliding past each other and how jagged they are. Two tops turning the same way meet rim against rim and smash apart. Two turning opposite ways roll together and barely recoil.
+3. **A sideways throw.** Each rim drags the other along the way it is turning, so tops leave a touch at an angle and no two hits go the same way.
+
+A seeded share of luck, up to 35% either way, decides which rim catches the other cleanly. Each top then loses spin in proportion to what it took and how jagged the other rim was. **Opposite spins also even out:** 16% of the gap in spin moves from the faster top to the slower, with a fifth lost on the way.
+
+The wall bounces a top back with 55% of its speed and a small spin cost. A top with a grippy tip catches the wall and comes off it at up to 1.25 times its cruise speed.
 
 ## Tops
 
-| Top | Mass | Cruise | What it does |
-| --- | --- | --- | --- |
-| Boulder | 1.63 | 16 | Slow and very hard to move. Every 3.2 s it bulldozes for a second: faster and turning harder. |
-| Bolt | 0.9 | 26 | Every 2 s it stops for half a second, aims (the line on the deck), then dashes at 78 in a straight line. It stops aiming 0.28 s before it goes, so a moving rival can slip it; a miss carries it across the ring. |
-| Cyclone | 1.05 | 32 | Fast with a wide turn. Every 2.3 s it swoops: faster still and turning three times as hard. |
-| Pogo | 1.15 | 22 | Every 2.5 s it crouches, jumps to where its rival is heading (the circle on the deck) and lands with a shockwave that throws anything within 15.5. Nothing can touch it in the air. It always lands on the platform. |
+| Top | Type | Mass | Cruise | Spin drain | Rim | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| Bolt | Attack | 0.87 | 30 | 2.9/s | very jagged | Fast, dives hardest, light. Speeds up off the wall. |
+| Cyclone | Stamina | 0.99 | 5 | 2.37/s | smooth | Sits near the middle. Hardly brakes after a hit. |
+| Boulder | Defense | 1.25 | 10 | 3.0/s | smoothest | Takes 76% of recoil and spin damage. |
+| Drifter | Balance | 1.07 | 19 | 3.05/s | medium | Takes 95%. |
 
-A top that is thrown while charging keeps its charge and fires once it has steadied. A top caught in the middle of its move has the move cut short.
+## Parts
 
-## Upgrades
-
-| Upgrade | Rule |
+| Part | Rule |
 | --- | --- |
-| Heavy Core | 9% heavier and 10% bigger. |
-| Spikes | Kicks 20% harder. |
-| Turbo | Cruises 15% faster and makes its move 20% more often. |
-| Claws | In the outer 40% of the ring, sheds speed toward the edge. |
-| Spring Bumper | The first hit does not move this top; the rival is thrown back instead. Once a round. Two bumpers meeting spend each other. |
-| Jetpack | The first time this top leaves the ring it flies back on, landing 72% of the way out. Once a round. |
+| Metal Weight | 14% heavier. |
+| Jagged Rim | 30% more bite: more recoil dealt and more spin taken off the rival. |
+| Rubber Tip | 8% faster, grips and brakes harder, 5% less spin drain. |
+| Free-Spin Guard | Takes 7% less recoil and spin damage. |
+| Flywheel | 4% more spin to start, 3% less drain. |
+| Left Spin | Turns the other way. Against an ordinary top every touch is a grind. Also takes 8% less. |
 
-Upgrades are sorted before a round, so pick order never changes a fight. A build is one top and up to two different upgrades.
+Parts are sorted before a round, so pick order never changes a fight. A build is one top and up to two different parts.
 
 ## Events
 
-`launch`, `windup`, `attack`, `clash` (with `power`, `source` `bump` or `slam`, `skillId`), `slam`, `land`, `blocked`, `revive`, `close` (a top came within 3 of the edge and got back), `ringout`, `finish`. The server keeps `clash`, `blocked`, `revive`, `ringout` and `finish` for the result screen's one-line explanation.
+`launch`, `clash` (with `power`, `source` `smash` or `grind`, `skillId`), `wall`, `close` (hit the wall hard right beside a gap), `ringout`, `spinout`, `finish`. The server keeps `clash`, `ringout`, `spinout` and `finish` for the result screen's one-line explanation.
 
 ## Match rules (unchanged)
 
-First to two round wins. A drawn round gives no point and no pick and is replayed with the same builds. A match stops at five rounds or 240 seconds; only completed round wins decide it. The server stops any round still running 32 seconds after it began.
+First to two round wins. A drawn round gives no point and no pick and is replayed with the same builds. A match stops at five rounds or 240 seconds; only completed round wins decide it. The server stops any round still running 46 seconds after it began.

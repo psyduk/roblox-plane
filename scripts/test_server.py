@@ -195,8 +195,8 @@ DEFAULT_SCENARIOS = {
         assert(not Harness.battleLatest(a).locked[1] and Harness.battleLatest(a).draft.offenceId==nil)
         Harness.advance(.1)
         Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId=one,wildIds={},offerRevision=old.offerRevision+1})
-        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId='Bumper',wildIds={},offerRevision=old.offerRevision})
-        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId=one,wildIds={'Bumper'},offerRevision=old.offerRevision})
+        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId='Guard',wildIds={},offerRevision=old.offerRevision})
+        Harness.battleSend(a,'lock',{matchId=old.matchId,stage=old.stage,offenceId=one,wildIds={'Guard'},offerRevision=old.offerRevision})
         assert(not Harness.battleLatest(a).locked[1] and Harness.battleLatest(a).draft.offenceId==nil)
         Harness.advance(.1)
         Harness.battleSend(a,'pick',{matchId=old.matchId,stage=old.stage,slot='offence',skillId=two,offerRevision=old.offerRevision})
@@ -916,19 +916,19 @@ GUIDED_SCENARIOS = {
         local a=Harness.add(101)
         Harness.send(a,'play');local s=Harness.battleLatest(a)
         assert(s.phase=='Countdown' and s.guided and s.simulatedOpponent and s.roundNumber==1)
-        assert(s.settings[1].offenceId=='Boulder' and s.settings[2].offenceId=='Bolt')
+        assert(s.settings[1].offenceId=='Bolt' and s.settings[2].offenceId=='Cyclone')
         local first=s.matchId
         for _=1,2400 do
             Harness.advance(.1);s=Harness.battleLatest(a)
             if s.phase=='Pick' and not s.locked[1] then
                 assert(s.slots==s.stage-1 and #s.offer.wilds==(s.stage==2 and 2 or 3) and #s.offer.offences==2)
-                assert(s.draft.offenceId=='Boulder' and #s.draft.wildIds==s.slots-1,'The guided pick did not start from the top that fought')
+                assert(s.draft.offenceId=='Bolt' and #s.draft.wildIds==s.slots-1,'The guided pick did not start from the top that fought')
                 local wilds={};for _,id in ipairs(s.draft.wildIds) do wilds[#wilds+1]=id end
                 for _,id in ipairs(s.offer.wilds) do
                     local held=false;for _,other in ipairs(wilds) do if other==id then held=true end end
                     if not held and #wilds<s.slots then wilds[#wilds+1]=id end
                 end
-                Harness.battleSend(a,'lock',{matchId=s.matchId,stage=s.stage,offerRevision=s.offerRevision,offenceId='Boulder',wildIds=wilds})
+                Harness.battleSend(a,'lock',{matchId=s.matchId,stage=s.stage,offerRevision=s.offerRevision,offenceId='Bolt',wildIds=wilds})
             end
             if s.phase=='MatchOver' then break end
         end

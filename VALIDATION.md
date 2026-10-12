@@ -1,3 +1,13 @@
+# Real top physics — October 11, 2026 (not published)
+
+The first ring-out pass was rebuilt on how real battling tops behave: a walled bowl with three exits, movement that comes from the tip, spin that runs down, spin direction, and tops that wobble and fall over. Nothing was published; Skybound Test is still version 23.
+
+Python checks passed **17 simulation, 7 catalog and 48 server scenarios** (15 battle, 33 archived distance), with 30 match-orchestration, 12 client and 52 profile cases inside the server run. In Studio, with these sources pushed into the open `build/Sky-Battle-Playtest.rbxlx`, native checks passed **17 simulation, 7 catalog, 30 match, 52 profile, 10 view, 22 audio and 12 client cases**. The rebuilt package matched all 37 sources.
+
+Three guided Bolt-versus-Cyclone rounds were watched in Studio with real clicks. Seen on screen: both tops looping through the middle of the bowl rather than driving at each other, sparks and a flash on a big hit, the "CLOSE!" call at a gap, a top wobbling as its spin ran down, one round lost by running out of spin, one won by knocking the rival out through a gap and watching it drop, and the part pick. The output log showed no script errors. [Frames](previews/tops-1-big-hit-close-call.jpg).
+
+Not checked: sound by ear, a phone, two human players, a published server, saving, the normal (unguided) draft, Boulder, Drifter and any part on screen (covered by tests only), and whether it is fun.
+
 # Ring-out pivot — October 11, 2026 (not published)
 
 The plane fight was replaced with a ring-out game between spinning tops. Nothing was published; Skybound Test is still version 23.

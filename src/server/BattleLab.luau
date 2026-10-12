@@ -1,11 +1,11 @@
--- Authoritative, same-server Sky Battle rivalry: spinning tops on a platform
--- in the sky, last one on it wins. The public pool never reads account
+-- Authoritative, same-server Sky Battle rivalry: spinning tops in a walled
+-- bowl, last one spinning in it wins. The public pool never reads account
 -- ownership. Only recipient-owned draft data crosses the remote.
 local BattleLab = {}
 BattleLab.__index = BattleLab
-BattleLab.ROSTER_VERSION = "sky-battle-tops-v1"
+BattleLab.ROSTER_VERSION = "sky-battle-tops-v2"
 BattleLab.QUEUE_SECONDS = 8
--- Before every round each pilot sets up a loadout: one top, plus one upgrade
+-- Before every round each pilot sets up a loadout: one top, plus one part
 -- slot for each decisive round played. Everything already chosen stays unless
 -- the pilot swaps it, and every pick shows the whole roster.
 BattleLab.PICK_SECONDS = 20
@@ -14,7 +14,7 @@ BattleLab.MAX_WILDS = 2
 BattleLab.ROUND_OVER_SECONDS = 3.5
 -- The simulation ends every round by itself; this is only the server's own
 -- stop for a round that somehow has not.
-BattleLab.FIGHT_SECONDS = 32
+BattleLab.FIGHT_SECONDS = 46
 BattleLab.MATCH_SECONDS = 240
 BattleLab.MAX_ROUNDS = 5
 -- A pilot's first match is guided: it starts at once against a bot, the first
@@ -22,9 +22,9 @@ BattleLab.MAX_ROUNDS = 5
 -- clock. Everything after that match is the normal draft.
 BattleLab.GUIDE_INTRO_SECONDS = 5
 BattleLab.GUIDE_PICK_SECONDS = 40
-local GUIDE = {offences={"Boulder","Bolt"},wilds={"Heavy","Spikes","Turbo","Claws"},hand={[2]=2,[3]=3}}
-local PUBLIC = {offences={"Boulder","Bolt","Cyclone","Pogo"},wilds={"Heavy","Spikes","Turbo","Claws","Bumper","Jetpack"}}
--- A pick shows at most this many tops and this many upgrades: the ones
+local GUIDE = {offences={"Bolt","Cyclone"},wilds={"Heavy","Spikes","Flywheel","Guard"},hand={[2]=2,[3]=3}}
+local PUBLIC = {offences={"Bolt","Cyclone","Boulder","Drifter"},wilds={"Heavy","Spikes","Turbo","Guard","Flywheel","LeftSpin"}}
+-- A pick shows at most this many tops and this many parts: the ones
 -- already chosen, then a fresh random deal from the rest of the roster.
 local HAND = 6
 local function finite(value)
@@ -54,7 +54,7 @@ local function perspective(value,side)
         for key,v in pairs(item) do
             if type(v)=="table" then visit(v)
             elseif key=="actor" or key=="target" or key=="owner" or key=="holder" or key=="by" or key=="winner" then item[key]=seat(v,side)
-            elseif key=="x" or key=="vx" or key=="lockX" or key=="_dashX" or key=="_fromX" then
+            elseif key=="x" or key=="vx" then
                 if type(v)=="number" then item[key]=-v end
             elseif key=="heading" then
                 if type(v)=="number" then item[key]=(math.pi-v+math.pi)%(2*math.pi)-math.pi end
@@ -96,7 +96,7 @@ function BattleLab:roster(player)
 end
 function BattleLab:identity(player)
     if not player then
-        local personas={{"Comet","Hits hard. Same tops as you.","☄️","cruiser",1},{"Pip","Hard to shake off. Same tops as you.","🐦","skyhopper",2},{"Fizz","Loves a comeback. Same tops as you.","⚡","dart",4}}
+        local personas={{"Comet","Hits hard. Same tops as you.","☄️","cruiser",1},{"Pip","Spins forever. Same tops as you.","🐦","skyhopper",2},{"Fizz","Loves a comeback. Same tops as you.","⚡","dart",4}}
         local persona=personas[(self.sequence-1)%#personas+1]
         return {userId=0,name=persona[1],bot=true,portrait=persona[3],personality=persona[2],planeId=persona[4],color=persona[5],trailId="classic"}
     end
@@ -119,7 +119,7 @@ end
 function BattleLab:slots(m)
     return math.max(0,math.min(self.MAX_WILDS,m.stage-1))
 end
--- A complete loadout is one offered top and one distinct offered upgrade
+-- A complete loadout is one offered top and one distinct offered part
 -- for every open slot.
 function BattleLab:validBuild(m,side,offenceId,wildIds)
     local offer,slots=m.offers[side],self:slots(m)
@@ -243,7 +243,7 @@ function BattleLab:createMatch(a,b,mode,botIdentity)
     end
     if guided then
         -- Round one is dealt, not picked, so the first thing a new pilot does
-        -- is watch a fight. The round winner still earns the first upgrade.
+        -- is watch a fight. The round winner still earns the first part.
         m.settings[1].offenceId=GUIDE.offences[1]; m.settings[2].offenceId=GUIDE.offences[2]
         m.locked={true,true}; m.offers={}; m.drafts={}; m.offerRevision={0,0}
         self:startRound(m,self.GUIDE_INTRO_SECONDS)
@@ -290,32 +290,28 @@ function BattleLab:facts(m,result,side)
     if result.reason=="shutdown" then return {"Server closed: the match ended without a winner."} end
     local reason=result.decidingRoundReason or result.reason
     if result.winner==0 then
-        return {reason=="ringout" and "Both tops went over the edge together." or "Neither top was nearer the middle: no point this round."}
+        return {reason=="ringout" and "Both tops went out of the bowl together."
+            or reason=="spinout" and "Both tops stopped spinning at the same moment."
+            or "Both tops had the same spin left: no point this round."}
     end
-    if reason=="timeout" or reason=="time" then return {"Time ran out: the top nearer the middle won."} end
-    -- The last throw before the fall is the story of the round.
-    local facts={}
+    if reason=="timeout" or reason=="time" then return {"Time ran out: the top with more spin left won."} end
     local loser=3-result.winner
+    local mine=loser==side
+    local winnerSkill=self.deps.skills.get(((m.settings or {})[result.winner] or {}).offenceId or "")
+    -- The last touch that went against the loser is the story of the round.
+    local skill=winnerSkill
     for index=#(result.events or {}),1,-1 do
         local event=result.events[index]
         if event.kind=="clash" and event.target==loser then
-            local skill=self.deps.skills.get(event.skillId or "")
-            facts[1]=(event.actor==side and "Your " or "Rival's ")..(skill and skill.name or "top")
-                ..(event.source=="slam" and " slammed " or " knocked ")..(loser==side and "you" or "the rival").." off the ring."
+            skill=self.deps.skills.get(event.skillId or "") or skill
             break
         end
     end
-    if #facts==0 then facts[1]=(loser==side and "Your top" or "The rival").." slid off the ring." end
-    for index=#(result.events or {}),1,-1 do
-        local event=result.events[index]
-        if event.kind=="blocked" or event.kind=="revive" then
-            local skill=self.deps.skills.get(event.skillId or "")
-            facts[#facts+1]=(event.actor==side and "Your " or "Rival's ")..(skill and skill.name or "upgrade")
-                ..(event.kind=="blocked" and " bounced a hit back." or " saved a fall.")
-            break
-        end
+    local owner=(mine and "Rival's " or "Your ")..(skill and skill.name or "top")
+    if reason=="spinout" then
+        return {owner.." out-spun "..(mine and "you" or "the rival")..": "..(mine and "your top" or "theirs").." ran out of spin."}
     end
-    return facts
+    return {owner.." knocked "..(mine and "you" or "the rival").." out of the bowl."}
 end
 function BattleLab:viewResult(m,result,side)
     if not result then return nil end
@@ -577,7 +573,7 @@ function BattleLab:step(dt)
                 for _,event in ipairs(m.simulation.events or {}) do
                     if event.serial>m.eventSerial then
                         m.eventSerial=event.serial
-                        if event.kind=="clash" or event.kind=="blocked" or event.kind=="ringout" or event.kind=="finish" or event.kind=="revive" then
+                        if event.kind=="clash" or event.kind=="ringout" or event.kind=="spinout" or event.kind=="finish" then
                             local recorded=copy(event); recorded.roundNumber=m.roundNumber; recorded.outcome=event.kind
                             m.roundEvents[#m.roundEvents+1]=recorded
                             -- A long round is a lot of bumps; only the latest matter to the result.

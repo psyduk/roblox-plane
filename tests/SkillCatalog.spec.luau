@@ -22,7 +22,9 @@ return function(Catalog)
 			end
 			check(type(entry.starter) == "boolean", entry.id .. " lacks starter")
 			if entry.kind == "offence" then
-				check(type(entry.windupTell) == "string" and type(entry.attackTell) == "string", entry.id .. " lacks callouts")
+				check(type(entry.role) == "string" and #entry.role > 0, entry.id .. " lacks a role")
+			else
+				check(type(entry.when) == "string", entry.id .. " does not say which part it is")
 			end
 			check(entry.price == nil and entry.robux == nil and entry.power == nil, "Catalog carries a price or strength")
 		end
@@ -40,14 +42,14 @@ return function(Catalog)
 	end)
 
 	test("the public first-test roster is equal and excludes expansion", function()
-		local wanted = { Boulder = true, Bolt = true, Cyclone = true, Pogo = true,
-			Heavy = true, Spikes = true, Turbo = true, Claws = true, Bumper = true, Jetpack = true }
+		local wanted = { Bolt = true, Cyclone = true, Boulder = true, Drifter = true,
+			Heavy = true, Spikes = true, Turbo = true, Guard = true, Flywheel = true, LeftSpin = true }
 		check(#Catalog.all("offence") == 4 and #Catalog.all("wild") == 6, "Approved roster changed")
 		for _, entry in ipairs(Catalog.all()) do
 			check(wanted[entry.id] and entry.starter, "Skill is gated or outside agreed roster")
 		end
 		check(not Catalog.valid("Copycat") and not Catalog.valid("Meteor"), "Something outside the roster is valid")
-		check(Catalog.ROSTER_VERSION == "sky-battle-tops-v1", "Roster has no version")
+		check(Catalog.ROSTER_VERSION == "sky-battle-tops-v2", "Roster has no version")
 	end)
 
 	test("every card has a teaser that does not give its name away, and every top has its words", function()
@@ -56,12 +58,12 @@ return function(Catalog)
 			check(not string.find(string.lower(entry.teaser), string.lower(entry.name), 1, true), entry.id .. "'s teaser names it")
 		end
 		local plain = Catalog.tells("Bolt")
-		check(plain.windupTell == Catalog.get("Bolt").windupTell and plain.name == "Bolt", "A top lost its words")
-		check(Catalog.tells("Nope") == nil and Catalog.tells("Heavy").windupTell == nil, "Missing skill or an upgrade was not handled")
+		check(plain.role == "ATTACK" and plain.name == "Bolt" and plain.icon == Catalog.get("Bolt").icon, "A top lost its words")
+		check(Catalog.tells("Nope") == nil and Catalog.tells("Heavy") == nil, "Missing skill or a part was not handled")
 	end)
 
-	test("cards from the plane fight are retired, not valid", function()
-		for _, id in ipairs({ "Meteor", "Firework", "SpringBumper", "Rewind" }) do
+	test("cards from earlier versions of the fight are retired, not valid", function()
+		for _, id in ipairs({ "Meteor", "Firework", "SpringBumper", "Rewind", "Pogo", "Jetpack" }) do
 			check(Catalog.RETIRED[id] == true and not Catalog.valid(id), id .. " is still live or not retired")
 		end
 		for _, entry in ipairs(Catalog.all()) do check(Catalog.RETIRED[entry.id] == nil, entry.id .. " is both live and retired") end
@@ -77,9 +79,9 @@ return function(Catalog)
 	end)
 
 	test("a build is one offence and up to two different wild cards", function()
-		local build = Catalog.build("Boulder", { "Bumper", "Turbo" })
+		local build = Catalog.build("Boulder", { "Flywheel", "Turbo" })
 		check(build and build.offenceId == "Boulder" and #build.wildIds == 2, "Valid build rejected")
-		check(build.wildIds[1] == "Bumper" and build.wildIds[2] == "Turbo", "Pick order was not kept")
+		check(build.wildIds[1] == "Flywheel" and build.wildIds[2] == "Turbo", "Pick order was not kept")
 		local source = { "Spikes" }
 		local copy = Catalog.build("Bolt", source)
 		source[1] = "Turbo"
@@ -99,7 +101,7 @@ return function(Catalog)
 		refused("Boulder", { first = "Turbo" }, "wild")
 		refused("Boulder", { [2] = "Turbo" }, "wild")
 		refused("Boulder", { "Turbo", "Turbo" }, "duplicate")
-		refused("Boulder", { "Turbo", "Bumper", "Spikes" }, "too many")
+		refused("Boulder", { "Turbo", "Flywheel", "Spikes" }, "too many")
 		refused("Meteor", {}, "offence")
 	end)
 

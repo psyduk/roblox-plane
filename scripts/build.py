@@ -65,7 +65,7 @@ def build(output: Path):
         playtest.write_bytes(output.read_bytes())
         print(f"Identical playtest copy: {playtest}")
     print(f"Stop old Play sessions, then reopen this exact file in Roblox Studio: {playtest}")
-    print("Press Studio Play. In the hangar, the main PLAY must lead to rival search, a top pick, and a first-to-two ring-out match.")
+    print("Press Studio Play. In the hangar, the main PLAY must lead to rival search, a top pick, and a first-to-two match between spinning tops.")
     print("A distance/furthest-flight screen means the wrong place is running. Studio uses session-only stats; this command does not publish.")
 
 if __name__ == "__main__":

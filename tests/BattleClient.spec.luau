@@ -4,7 +4,7 @@ return function(Client,Skills)
     local function test(name,callback)
         local commands={}
         local ui=setmetatable({skills=Skills,audio={ui=function() end},data={active=true,phase="Pick",matchId=10,stage=1,
-            slots=0,offerRevision=1,offer={offences={"Boulder","Cyclone","Pogo"},wilds={"Turbo","Bumper","Claws"}},
+            slots=0,offerRevision=1,offer={offences={"Boulder","Cyclone","Drifter"},wilds={"Turbo","Flywheel","Guard"}},
             draft={wildIds={}},locked={false,false}}},Client)
         function ui:send(kind,payload) commands[#commands+1]={kind=kind,payload=payload} end
         local ok,problem=pcall(callback,ui,commands);assert(ok,name..": "..tostring(problem));passed=passed+1
@@ -29,33 +29,33 @@ return function(Client,Skills)
         assert(draft.offenceId=="Boulder" and ui.focus==1,"The pick did not open on the empty upgrade slot")
         ui:fight();assert(#commands==0,"A build with an empty slot locked")
         ui:choose("Boulder");assert(#commands==0,"A top filled an upgrade slot")
-        ui:choose("Claws")
-        assert(commands[1].kind=="pick" and commands[1].payload.slot=="wild" and commands[1].payload.index==1 and commands[1].payload.skillId=="Claws")
-        ui:choose("Bumper");assert(#commands==2 and ui.draft.wildIds[1]=="Bumper","A second tap did not swap the card")
+        ui:choose("Guard")
+        assert(commands[1].kind=="pick" and commands[1].payload.slot=="wild" and commands[1].payload.index==1 and commands[1].payload.skillId=="Guard")
+        ui:choose("Flywheel");assert(#commands==2 and ui.draft.wildIds[1]=="Flywheel","A second tap did not swap the card")
         ui:focusSlot(2);assert(ui.focus==1,"A slot that is not open took focus")
-        ui:focusSlot(0);assert(ui.focus==0);ui:choose("Pogo");ui:choose("Pogo")
+        ui:focusSlot(0);assert(ui.focus==0);ui:choose("Drifter");ui:choose("Drifter")
         assert(#commands==3 and commands[3].payload.slot=="offence","The top was not swapped once")
         ui:fight()
         local lock=commands[4].payload
-        assert(commands[4].kind=="lock" and lock.offenceId=="Pogo" and #lock.wildIds==1 and lock.wildIds[1]=="Bumper")
+        assert(commands[4].kind=="lock" and lock.offenceId=="Drifter" and #lock.wildIds==1 and lock.wildIds[1]=="Flywheel")
         assert(lock.wildIds~=ui.draft.wildIds,"The lock shared the live draft table")
     end)
     test("the third pick keeps the first upgrade and never doubles one",function(ui,commands)
-        ui.data.stage=3;ui.data.slots=2;ui.data.draft={offenceId="Boulder",wildIds={"Claws"}}
+        ui.data.stage=3;ui.data.slots=2;ui.data.draft={offenceId="Boulder",wildIds={"Guard"}}
         ui:loadout();assert(ui.focus==2 and ui.draftHeld==1)
-        ui:choose("Claws");assert(#commands==0,"One upgrade filled both slots")
+        ui:choose("Guard");assert(#commands==0,"One upgrade filled both slots")
         ui:choose("Turbo");ui:focusSlot(1);ui:choose("Turbo");assert(#commands==1,"A held card swapped into the other slot")
-        ui:choose("Bumper");ui:fight()
+        ui:choose("Flywheel");ui:fight()
         local lock=commands[3].payload
-        assert(lock.offenceId=="Boulder" and lock.wildIds[1]=="Bumper" and lock.wildIds[2]=="Turbo")
+        assert(lock.offenceId=="Boulder" and lock.wildIds[1]=="Flywheel" and lock.wildIds[2]=="Turbo")
         -- A new stage starts again from the server's build, not the old draft.
-        ui.data.stage=4;ui.data.draft={offenceId="Pogo",wildIds={"Claws","Turbo"}}
-        assert(ui:loadout().offenceId=="Pogo" and ui.focus==0 and ui:loadoutReady())
+        ui.data.stage=4;ui.data.draft={offenceId="Drifter",wildIds={"Guard","Turbo"}}
+        assert(ui:loadout().offenceId=="Drifter" and ui.focus==0 and ui:loadoutReady())
     end)
     test("real outbox preserves explicit choice and revision while spacing queued packets",function(ui)
         local sent={};ui.send=Client.send;ui.outbox={};ui.sending=true;ui.lastSend=-math.huge
         ui.command={FireServer=function(_,payload)sent[#sent+1]={payload=payload,at=os.clock()}end}
-        ui:choose("Pogo");ui:fight()
+        ui:choose("Drifter");ui:fight()
         assert(#ui.outbox==2 and #sent==0)
         -- A later snapshot cannot rewrite already queued packets. The server
         -- rejects their stale revision instead of choosing a replacement.
@@ -65,7 +65,7 @@ return function(Client,Skills)
         assert(#sent==3 and sent[1].payload.kind=="pick" and sent[2].payload.kind=="lock")
         for index=1,2 do
             local p=sent[index].payload
-            assert((index==1 and p.skillId or p.offenceId)=="Pogo" and p.offerRevision==1 and p.matchId==10 and p.stage==1)
+            assert((index==1 and p.skillId or p.offenceId)=="Drifter" and p.offerRevision==1 and p.matchId==10 and p.stage==1)
         end
         assert(sent[2].at-sent[1].at>=.079 and sent[3].at-sent[2].at>=.079,"Outbox pacing bypassed")
     end)
@@ -85,9 +85,9 @@ return function(Client,Skills)
         ui.data.rematchVotes={false,false};ui.data.rivalGone=true;ui:rematch();assert(#commands==1)
     end)
     test("round facts preserve authoritative strings with bounded fallbacks",function(ui)
-        assert(ui:factText({facts={"Your Boulder knocked the rival off the ring."}})=="Your Boulder knocked the rival off the ring.")
-        assert(string.find(ui:factText({reason="timeout",winner=0}),"nearer the middle",1,true))
-        assert(string.find(ui:factText({reason="ringout",winner=1}),"off the ring",1,true))
+        assert(ui:factText({facts={"Your Boulder knocked the rival out of the bowl."}})=="Your Boulder knocked the rival out of the bowl.")
+        assert(string.find(ui:factText({reason="timeout",winner=0}),"more spin left",1,true))
+        assert(string.find(ui:factText({reason="ringout",winner=1}),"out of the bowl",1,true))
         assert(string.find(ui:factText({reason="round_cap"}),"Five rounds",1,true))
         assert(string.find(ui:factText({reason="disconnect"}),"left",1,true))
     end)
@@ -118,25 +118,25 @@ return function(Client,Skills)
         ui.data.matchId=10;ui:reportRewardShown(ui.data);assert(#commands==2,"Old reward retransmission repeated")
     end)
     test("first-match coaching follows the snapshot and stays silent otherwise",function(ui)
-        local data={phase="Countdown",settings={{offenceId="Boulder",wildIds={}},{offenceId="Bolt",wildIds={}}},
-            simulation={pressure=0,fighters={{},{}}}}
+        local data={phase="Countdown",settings={{offenceId="Bolt",wildIds={}},{offenceId="Cyclone",wildIds={}}},
+            simulation={fighters={{spin=100,spinMax=100},{spin=100,spinMax=100}}}}
         assert(ui:coachText(data)==nil,"A normal match was coached")
-        data.guided=true;assert(string.find(ui:coachText(data),"by itself",1,true))
-        data.phase="Fight";assert(string.find(ui:coachText(data),"Boulder",1,true) and string.find(ui:coachText(data),"left",1,true))
-        data.simulation.pressure=0.2;assert(string.find(ui:coachText(data),"shrinking",1,true))
-        data.settings[1].wildIds={"Bumper"};assert(string.find(ui:coachText(data),"Spring Bumper: FIRST HIT ON YOU",1,true))
-        data.settings[1].wildIds={"Bumper","Turbo"};assert(string.find(ui:coachText(data),"Turbo",1,true))
+        data.guided=true;assert(string.find(ui:coachText(data),"Nobody steers",1,true))
+        data.phase="Fight";assert(string.find(ui:coachText(data),"Bolt",1,true) and string.find(ui:coachText(data),"left",1,true))
+        data.simulation.fighters[2].spin=30;assert(string.find(ui:coachText(data),"wobbles",1,true))
+        data.settings[1].wildIds={"Flywheel"};assert(string.find(ui:coachText(data),"Flywheel. Starts with more spin",1,true))
+        data.settings[1].wildIds={"Flywheel","Turbo"};assert(string.find(ui:coachText(data),"Rubber Tip",1,true))
         for _,phase in ipairs({"Pick","RoundOver","MatchOver","Searching"}) do data.phase=phase;assert(ui:coachText(data)==nil,phase.." was coached") end
     end)
     test("the wall of powers counts what was met and keeps unmet cards secret",function(ui)
-        local count,total=ui:found({Boulder=true,Jetpack=true,Nope=true,Meteor=true,Heavy=false})
+        local count,total=ui:found({Boulder=true,LeftSpin=true,Nope=true,Meteor=true,Pogo=true,Heavy=false})
         assert(count==2 and total==#Skills.all(),"Found count is wrong")
         assert(select(1,ui:found(nil))==0)
-        local known=ui:powerLine("Jetpack",{Jetpack=true})
-        assert(string.find(known,"JETPACK",1,true) and string.find(known,Skills.get("Jetpack").promise,1,true))
-        local secret=ui:powerLine("Pogo",{Jetpack=true})
-        assert(string.find(secret,"???",1,true) and string.find(secret,Skills.get("Pogo").teaser,1,true))
-        assert(not string.find(string.upper(secret),"POGO",1,true) and not string.find(secret,"shockwave",1,true),"An unmet card gave itself away")
+        local known=ui:powerLine("LeftSpin",{LeftSpin=true})
+        assert(string.find(known,"LEFT SPIN",1,true) and string.find(known,Skills.get("LeftSpin").promise,1,true))
+        local secret=ui:powerLine("Drifter",{LeftSpin=true})
+        assert(string.find(secret,"???",1,true) and string.find(secret,Skills.get("Drifter").teaser,1,true))
+        assert(not string.find(string.upper(secret),"DRIFTER",1,true) and not string.find(secret,"Loops",1,true),"An unmet card gave itself away")
         assert(string.find(ui:powerLine(nil,{}),"Tap a tile",1,true) and string.find(ui:powerLine("Nope",{}),"Tap a tile",1,true))
     end)
     return string.format("BattleClient: %d command and feedback tests passed",passed)

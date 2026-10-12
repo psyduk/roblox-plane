@@ -1,5 +1,5 @@
 -- Sky Battle's presentation consumes the recipient-only server snapshot. A tap
--- can select only this pilot's top and upgrades; the fight, rival choices and
+-- can select only this pilot's top and parts; the fight, rival choices and
 -- awards are server owned.
 local Players=game:GetService("Players")
 local GuiService=game:GetService("GuiService")
@@ -80,8 +80,8 @@ function BattleLab.new(World,shared)
     self.scrim.BackgroundColor3=NAVY; self.scrim.BackgroundTransparency=1
     -- The top of the screen is a fighting-game bar with no backing: each
     -- pilot's face, name and build float over the sky at the edges, with the
-    -- clock and round wins between them. There is no health to show: where a
-    -- top stands on the ring is the whole story.
+    -- clock and round wins between them. Each top's pill is its spin meter:
+    -- it drains as the top slows, and an empty one has stopped.
     self.header=make("Frame",self.panel,"Header"); self.header.BackgroundTransparency=1; self.header.BorderSizePixel=0
     self.exit=button(self.panel,"Exit","🏠",function() self.audio:ui("back"); self:send("exit") end)
     self.mute=button(self.panel,"Mute","🔊",function()
@@ -112,8 +112,7 @@ function BattleLab.new(World,shared)
         local bot=label(ring,"Bot",28); bot.Size=UDim2.fromScale(1,1); bot.TextWrapped=false
         local name=label(frame,"PilotName",24,WHITE,Enum.Font.FredokaOne); name.TextWrapped=false; name.TextTruncate=Enum.TextTruncate.AtEnd
         outline(name,3)
-        -- The top's pill doubles as a charge meter: it fills until the top's
-        -- signature move is ready, so the next big hit never comes as a surprise.
+        -- The top's pill doubles as its spin meter.
         local power=make("Frame",frame,"Power"); power.BorderSizePixel=0; corner(power,8)
         local charge=make("Frame",power,"Charge"); charge.BorderSizePixel=0; corner(charge,8)
         local powerText=label(power,"Label",13,NAVY); powerText.TextWrapped=false; powerText.Size=UDim2.fromScale(1,1)
@@ -171,7 +170,7 @@ function BattleLab.new(World,shared)
         self.powerCards[spec.id]={button=card,spec=spec,edge=edge,tag=tag,icon=icon,word=word,name=name,promise=promise,scale=scale,badge=badge,color=tint(spec.color)}
     end
     -- The loadout bar says what the pilot is bringing: one tile for the top
-    -- and one for each upgrade slot. Tapping a tile picks the slot to change.
+    -- and one for each part slot. Tapping a tile picks the slot to change.
     self.slotTiles={}
     for slot=0,2 do
         local tile=make("TextButton",self.picker,"Slot"..slot)
@@ -374,7 +373,7 @@ function BattleLab:loadoutReady()
     local draft=self:loadout()
     return draft.offenceId~=nil and #draft.wildIds==((self.data or {}).slots or 0)
 end
--- Slot 0 is the top; slots 1 and 2 are its upgrades.
+-- Slot 0 is the top; slots 1 and 2 are its parts.
 function BattleLab:focusSlot(slot)
     local data=self.data
     if not data or data.phase~="Pick" or (data.locked and data.locked[1]) then return end
@@ -390,7 +389,7 @@ function BattleLab:choose(skillId)
         if not table.find(offer.offences or {},skillId) or draft.offenceId==skillId then return end
         draft.offenceId=skillId; self:send("pick",{slot="offence",skillId=skillId})
     else
-        -- An upgrade already on the top cannot fill a second slot.
+        -- A part already on the top cannot fill a second slot.
         if not table.find(offer.wilds or {},skillId) or table.find(draft.wildIds,skillId) then return end
         draft.wildIds[self.focus]=skillId; self:send("pick",{slot="wild",index=self.focus,skillId=skillId})
     end
@@ -556,19 +555,18 @@ function BattleLab:factText(result)
                 local actor=fact.actor==1 and "Your" or "Rival's"
                 local skill=self.skills.get(fact.skillId or fact.skill or "")
                 local name=skill and skill.name or "top"
-                if fact.outcome=="blocked" or fact.kind=="blocked" then facts[#facts+1]=actor.." "..name.." bounced a hit back."
-                elseif fact.kind=="clash" or fact.outcome=="clash" then facts[#facts+1]=actor.." "..name.." landed a big hit." end
+                if fact.kind=="clash" or fact.outcome=="clash" then facts[#facts+1]=actor.." "..name.." landed a big hit." end
             end
         end
     end
     if #facts>0 then return table.concat(facts,"  ") end
     local reason=result.reason
-    if reason=="timeout" then return "Time ran out. The top nearer the middle wins." end
+    if reason=="timeout" then return "Time ran out. The top with more spin left wins." end
     if reason=="disconnect" or reason=="forfeit" or reason=="departure" then return "The rival left before the match finished." end
     if reason=="round_cap" then return "Five rounds played. Completed round wins decide the match." end
     if reason=="match_cap" or reason=="match_timeout" then return "The match clock ended. Only completed round wins count." end
     if result.winner==0 then return "No point awarded. Drawn rounds keep the same builds." end
-    return "Knock your rival off the ring. First to two round wins takes the match."
+    return "Knock your rival out of the bowl, or out-spin them. First to two round wins takes the match."
 end
 -- Record an actual visible terminal reward summary once for each match.
 -- Retransmitted snapshots and scrolling cannot inflate the replay funnel.
@@ -590,7 +588,7 @@ function BattleLab:showResult(data,accents,width,height,top,compact,short)
     local result=terminal and data.result or data.roundResult
     result=result or sim
     local winner=result.winner or 0
-    local age=os.clock()-self.resultAt-(terminal and (sim.reason=="ringout" and 1.2 or 0.4) or (sim.reason=="ringout" and 0.7 or 0.3))
+    local age=os.clock()-self.resultAt-(terminal and (sim.reason~="timeout" and 1.2 or 0.4) or (sim.reason~="timeout" and 0.8 or 0.3))
     self.result.Visible=age>0
     if age<=0 then self.resultDim=1; return end
     local outcome=winner==1 and "win" or (winner==2 and "lose" or "draw")
@@ -647,8 +645,8 @@ function BattleLab:showResult(data,accents,width,height,top,compact,short)
         y=y+statHeight+10
         place(self.resultHint,x,y,content,24); self.resultHint.TextSize=compact and 13 or 16
         self.resultHint.Text=winner==0 and "Same builds. Going again!"
-            or (data.guided and ((data.stage or 1)<=1 and "Next: pick an upgrade for your top!" or "Next: pick one more upgrade!")
-                or "Next up: add an upgrade. Swap anything you like!")
+            or (data.guided and ((data.stage or 1)<=1 and "Next: pick a part for your top!" or "Next: pick one more part!")
+                or "Next up: add a part. Swap anything you like!")
         local plateWidth=math.min(width-16,math.max(3*statWidth+48,compact and 0 or 560))
         place(self.roundPlate,(width-plateWidth)/2,lineTop-8,plateWidth,y+30-lineTop+8)
         self.roundPlateEdge.Color=outcome=="draw" and WHITE or accents[winner]
@@ -716,11 +714,14 @@ function BattleLab:coachText(data)
     if not fighting and data.phase~="Countdown" then return nil end
     local build=(data.settings or {})[1] or {}
     local newest=self.skills.get((build.wildIds or {})[#(build.wildIds or {})] or "")
-    if newest then return "Watch for your "..newest.icon.." "..newest.name..": "..(newest.when or newest.promise).."!" end
-    if not fighting then return "Your top spins and fights by itself. Just watch this one!" end
-    if ((data.simulation or {}).pressure or 0)>0 then return "The ring is shrinking. The last top on it wins the round!" end
+    if newest then return "New on your top: "..newest.icon.." "..newest.name..". "..newest.promise end
+    if not fighting then return "Nobody steers. Your top goes where its tip takes it. Just watch this one!" end
+    local fighters=(data.simulation or {}).fighters or {}
+    local low=false
+    for _,state in ipairs(fighters) do if (state.spin or 100)<(state.spinMax or 100)*0.4 then low=true end end
+    if low then return "A slowing top wobbles and gets thrown further. The last one spinning wins!" end
     local top=self.skills.get(build.offenceId or "")
-    return "You start on the left. Your "..(top and top.icon.." "..top.name or "top").." has to knock the rival off the ring!"
+    return "You start on the left. Knock the rival out through a red gap, or keep your "..(top and top.icon.." "..top.name or "top").." spinning longer!"
 end
 -- Turns fresh authoritative combat events into the play-by-play and HUD
 -- flashes. A louder call is never talked over by a quieter one.
@@ -750,26 +751,23 @@ function BattleLab:feedback(data)
             if not recent then
                 -- An old event is history, not news.
             elseif event.kind=="clash" then
-                -- Little bumps happen all the time; only a real throw is news.
-                if (event.power or 0)>=38 and not event.blocked then
-                    if event.target==1 then self:call(rival.."'S "..top(2).." SENT YOU FLYING!","bad",3,1.2)
-                    else self:call("YOUR "..top(1).." SENT "..rival.." FLYING!","good",3,1.2) end
+                -- Little touches happen all the time; only a real throw is news.
+                if (event.power or 0)>=34 then
+                    if event.target==1 then self:call(rival.."'S "..top(2).." SENT YOU FLYING!","bad",3,1.1)
+                    else self:call("YOUR "..top(1).." SENT "..rival.." FLYING!","good",3,1.1) end
                     self.hitTimes[event.target]=os.clock()
                 end
-            elseif event.kind=="blocked" then
-                self:call(mine and "BOING! YOUR BUMPER THREW "..rival.." BACK" or "BOING! "..rival.."'S BUMPER THREW YOU BACK",mine and "good" or "bad",3,1.4)
-                self.wildTimes[mine and 1 or 2].Bumper=os.clock()
-                self.hitTimes[event.target]=os.clock()
-            elseif event.kind=="revive" then
-                self:call(mine and "🚀 JETPACK! YOU ARE BACK ON THE RING" or "🚀 "..rival.." JETPACKED BACK ON!",mine and "good" or "bad",4,1.8)
-                self.wildTimes[mine and 1 or 2].Jetpack=os.clock()
             elseif event.kind=="close" then
-                self:call(mine and "CLOSE! YOU HELD ON" or rival.." JUST HELD ON",mine and "good" or "rival",2,1)
+                self:call(mine and "CLOSE! YOU JUST MISSED THE GAP" or rival.." JUST MISSED THE GAP",mine and "good" or "rival",2,1)
             elseif event.kind=="ringout" then
-                if event.actor==0 then self:call("BOTH TOPS FELL OFF!","rival",4,2)
-                elseif event.target==1 then self:call("YOU FELL OFF THE RING!","bad",4,2)
-                else self:call(rival.." FELL OFF THE RING!","good",4,2) end
+                if event.actor==0 then self:call("BOTH TOPS WENT OUT!","rival",4,2)
+                elseif event.target==1 then self:call("YOU WERE KNOCKED OUT OF THE BOWL!","bad",4,2)
+                else self:call(rival.." IS OUT OF THE BOWL!","good",4,2) end
                 if event.target>0 then self.hitTimes[event.target]=os.clock() end
+            elseif event.kind=="spinout" then
+                if event.actor==0 then self:call("BOTH TOPS STOPPED!","rival",4,2)
+                elseif event.target==1 then self:call("YOUR TOP STOPPED SPINNING","bad",4,2)
+                else self:call(rival.."'S TOP STOPPED SPINNING!","good",4,2) end
             end
         end
     end
@@ -818,7 +816,7 @@ function BattleLab:update(dt)
         fighter.name.TextXAlignment=align; fighter.name.TextSize=compact and 14 or (short and 16 or 24)
         fighter.name.Text=string.upper(identity.name or (i==1 and player.DisplayName or "???"))..(identity.bot and " · BOT" or "")
         -- Row two is the build: the top as a paint-coloured pill, then a round
-        -- chip for each upgrade as it is drafted.
+        -- chip for each part as it is drafted.
         local build=builds[i] or {}
         -- While picking, the pilot's own plate shows the build in progress.
         if pick and i==1 then build=self:loadout() end
@@ -829,15 +827,13 @@ function BattleLab:update(dt)
         fighter.powerText.TextSize=tight and 10 or 13
         local pillText=(right and searching) and "SEARCHING" or ((right and pick and rivalLocked) and ((identity.bot and not locked) and "PICKING…" or "LOCKED IN!")
             or (offence and string.upper(offence.name) or (i==1 and "YOU" or "RIVAL")))
-        -- In a fight the pill is a meter: it fills until the top's signature
-        -- move is ready, then flashes white while the move is under way.
+        -- In a fight the pill is the spin meter, and it flashes when the top
+        -- is nearly done.
         local fill,striking=1,false
-        if fighting and offence and state.phase then
-            local tells=self.skills.tells(offence.id) or offence
-            local every=state.moveEvery or 0
-            if state.phase=="Windup" then striking=true; pillText=tells.windupTell or pillText
-            elseif state.phase=="Attack" or (state.phase=="Air" and state.flying=="jump") then striking=true; pillText=tells.attackTell or pillText
-            elseif every>0 then fill=1-math.clamp((state.moveLeft or 0)/every,0,1) end
+        if (fighting or results) and offence and state.spinMax then
+            fill=math.clamp((state.spin or 0)/math.max(1,state.spinMax),0,0.999)
+            if fighting and fill<0.25 then striking=true; pillText="WOBBLING!" end
+            if state.down then pillText="STOPPED" elseif state.out then pillText="OUT" end
         end
         fighter.powerText.Text=pillText
         fighter.power.BackgroundColor3=fill<1 and accents[i]:Lerp(NAVY,0.62) or accents[i]
@@ -848,7 +844,7 @@ function BattleLab:update(dt)
         if striking then fighter.power.BackgroundColor3=accents[i]:Lerp(WHITE,self.reducedMotion and 0.5 or 0.5+0.5*math.sin(now*24)) end
         fighter.powerText.TextColor3=(fill<0.5 and not striking) and WHITE or NAVY
         local chipSize=rowHeight+4
-        -- An upgrade carries its name whenever the plate has room for two.
+        -- A part carries its name whenever the plate has room for two.
         local nameWidth=math.min(132,(textWidth-powerWidth-10)/2-5)
         local named=nameWidth>=78
         local held=build.wildIds or {}
@@ -868,13 +864,7 @@ function BattleLab:update(dt)
                 end
                 chip.label.Text=named and wild.icon.." "..string.upper(wild.name) or wild.icon
                 chip.label.TextSize=named and math.clamp((chipWidth-8)/(utf8.len(chip.label.Text)*0.62),8,chipSize*0.58) or chipSize*0.58
-                -- A chip jumps and glows the moment its upgrade does something,
-                -- and one that only works once goes dark when it is used up.
-                local fired=math.max(0,1-(now-(((self.wildTimes or {})[i] or {})[wild.id] or -100))/0.9)
-                local spent=fighting and fired<=0 and ((wild.id=="Bumper" and state.bumperReady==false)
-                    or (wild.id=="Jetpack" and state.jetReady==false and state.flying~="jet"))
-                -- Claws light up for as long as they are digging in.
-                if wild.id=="Claws" and fighting and state.clawing==true then fired=math.max(fired,0.5) end
+                local fired,spent=0,false
                 chip.edge.Color=accents[i]:Lerp(GOLD,fired); chip.edge.Thickness=2+fired*2
                 chip.label.BackgroundColor3=NAVY:Lerp(WHITE,fired*0.8); chip.label.TextTransparency=spent and 0.6 or 0
                 chip.scale.Scale=self.reducedMotion and 1 or 1+(named and 0.22 or 0.6)*fired*fired
@@ -883,14 +873,14 @@ function BattleLab:update(dt)
     end
     -- The clock is the centre of the bar and gets loud in the last ten seconds.
     local left=self:clockSeconds(workspace:GetServerTimeNow())
-    -- In a fight the clock shows what the round itself has left: the ring
-    -- has closed completely by then.
+    -- In a fight the clock shows what the round itself has left, though
+    -- nearly every round is over long before it runs out.
     if fighting and sim.maxTime then left=math.max(0,math.ceil(sim.maxTime-(sim.elapsed or 0))) end
-    local closing=fighting and (sim.pressure or 0)>0
+    local closing=false
     local urgent=(fighting and left<=5) or (pick and not locked and left<=3)
     local clockHeight=headerHeight-(short and 14 or 26)
     place(self.clock,width/2-60,2,120,clockHeight)
-    self.clock.Text=(fighting or pick) and tostring(left) or (results and (sim.reason=="timeout" and "TIME!" or (sim.reason=="ringout" and "OUT!" or "VS")) or "VS")
+    self.clock.Text=(fighting or pick) and tostring(left) or (results and (sim.reason=="timeout" and "TIME!" or (sim.reason=="ringout" and "OUT!" or (sim.reason=="spinout" and "STOP!" or "VS"))) or "VS")
     self.clock.TextSize=(compact and 26 or (short and 40 or 52))*(#self.clock.Text>2 and 0.7 or 1)
     self.clock.TextColor3=urgent and RED or ((results or closing) and GOLD or WHITE)
     self.clockScale.Scale=(urgent and not self.reducedMotion) and 1+0.14*math.abs(math.sin(now*math.pi)) or 1
@@ -909,7 +899,7 @@ function BattleLab:update(dt)
             win.scale.Scale=(won and not self.reducedMotion) and 1+1.2*math.max(0,1-(now-(win.wonAt or 0))/0.35)^2 or 1
         end
     end
-    -- One status call under the bar, and only while tops are on the ring.
+    -- One status call under the bar, and only while tops are in the bowl.
     local wide=width>=1180
     local statusWidth=math.min(width-24,wide and 620 or (compact and 300 or 420))
     -- The pill shares the button row when it clears the buttons, else drops below.
@@ -930,28 +920,22 @@ function BattleLab:update(dt)
         self.statusEdge.Color=tone; self.statusEdge.Transparency=0.1
         if not self.reducedMotion then self.statusScale.Scale=1+0.25*math.max(0,1-(now-(self.feedbackAt or 0))/0.18)^2 end
     else
-        -- Nothing just happened, so say what is about to: a move under way
-        -- outranks one charging, and yours outranks the rival's.
-        local fighters=sim.fighters or {}; local line,side
+        -- Nothing just happened, so say how the round stands: whose top is
+        -- running down.
+        local fighters=sim.fighters or {}
         local rivalName=string.upper((identities[2] or {}).name or "RIVAL")
-        for _,phase in ipairs({"Attack","Air","Windup"}) do
-            for index=1,2 do
-                local skill=self.skills.tells((builds[index] or {}).offenceId or "")
-                local state=fighters[index] or {}
-                if not line and skill and state.phase==phase and (phase~="Air" or state.flying=="jump") then
-                    side=index
-                    line=(index==1 and "YOU: " or rivalName..": ")..(phase=="Windup" and skill.windupTell or skill.attackTell)
-                end
-            end
+        local function share(index)
+            local state=fighters[index] or {}
+            return (state.spin or 100)/math.max(1,state.spinMax or 100)
         end
-        if line then
-            self.status.Text=line; self.status.TextColor3=accents[side]:Lerp(WHITE,0.35)
-            self.statusEdge.Color=accents[side]; self.statusEdge.Transparency=0.1
-        elseif closing then
-            self.status.Text=(sim.pressure or 0)>0.55 and "NOWHERE LEFT TO GO!" or "THE RING IS SHRINKING!"; self.status.TextColor3=GOLD
-            self.statusEdge.Color=GOLD; self.statusEdge.Transparency=0.1
+        local mine,theirs=share(1),share(2)
+        if mine<0.25 or theirs<0.25 then
+            local side=mine<theirs and 1 or 2
+            self.status.Text=side==1 and "YOUR TOP IS WOBBLING!" or rivalName.." IS WOBBLING!"
+            self.status.TextColor3=side==1 and RED or GOLD
+            self.statusEdge.Color=side==1 and RED or GOLD; self.statusEdge.Transparency=0.1
         else
-            self.status.Text=(sim.heat or 1)>1.05 and "SPINNING FASTER…" or (data.matchPoint and "MATCH POINT" or "LAST TOP ON THE RING WINS")
+            self.status.Text=data.matchPoint and "MATCH POINT" or "LAST TOP SPINNING WINS"
             if data.matchPoint then self.status.TextColor3=GOLD end
         end
     end
@@ -982,18 +966,18 @@ function BattleLab:update(dt)
         local complete=draft.offenceId~=nil and #draft.wildIds==slots
         local held=focus==0 and draft.offenceId or draft.wildIds[focus]
         self.pickTitle.Text=locked and "LOCKED IN!" or (focus==0 and (slots==0 and "PICK YOUR TOP" or "CHANGE YOUR TOP?")
-            or (focus<=(self.draftHeld or 0) and "CHANGE THIS UPGRADE?"
-                or (data.guided and ((data.stage or 2)<=2 and "PICK AN UPGRADE" or "PICK ONE MORE") or "ADD AN UPGRADE")))
+            or (focus<=(self.draftHeld or 0) and "CHANGE THIS PART?"
+                or (data.guided and ((data.stage or 2)<=2 and "PICK A PART" or "PICK ONE MORE") or "ADD A PART")))
         self.pickTitle.TextColor3=locked and GOLD or WHITE
         y=y+titleHeight
         self.pickHint.Visible=not landscapeDraft
         place(self.pickHint,x,y,panel,short and 18 or (compact and 32 or 22)); self.pickHint.TextSize=short and 11 or (compact and 12 or 14)
         self.pickHint.Text=locked and (rivalLocked and "Both locked. Revealing together…" or "Waiting for your rival. Picks stay hidden until both lock.")
-            or (slots==0 and "Your top fights on its own. Knock your rival off the ring. Win 2 rounds to win the match!"
+            or (slots==0 and "Nobody steers. Knock your rival out of the bowl or out-spin them. Win 2 rounds to win the match!"
                 or focus==0 and "Tap another top to swap, or keep the one you have."
-                or focus<=(self.draftHeld or 0) and "Tap another upgrade to swap, or keep the one you have."
-                or data.guided and ((data.stage or 2)<=2 and "An upgrade makes your top better at one thing. Tap one, then tap LOCK IN!"
-                    or "Your top keeps both upgrades. Tap one, then tap LOCK IN!")
+                or focus<=(self.draftHeld or 0) and "Tap another part to swap, or keep the one you have."
+                or data.guided and ((data.stage or 2)<=2 and "A part changes one thing about your top. Tap one, then tap LOCK IN!"
+                    or "Your top keeps both parts. Tap one, then tap LOCK IN!")
                 or "Your top keeps everything on it. Tap a slot above the cards to swap it.")
         y=y+(landscapeDraft and 2 or short and 22 or (compact and 36 or 30))
         -- The loadout bar appears once there is more than the top to show.
@@ -1015,7 +999,7 @@ function BattleLab:update(dt)
                 local captionHeight=short and 12 or 15
                 place(tile.caption,4,3,tileWidth-8,captionHeight); tile.caption.TextSize=short and 9 or 11
                 tile.caption.TextColor3=ink; tile.caption.TextTransparency=0.15
-                tile.caption.Text=(slot==0 and "TOP" or (tileWidth<130 and "UP " or "UPGRADE ")..tostring(slot))
+                tile.caption.Text=(slot==0 and "TOP" or "PART "..tostring(slot))
                     ..((focused or locked or tileWidth<170) and "" or " · TAP TO SWAP")
                 place(tile.value,4,captionHeight+2,tileWidth-8,barHeight-captionHeight-5)
                 tile.value.Text=skill and skill.icon.." "..string.upper(skill.name) or "＋ PICK ONE"
@@ -1053,7 +1037,7 @@ function BattleLab:update(dt)
             local card=self.powerCards[id]
             if card then
                 local chosen=selected==id; card.button.Visible=true
-                -- An upgrade in the other slot is already on the top.
+                -- A part in the other slot is already on the top.
                 local taken=focus>0 and not chosen and table.find(draft.wildIds,id)~=nil
                 local row,col=math.floor((index-1)/cols),(index-1)%cols
                 place(card.button,6+col*(cardWidth+gap),6+row*(cardHeight+gap),cardWidth,cardHeight)
@@ -1148,7 +1132,7 @@ function BattleLab:update(dt)
         local slide=self.reducedMotion and 1 or popIn((now-(self.revealedAt or 0))/0.32)
         for side,item in ipairs(self.reveals) do
             local identity=identities[side] or {}; local build=builds[side] or {}
-            -- Each side shows its whole build: the top by name, then its upgrades.
+            -- Each side shows its whole build: the top by name, then its parts.
             local skill=self.skills.get(build.offenceId or "")
             local extras={}
             for _,wildId in ipairs(build.wildIds or {}) do

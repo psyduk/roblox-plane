@@ -1,4 +1,4 @@
-"""How a ring-out round plays, measured offline.
+"""How a round plays, measured offline.
 
 Runs every top against every top in both seats and prints what a spectator
 would feel: how long rounds last, how often tops touch, how often one nearly
@@ -66,7 +66,7 @@ def main():
     def build(top, *cards):
         return lua.table_from({'offenceId': top, 'wildIds': lua.table_from(list(cards))})
 
-    lengths, clashes, closes, first_wins, first_total, draws, timeouts, rounds = [], [], [], 0, 0, 0, 0, 0
+    lengths, clashes, closes, first_wins, first_total, draws, timeouts, rounds, ringouts = [], [], [], 0, 0, 0, 0, 0, 0
     score = {t: [0.0, 0] for t in tops}
     pair = {}
     for a in tops:
@@ -77,7 +77,7 @@ def main():
                 winner, elapsed, c, cl, first, reason, _ = run(sim, seed, build(a), build(b))
                 rounds += 1
                 lengths.append(elapsed); clashes.append(c); closes.append(cl)
-                draws += winner == 0; timeouts += reason == 'timeout'
+                draws += winner == 0; timeouts += reason == 'timeout'; ringouts += reason == 'ringout'
                 if first and winner:
                     first_total += 1; first_wins += first == winner
                 points = 0.5 if winner == 0 else (1.0 if winner == 1 else 0.0)
@@ -89,6 +89,7 @@ def main():
     print(f"{rounds} rounds · length median {statistics.median(lengths):.1f}s  p10 {lengths[len(lengths)//10]:.1f}s  p90 {lengths[len(lengths)*9//10]:.1f}s")
     print(f"touches per round {statistics.mean(clashes):.1f} · close calls per round {statistics.mean(closes):.2f} · "
           f"draws {100*draws/rounds:.1f}% · decided by the clock {100*timeouts/rounds:.1f}%")
+    print(f"knocked out through a gap {100*ringouts/rounds:.0f}% · out-spun {100*(rounds-ringouts-timeouts)/rounds:.0f}%")
     print(f"the top that wins the first touch wins the round {100*first_wins/max(1,first_total):.0f}%")
     print("field score: " + "  ".join(f"{t} {100*s[0]/s[1]:.0f}%" for t, s in score.items()))
     print("left seat's score against each rival:")

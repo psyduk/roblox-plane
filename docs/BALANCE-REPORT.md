@@ -1,6 +1,6 @@
-# Balance report: ring-out
+# Balance report: spinning tops
 
-Measured October 11, 2026 on the source that introduced the ring-out game. Earlier reports for the plane fight are in git history. These are simulation results, not a playtest.
+Measured October 11, 2026 on the source that introduced bowl physics and spin. Earlier reports are in git history. These are simulation results, not a playtest.
 
 ```sh
 build/testenv/bin/python scripts/sample_battle.py --samples 60 --upgrades
@@ -10,37 +10,37 @@ build/testenv/bin/python scripts/sample_battle.py --samples 60 --upgrades
 
 | Measure | Result |
 | --- | --- |
-| Round length | median 15.4 s, 10th percentile 8.8 s, 90th percentile 20.3 s |
-| Touches per round | 12.1 |
-| Close calls per round | 0.47 |
-| Drawn rounds | 0.0% |
+| Round length | median 13.4 s, 10th percentile 7.8 s, 90th percentile 18.4 s |
+| Touches per round | 10.1 |
+| Close calls per round (wall hit right beside a gap) | 2.1 |
+| Knocked out through a gap / out-spun | 49% / 51% |
+| Drawn rounds | 0.1% |
 | Decided by the clock | 0.0% |
-| The top that wins the first touch wins the round | 51% |
-
-For comparison, the plane fight this replaced had the first hitter winning about 70% of rounds.
+| The top that wins the first touch wins the round | 49% |
 
 | Top | Score against the field |
 | --- | --- |
-| Boulder | 48% |
-| Bolt | 55% |
-| Cyclone | 49% |
-| Pogo | 48% |
+| Bolt | 52% |
+| Cyclone | 55% |
+| Boulder | 47% |
+| Drifter | 46% |
 
 Left seat's score in each pairing:
 
-| | Boulder | Bolt | Cyclone | Pogo |
+| | Bolt | Cyclone | Boulder | Drifter |
 | --- | --- | --- | --- | --- |
-| Boulder | 55 | 52 | 48 | 52 |
-| Bolt | 55 | 50 | 33 | 85 |
-| Cyclone | 53 | 65 | 47 | 25 |
-| Pogo | 63 | 17 | 67 | 53 |
+| Bolt | 50 | 62 | 40 | 58 |
+| Cyclone | 38 | 47 | 88 | 47 |
+| Boulder | 60 | 15 | 40 | 68 |
+| Drifter | 43 | 53 | 42 | 51 |
 
-One upgrade against a bare top, both seats: Jetpack 72%, Spikes 67%, Turbo 67%, Heavy Core 66%, Claws 63%, Spring Bumper 59%.
+One part against a bare top, both seats: Flywheel 73%, Free-Spin Guard 72%, Jagged Rim 68%, Metal Weight 67%, Rubber Tip 64%, Left Spin 63%.
 
 ## What is not right yet
 
-- **Bolt beats Pogo about 85% of the time.** Pogo beats Cyclone about 70% and Cyclone beats Bolt about 65%, so there is a loop, but the Bolt–Pogo leg is too strong. Shortening Pogo's crouch made it worse, not better.
-- **The balance is fragile.** Boulder's field score went from about 40% to about 75% as its mass moved from 1.4 to 1.7. An automatic search over 17 numbers found settings that looked level on 30 seeds and were not on 70. The values shipped were chosen by hand on 50 to 60 seeds per pairing.
-- **Two-upgrade builds were not measured**, and neither was any upgrade on one specific top.
-- **Jetpack is the strongest upgrade** even after its landing spot was moved most of the way back to the edge.
-- Luck decides up to half of each kick. That is what stops a pairing playing out the same way every round; whether it reads as fair is a question for people, not for this table.
+- **Cyclone beats Boulder about 86% of the time.** There is a loop (Bolt over Cyclone, Cyclone over Boulder, Boulder over Bolt), but it runs the opposite way to the real toys' rule of thumb, and that one leg is far too strong.
+- **Boulder mirrors lean to the right seat** (40% for the left over 120 rounds). Other mirrors are within 3 points of even. Not investigated.
+- **The balance is fragile.** Earlier settings of the same model swung a top's field score by 20 points for small changes in mass or spin drain. The shipped values were found by a search over 30 seeds and then adjusted by hand on 40 to 60.
+- **Two-part builds were not measured**, and neither was any part on one specific top. Left Spin in particular is a counter-pick whose value depends entirely on the rival.
+- **Parts are on the strong side**: every one is worth 63–73% against a bare top.
+- Luck decides up to 35% of each touch's recoil. That is what stops a pairing playing out the same way every round; whether it reads as fair is a question for people, not for this table.

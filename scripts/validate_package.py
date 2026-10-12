@@ -115,7 +115,7 @@ def validate(place):
     assert set(packaged) == expected, f"Missing/extra modules: {expected ^ set(packaged)}"
     return {"place": place.name, "placeSha256": digest(place.read_bytes()),
             "sourceCount": len(packaged), "sources": dict(sorted(packaged.items())),
-            "scope": "Sky Battle ring-out; free playtest",
+            "scope": "Sky Battle spinning tops; free playtest",
             "defaultMode": "ring_out", "diagnosticOverridesAbsent": True,
             "publishedVersion": None, "publishedAndRealPhoneVerified": False}
 

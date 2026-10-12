@@ -52,25 +52,20 @@ local LOOPS = {
     storm = "rbxassetid://9125742262",    -- Plasma Trails Constant Airy Whooshing Windy
 }
 BattleAudio.SHOTS_PER_SAMPLE = 2
-BattleAudio.ROUND_TIME = 26
+BattleAudio.ROUND_TIME = 40
 -- A touch that throws a top at least this fast is a big hit, not a bump.
-BattleAudio.BIG_HIT = 38
+BattleAudio.BIG_HIT = 34
 local function finite(value)
     return type(value)=="number" and value==value and value>-math.huge and value<math.huge
 end
 -- What a simulation event sounds like, or nil for one that makes no sound.
 local function audibleKind(event)
     if event.kind=="clash" then
-        if event.source=="slam" then return "slam_hit" end
-        return finite(event.power) and event.power>=BattleAudio.BIG_HIT and "big_hit" or "bump"
-    elseif event.kind=="windup" or event.kind=="attack" then
-        return (event.source=="dash" or event.source=="jump" or event.source=="swoop" or event.source=="shove") and event.kind..":"..event.source or nil
-    elseif event.kind=="blocked" then
-        return event.skillId=="Bumper" and "bumper_block" or nil
-    elseif event.kind=="revive" then
-        return "jetpack"
-    elseif event.kind=="launch" or event.kind=="slam" or event.kind=="land" or event.kind=="close"
-        or event.kind=="ringout" or event.kind=="finish" then
+        if finite(event.power) and event.power>=BattleAudio.BIG_HIT then return "big_hit" end
+        -- Rims turning opposite ways scrape along each other instead of cracking.
+        return event.source=="grind" and "grind" or "bump"
+    elseif event.kind=="launch" or event.kind=="wall" or event.kind=="close"
+        or event.kind=="ringout" or event.kind=="spinout" or event.kind=="finish" then
         return event.kind
     end
     return nil
@@ -160,8 +155,7 @@ function BattleAudio:_ambience(snapshot)
     local elapsed=simulation and finite(simulation.elapsed) and simulation.elapsed or 0
     local fighting=phase=="Fight"
     local closing=fighting and pressure>0
-    -- The tops spin faster as a round goes on, and the band keeps pace.
-    local heat=fighting and simulation and finite(simulation.heat) and math.clamp(simulation.heat,1,2.2) or 1
+    local heat=1
     -- The battle loop steps right back at the result so the sting can land.
     self:_loop("music",active and ((fighting or phase=="Countdown") and 0.24 or ((phase=="Results" or phase=="RoundOver" or phase=="MatchOver") and 0.05 or 0.13)) or 0,1+(heat-1)*0.22+(closing and 0.03 or 0))
     self:_loop("crowd",active and ((fighting or phase=="Countdown") and 0.22 or 0.1) or 0,1)
@@ -288,54 +282,39 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
         shot("whoosh",0.22,0.85)
         voice("jump",0.14,0.75,0.28,1.5)
     elseif kind=="bump" then
-        -- The everyday clack of two tops touching: louder the harder it was.
+        -- The everyday crack of two rims meeting: louder the harder it was.
         local weight=math.clamp(power/BattleAudio.BIG_HIT,0.25,1)
-        shot("punch",0.2+0.3*weight,1.25-0.25*weight)
-        voice("land",0.1+0.12*weight,1.5,0.12,1.1)
+        shot("punch",0.2+0.3*weight,1.35-0.25*weight)
+        voice("land",0.1+0.12*weight,1.6,0.1,1.2)
+    elseif kind=="grind" then
+        local weight=math.clamp(power/BattleAudio.BIG_HIT,0.25,1)
+        shot("crunch",0.15+0.2*weight,1.6)
+        voice("land",0.08+0.08*weight,1.1,0.25,0.8)
     elseif kind=="big_hit" then
-        self:_stopCharges(event.target==2 and 2 or 1)
-        shot("punch",0.7,0.85); shot("thump",0.7,0.9); shot("comic",0.4,1.1)
-        voice("boom",0.16,1.2,0.22,0.8)
-        if power>=55 then shot("sub",0.6,1.1); shot("gasp",0.35,1.1) end
-    elseif kind=="windup:dash" then
-        -- A rising whine while the top winds itself up.
-        voice("chime",0.2,0.7,0.5,1.9,true)
-        shot("rise",0.25,1.5)
-    elseif kind=="attack:dash" then
-        self:_stopCharges(actor)
-        shot("whoosh",0.6,1.4); shot("ignite",0.35,1.3)
-    elseif kind=="attack:swoop" then
-        shot("whoosh",0.45,0.95); voice("jump",0.12,1.1,0.4,1.7)
-    elseif kind=="attack:shove" then
-        shot("thunder",0.3,1.4); voice("boom",0.1,0.6,0.5,0.9)
-    elseif kind=="windup:jump" then
-        voice("jump",0.16,0.55,0.35,0.9,true)
-    elseif kind=="attack:jump" then
-        self:_stopCharges(actor)
-        voice("jump",0.3,0.9,0.4,1.6); shot("whoosh",0.3,1.1)
-    elseif kind=="slam" then
-        shot("thump",0.75,0.75); shot("crunch",0.35,1.1)
-        voice("land",0.3,0.6,0.25,0.45)
-    elseif kind=="slam_hit" then
-        shot("punch",0.6,0.8); shot("comic",0.4,0.95)
-    elseif kind=="land" then
-        voice("land",0.26,0.8,0.2,0.6); shot("thump",0.4,1.1)
-    elseif kind=="bumper_block" then
-        voice("jump",0.34,1.5,0.3,0.7); shot("comic",0.6,1.4); shot("punch",0.4,1.3)
-    elseif kind=="jetpack" then
-        shot("ignite",0.7,1); shot("rise",0.45,1.2); shot("cheer",0.4,1)
+        shot("punch",0.7,0.9); shot("thump",0.6,1); shot("crunch",0.35,1.3)
+        voice("boom",0.14,1.3,0.2,0.9)
+        if power>=50 then shot("sub",0.5,1.1); shot("gasp",0.35,1.1) end
+    elseif kind=="wall" then
+        local weight=math.clamp(power/30,0.3,1)
+        shot("click",0.25+0.3*weight,0.7)
+        voice("land",0.1+0.14*weight,0.9,0.15,0.7)
     elseif kind=="close" then
-        shot("gasp",0.4,1.2); voice("chime",0.16,1.3,0.3,1.8)
+        shot("gasp",0.4,1.2); voice("chime",0.14,1.3,0.3,1.8)
     elseif kind=="ringout" then
         self:_stopCharges()
-        -- Going over the edge is the finishing blow: its own, larger sound,
-        -- and the stands erupt. The fall itself belongs to playCrash.
+        -- Going out through the wall is the finishing blow: its own, larger
+        -- sound, and the stands erupt. The fall itself belongs to playCrash.
         voice("boom",0.13,1.25,0.24,0.85)
-        shot("bigBlast",0.7,0.95); shot("sub",0.8,1); shot("cheer",0.7,1)
+        shot("bigBlast",0.6,1); shot("sub",0.7,1); shot("cheer",0.7,1)
+    elseif kind=="spinout" then
+        self:_stopCharges()
+        -- A top running down: a falling whirr, then the clatter as it tips over.
+        voice("chime",0.24,1.2,0.7,0.3)
+        shot("crunch",0.5,0.8); shot("cheer",0.5,1)
     elseif kind=="finish" then
         self:_stopCharges()
         voice("chime",0.23,1.1,0.5)
-        if simulation.reason~="ringout" then shot("whistle",0.55,0.9); shot("cheer",0.5,1) end
+        if simulation.reason=="timeout" then shot("whistle",0.55,0.9); shot("cheer",0.5,1) end
     end
     self.played=self.played+1
     self.folder:SetAttribute("PlayedEvents",self.played)

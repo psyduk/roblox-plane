@@ -10,58 +10,54 @@ local SkillCatalog = {}
 
 SkillCatalog.KINDS = { "offence", "wild" }
 SkillCatalog.MAX_WILD = 2
-SkillCatalog.DEFAULT_OFFENCE = "Boulder"
-SkillCatalog.ROSTER_VERSION = "sky-battle-tops-v1"
-SkillCatalog.CONTRACT_VERSION = "sky-battle-ring-v1"
+SkillCatalog.DEFAULT_OFFENCE = "Bolt"
+SkillCatalog.ROSTER_VERSION = "sky-battle-tops-v2"
+SkillCatalog.CONTRACT_VERSION = "sky-battle-ring-v2"
 
 -- Order is display order. `starter` skills are owned from the first fight.
 -- Rarity says how strange a skill is, never how strong. `teaser` is the one
 -- line shown for a card the player has not met yet.
-local order = { "Boulder", "Bolt", "Cyclone", "Pogo", "Heavy", "Spikes", "Turbo", "Claws", "Bumper", "Jetpack" }
+local order = { "Bolt", "Cyclone", "Boulder", "Drifter", "Heavy", "Spikes", "Turbo", "Guard", "Flywheel", "LeftSpin" }
 local skills = {
-	Boulder = { id = "Boulder", kind = "offence", name = "Boulder", icon = "⛰️", word = "THUD!",
+	Bolt = { id = "Bolt", kind = "offence", name = "Bolt", icon = "⚡", word = "CRACK!", role = "ATTACK",
+		teaser = "It never stops moving.",
+		promise = "Grippy tip, jagged rim. Tears round the bowl and hits hard, but burns its spin fast.",
+		color = { r = 255, g = 205, b = 70 }, starter = true, rarity = "common" },
+	Cyclone = { id = "Cyclone", kind = "offence", name = "Cyclone", icon = "🌀", word = "WHIRR!", role = "STAMINA",
+		teaser = "Still spinning when the rest have stopped.",
+		promise = "Needle tip. Sits in the middle and spins for ages, but a good hit sends it sliding.",
+		color = { r = 110, g = 215, b = 255 }, starter = true, rarity = "common" },
+	Boulder = { id = "Boulder", kind = "offence", name = "Boulder", icon = "⛰️", word = "CLANG!", role = "DEFENSE",
 		teaser = "Good luck moving it.",
-		promise = "Big and heavy. Very hard to push around.",
-		windupTell = "ROLLING IN...", attackTell = "THUD!",
-		color = { r = 255, g = 150, b = 86 }, starter = true, rarity = "common" },
-	Bolt = { id = "Bolt", kind = "offence", name = "Bolt", icon = "⚡", word = "ZAP!",
-		teaser = "Blink and it is across the ring.",
-		promise = "Small and light. Charges up, then dashes straight at your rival.",
-		windupTell = "CHARGING...", attackTell = "DASH!",
-		color = { r = 255, g = 220, b = 90 }, starter = true, rarity = "common" },
-	Cyclone = { id = "Cyclone", kind = "offence", name = "Cyclone", icon = "🌀", word = "WHOOSH!",
-		teaser = "It never slows down.",
-		promise = "Races round the ring, then swoops in at full speed.",
-		windupTell = "BUILDING SPEED...", attackTell = "SWOOP!",
-		color = { r = 110, g = 220, b = 255 }, starter = true, rarity = "rare" },
-	Pogo = { id = "Pogo", kind = "offence", name = "Pogo", icon = "🐸", word = "SLAM!",
-		teaser = "Watch the shadow.",
-		promise = "Jumps high and slams down. The shockwave throws your rival back.",
-		windupTell = "CROUCHING...", attackTell = "JUMP!",
-		color = { r = 160, g = 128, b = 255 }, starter = true, rarity = "rare" },
-	Heavy = { id = "Heavy", kind = "wild", name = "Heavy Core", icon = "⚓", word = "CLUNK!",
+		promise = "Heavy, with a ball tip and a smooth rim. Shrugs off hits and rolls back to the middle.",
+		color = { r = 255, g = 140, b = 90 }, starter = true, rarity = "rare" },
+	Drifter = { id = "Drifter", kind = "offence", name = "Drifter", icon = "☄️", word = "CLACK!", role = "BALANCE",
+		teaser = "A bit of everything.",
+		promise = "Loops wide and steady. No big weakness, no big strength.",
+		color = { r = 170, g = 140, b = 255 }, starter = true, rarity = "rare" },
+	Heavy = { id = "Heavy", kind = "wild", name = "Metal Weight", icon = "⚓", word = "CLUNK!",
 		teaser = "Something inside it weighs a lot.",
-		when = "ALL ROUND", promise = "Your top is bigger and heavier, so hits move it less.",
+		when = "WEIGHT", promise = "Heavier, so hits move your top less.",
 		color = { r = 150, g = 170, b = 200 }, starter = true, rarity = "common" },
-	Spikes = { id = "Spikes", kind = "wild", name = "Spikes", icon = "🔱", word = "WHACK!",
+	Spikes = { id = "Spikes", kind = "wild", name = "Jagged Rim", icon = "🔱", word = "WHACK!",
 		teaser = "Pointy on every side.",
-		when = "WHEN YOU HIT", promise = "Your hits throw your rival further.",
+		when = "RIM", promise = "Your rim bites: hits throw harder and cost your rival more spin.",
 		color = { r = 255, g = 96, b = 110 }, starter = true, rarity = "common" },
-	Turbo = { id = "Turbo", kind = "wild", name = "Turbo", icon = "🔥", word = "ZOOM!",
+	Turbo = { id = "Turbo", kind = "wild", name = "Rubber Tip", icon = "🔥", word = "ZOOM!",
 		teaser = "Faster than it looks.",
-		when = "ALL ROUND", promise = "Your top moves faster and gets back in the fight sooner.",
+		when = "TIP", promise = "More grip: your top moves a little faster, slides less when hit and wastes less spin.",
 		color = { r = 255, g = 168, b = 66 }, starter = true, rarity = "common" },
-	Claws = { id = "Claws", kind = "wild", name = "Claws", icon = "🦀", word = "SCREECH!",
-		teaser = "It hangs on.",
-		when = "NEAR THE EDGE", promise = "Dig in and brake when you slide toward the edge.",
-		color = { r = 96, g = 230, b = 170 }, starter = true, rarity = "common" },
-	Bumper = { id = "Bumper", kind = "wild", name = "Spring Bumper", icon = "🛡️", word = "BOING!",
-		teaser = "Boing.",
-		when = "FIRST HIT ON YOU", promise = "The first hit bounces off you and throws your rival instead.",
+	Guard = { id = "Guard", kind = "wild", name = "Free-Spin Guard", icon = "🛡️", word = "TING!",
+		teaser = "Hits slide right off.",
+		when = "RIM", promise = "A loose outer ring soaks up hits: less recoil and less spin lost.",
 		color = { r = 196, g = 255, b = 91 }, starter = true, rarity = "rare" },
-	Jetpack = { id = "Jetpack", kind = "wild", name = "Jetpack", icon = "🚀", word = "WHOOSH!",
-		teaser = "Falling is not always the end.",
-		when = "FIRST TIME YOU FALL", promise = "Fly back onto the ring once. Then it is out of fuel.",
+	Flywheel = { id = "Flywheel", kind = "wild", name = "Flywheel", icon = "⚙️", word = "HUMMM!",
+		teaser = "It just keeps going.",
+		when = "WEIGHT", promise = "Starts with more spin and holds on to it longer.",
+		color = { r = 255, g = 225, b = 120 }, starter = true, rarity = "rare" },
+	LeftSpin = { id = "LeftSpin", kind = "wild", name = "Left Spin", icon = "↩️", word = "GRIND!",
+		teaser = "It turns the other way.",
+		when = "SPIN", promise = "Spin the other way. Touches grind instead of smash, and the slower top steals spin.",
 		color = { r = 120, g = 200, b = 255 }, starter = true, rarity = "epic" },
 }
 
@@ -70,15 +66,17 @@ local skills = {
 SkillCatalog.RETIRED = {}
 for _, id in ipairs({ "Meteor", "Firework", "MachineGun", "Pinball", "Sniper", "Boomerang", "BlackHole", "UFOBeam",
 	"Afterburner", "SpringBumper", "FizzyFuel", "Magnet", "SecondWind", "Squadron", "Giant", "Eject", "Vampire",
-	"Chicken", "Bug", "Snowball", "Swap", "Gambler", "Wrap", "HotPotato", "Decoy", "Thief", "Mothership", "Rewind" }) do
+	"Chicken", "Bug", "Snowball", "Swap", "Gambler", "Wrap", "HotPotato", "Decoy", "Thief", "Mothership", "Rewind",
+	-- From the first ring-out pass, before the tops had real spin.
+	"Pogo", "Claws", "Bumper", "Jetpack" }) do
 	SkillCatalog.RETIRED[id] = true
 end
 
--- What a top shouts while it makes its move.
+-- The short words shown for a top in a fight.
 function SkillCatalog.tells(offenceId)
 	local entry = skills[offenceId]
-	if not entry then return nil end
-	return { name = entry.name, icon = entry.icon, windupTell = entry.windupTell, attackTell = entry.attackTell }
+	if not entry or entry.kind ~= "offence" then return nil end
+	return { name = entry.name, icon = entry.icon, role = entry.role }
 end
 
 function SkillCatalog.valid(id, kind)

@@ -1,43 +1,44 @@
--- How every top and upgrade behaves, as plain numbers. BattleSimulation reads
+-- What every top and part is made of, as plain numbers. BattleSimulation reads
 -- this table and owns all the physics; SkillCatalog holds the words and
 -- colours under the same ids. No Roblox services are required.
 --
--- A top is a disc with a mass, a size, a cruise speed it always spins back up
--- to, a turn rate (how sharply it can lean toward its rival) and a kick: the
--- extra shove it gives whatever it touches. A plain bump is a nudge. The big
--- throws come from each top's signature move, which repeats on a timer:
---   dash   stop, aim, then shoot across the ring in a straight line
---   swoop  break out of a wide circle and cut in fast
---   jump   leap to where the rival is and land with a shockwave
---   shove  lower its weight and bulldoze for a moment
+-- Nobody steers a top. How it moves comes from its tip:
+--   cruise  the speed its tip drives it at when spinning flat out
+--   grip    how hard the tip pulls it back up to that speed
+--   brake   how hard the tip slows it after a hit has thrown it
+--   curl    how sharply its path bends
+--   dive    how strongly it keeps turning back toward the middle of the bowl
+--   decay   spin lost each second just from the tip rubbing the floor
+-- and how it fights comes from its body:
+--   mass    heavier tops are thrown less
+--   bite    how jagged the rim is: recoil and spin damage dealt
+--   guard   share of recoil and spin damage it takes (lower is better)
+--   rail    speed it picks up off the stadium wall, as a multiple of cruise
 local BattleSkills = { offence = {}, wild = {} }
 
-BattleSkills.offence.Boulder = {
-	mass = 1.63, radius = 5.8, cruise = 16, turn = 3, kick = 1,
-	move = { kind = "shove", every = 3.2, windup = 0, time = 1, speed = 1.6, turn = 1.5, recover = 0 },
-}
-
+-- Attack: wide grippy tip, jagged rim.
 BattleSkills.offence.Bolt = {
-	mass = 0.9, radius = 4, cruise = 26, turn = 4, kick = 0.8,
-	move = { kind = "dash", every = 2, windup = 0.5, time = 0.3, speed = 78, recover = 0.4 },
+	mass = 0.87, radius = 4.2, cruise = 30, grip = 60, brake = 34, curl = 0.7, dive = 1.4, decay = 2.9, bite = 1.6, guard = 1, rail = 1.25,
 }
-
+-- Stamina: needle tip, barely moves, slides when hit.
 BattleSkills.offence.Cyclone = {
-	mass = 1.05, radius = 4.6, cruise = 32, turn = 2.1, kick = 1.1,
-	move = { kind = "swoop", every = 2.3, windup = 0, time = 1, speed = 1.35, turn = 3, recover = 0 },
+	mass = 0.99, radius = 4.6, cruise = 5, grip = 12, brake = 11, curl = 0.6, dive = 0.6, decay = 2.37, bite = 0.8, guard = 1, rail = 0,
+}
+-- Defense: heavy, ball tip, smooth rim.
+BattleSkills.offence.Boulder = {
+	mass = 1.25, radius = 5.4, cruise = 10, grip = 24, brake = 36, curl = 0.6, dive = 0.8, decay = 3, bite = 0.7, guard = 0.76, rail = 0,
+}
+-- Balance.
+BattleSkills.offence.Drifter = {
+	mass = 1.07, radius = 4.8, cruise = 19, grip = 36, brake = 22, curl = 0.7, dive = 1.1, decay = 3.05, bite = 1.09, guard = 0.95, rail = 1,
 }
 
-BattleSkills.offence.Pogo = {
-	mass = 1.15, radius = 4.8, cruise = 22, turn = 3.5, kick = 0.9,
-	move = { kind = "jump", every = 2.5, windup = 0.35, time = 0.7, height = 18, reach = 15.5, kick = 4, recover = 0.4 },
-}
-
--- Upgrades multiply a top's numbers or switch on one rule in the simulation.
-BattleSkills.wild.Heavy = { mass = 1.09, radius = 1.1 }
-BattleSkills.wild.Spikes = { kick = 1.2 }
-BattleSkills.wild.Turbo = { cruise = 1.15, tempo = 0.8 }
-BattleSkills.wild.Claws = { claws = true }
-BattleSkills.wild.Bumper = { bumper = true }
-BattleSkills.wild.Jetpack = { jetpack = true }
+-- Parts multiply a top's numbers, add spin, or turn it the other way.
+BattleSkills.wild.Heavy = { mass = 1.14 }
+BattleSkills.wild.Spikes = { bite = 1.3 }
+BattleSkills.wild.Turbo = { cruise = 1.08, grip = 1.2, brake = 1.5, decay = 0.95 }
+BattleSkills.wild.Guard = { guard = 0.93 }
+BattleSkills.wild.Flywheel = { spin = 1.04, decay = 0.97 }
+BattleSkills.wild.LeftSpin = { left = true, guard = 0.92 }
 
 return BattleSkills

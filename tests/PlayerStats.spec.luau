@@ -387,7 +387,7 @@ return function(PlayerStats)
 
     local function battle(stats,handle,id,outcome,extra)
         local input={outcome=outcome or "loss",reason="first_to_two",completedRounds=2,fightSeconds=45,
-            mode="public",offenceId="Boulder",wildIds={"Bumper"}}
+            mode="public",offenceId="Boulder",wildIds={"Flywheel"}}
         for key,value in pairs(extra or {})do input[key]=value end
         return stats:recordBattle(handle,id,input)
     end
@@ -400,7 +400,7 @@ return function(PlayerStats)
         local e=stats:getEconomy(h)
         assert(e.credits==250 and e.goal.price==250 and e.goal.remaining==0 and e.goal.id=="aurora")
         assert(e.progression.matches==5 and e.progression.losses==5 and e.progression.title=="Wingmate")
-        assert(e.progression.mastery.Boulder==5 and e.progression.mastery.Bumper==5 and e.progression.starterAvailable)
+        assert(e.progression.mastery.Boulder==5 and e.progression.mastery.Flywheel==5 and e.progression.starterAvailable)
         assert(e.skills==nil and e.ownedSkills==nil and stats:get(h).totalFlights==0)
         assert(stats:equipCosmetic(h,"aurora").code=="not_owned")
         assert(stats:claimStarter(h,"rookieblue").ok and stats:getEconomy(h).credits==250)
@@ -619,7 +619,7 @@ return function(PlayerStats)
     test("invalid terminal inputs do not mutate receipts wallet or mastery",function()
         local stats=service(fakeStore());local h=stats:open(42);stats:load(h)
         for _,extra in ipairs({{completedRounds=6},{fightSeconds=0/0},{offenceId="Copycat"},
-            {wildIds={"Bumper","Bumper"}},{wildIds={bad="Turbo"}},{outcome="invented"}})do
+            {wildIds={"Flywheel","Flywheel"}},{wildIds={bad="Turbo"}},{outcome="invented"}})do
             assert(not battle(stats,h,"bad","loss",extra))
         end
         assert(stats:getEconomy(h).credits==0 and stats:getBattle(h).matches==0 and #h.receipts==0)
@@ -631,14 +631,14 @@ return function(PlayerStats)
         local early=stats:discover(h,{"Boulder","Nope","Boulder",7})
         assert(#early==1 and early[1]=="Boulder" and stats:getEconomy(h).progression.discovered.Boulder==true)
         assert(stats:load(h))
-        local fresh=stats:discover(h,{"Boulder","Pogo","Cyclone"})
-        assert(#fresh==2 and fresh[1]=="Pogo" and fresh[2]=="Cyclone","A card already seen was reported as new")
-        assert(#stats:discover(h,{"Pogo"})==0 and #stats:discover(h,nil)==0 and #stats:discover(nil,{"Boulder"})==0)
+        local fresh=stats:discover(h,{"Boulder","Drifter","Cyclone"})
+        assert(#fresh==2 and fresh[1]=="Drifter" and fresh[2]=="Cyclone","A card already seen was reported as new")
+        assert(#stats:discover(h,{"Drifter"})==0 and #stats:discover(h,nil)==0 and #stats:discover(nil,{"Boulder"})==0)
         assert(stats:close(h))
         local saved=store.values.player_42.battle.discovered
-        assert(saved.Boulder==true and saved.Pogo==true and saved.Cyclone==true and saved.Nope==nil)
+        assert(saved.Boulder==true and saved.Drifter==true and saved.Cyclone==true and saved.Nope==nil)
         local nextStats=service(store,"server-B");local nextHandle=nextStats:open(42);assert(nextStats:load(nextHandle))
-        assert(nextStats:getBattle(nextHandle).discovered.Pogo==true and #nextStats:discover(nextHandle,{"Pogo","Jetpack"})==1)
+        assert(nextStats:getBattle(nextHandle).discovered.Drifter==true and #nextStats:discover(nextHandle,{"Drifter","LeftSpin"})==1)
         assert(nextStats:close(nextHandle))
         -- A save from before the record existed loads as "nothing seen yet".
         store.values.player_42.battle.discovered=nil;store.values.player_42.lease=nil
