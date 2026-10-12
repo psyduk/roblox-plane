@@ -66,6 +66,11 @@ local function send(kind, values)
 end
 local effectsShop=EffectsShop.new(send)
 local hangarBay=HangarBay.new({send=send,openShop=function(itemId) effectsShop:openAt(itemId) end})
+require(script.Parent:WaitForChild("LobbyMovement")).new(function()
+    return latest and latest.phase == "Lobby" and not battleLab:isActive()
+        and not effectsShop:isOpen() and not challenges:isOpen()
+        and hud and not hud.statsOverlay.Visible
+end)
 -- The plane in the pilot's bay is changed in place, from the HUD or the bay console.
 local function changeLook(change)
     if not latest or latest.phase~="Lobby" or battleLab:isActive() or effectsShop:isOpen() or challenges:isOpen() then return end
