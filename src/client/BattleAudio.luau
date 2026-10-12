@@ -52,36 +52,28 @@ local LOOPS = {
     storm = "rbxassetid://9125742262",    -- Plasma Trails Constant Airy Whooshing Windy
 }
 BattleAudio.SHOTS_PER_SAMPLE = 2
-BattleAudio.ROUND_TIME = 35
-local KINDS = {
-    launch=true, windup=true, dive=true, rocket=true, hit=true, bump=true,
-    bumper_block=true, wake_hit=true, afterburner=true, finish=true, knockout=true,
-    burst=true, tracer_hit=true, ricochet=true, magnet=true, secondwind=true,
-    fizz=true, pinball_bounce=true, vampire=true, chicken=true, eject=true, combo=true,
-    snowball=true, swap=true, gambler=true, sniper=true,
-    wrap=true, potato=true, potato_pass=true, decoy_pop=true, thief=true, boomerang=true, catch=true,
-    hole=true, hole_close=true, beam=true, beam_miss=true, throw=true, slam=true,
-    drone=true, drone_fire=true, drone_pop=true, rewind=true, dodge=true,
-}
+BattleAudio.ROUND_TIME = 26
+-- A touch that throws a top at least this fast is a big hit, not a bump.
+BattleAudio.BIG_HIT = 38
 local function finite(value)
     return type(value)=="number" and value==value and value>-math.huge and value<math.huge
 end
+-- What a simulation event sounds like, or nil for one that makes no sound.
 local function audibleKind(event)
-    if event.kind=="skill" then
-        return ({Afterburner="afterburner",Magnet="magnet",SecondWind="secondwind",FizzyFuel="fizz",
-            Vampire="vampire",Chicken="chicken",Eject="eject",Snowball="snowball",Swap="swap",Gambler="gambler",Thief="thief"})[event.skillId]
-    elseif event.kind=="rocket" and event.source=="boomerang" then
-        return "boomerang"
-    elseif event.kind=="rocket" and event.source=="sniper" then
-        return "sniper"
-    elseif event.kind=="combo" then
-        return "combo"
-    elseif event.kind=="bounce" then
-        return event.source=="pinball" and "pinball_bounce" or nil
+    if event.kind=="clash" then
+        if event.source=="slam" then return "slam_hit" end
+        return finite(event.power) and event.power>=BattleAudio.BIG_HIT and "big_hit" or "bump"
+    elseif event.kind=="windup" or event.kind=="attack" then
+        return (event.source=="dash" or event.source=="jump" or event.source=="swoop" or event.source=="shove") and event.kind..":"..event.source or nil
     elseif event.kind=="blocked" then
-        return event.skillId=="SpringBumper" and "bumper_block" or nil
+        return event.skillId=="Bumper" and "bumper_block" or nil
+    elseif event.kind=="revive" then
+        return "jetpack"
+    elseif event.kind=="launch" or event.kind=="slam" or event.kind=="land" or event.kind=="close"
+        or event.kind=="ringout" or event.kind=="finish" then
+        return event.kind
     end
-    return KINDS[event.kind] and event.kind or nil
+    return nil
 end
 
 function BattleAudio.new()
@@ -168,10 +160,10 @@ function BattleAudio:_ambience(snapshot)
     local elapsed=simulation and finite(simulation.elapsed) and simulation.elapsed or 0
     local fighting=phase=="Fight"
     local closing=fighting and pressure>0
-    -- Every attack speeds the round up, and the band keeps pace with it.
-    local rush=fighting and simulation and finite(simulation.rush) and math.clamp(simulation.rush,0.5,1) or 1
+    -- The tops spin faster as a round goes on, and the band keeps pace.
+    local heat=fighting and simulation and finite(simulation.heat) and math.clamp(simulation.heat,1,2.2) or 1
     -- The battle loop steps right back at the result so the sting can land.
-    self:_loop("music",active and ((fighting or phase=="Countdown") and 0.24 or ((phase=="Results" or phase=="RoundOver" or phase=="MatchOver") and 0.05 or 0.13)) or 0,1+(1-rush)*0.3+(closing and 0.03 or 0))
+    self:_loop("music",active and ((fighting or phase=="Countdown") and 0.24 or ((phase=="Results" or phase=="RoundOver" or phase=="MatchOver") and 0.05 or 0.13)) or 0,1+(heat-1)*0.22+(closing and 0.03 or 0))
     self:_loop("crowd",active and ((fighting or phase=="Countdown") and 0.22 or 0.1) or 0,1)
     self:_loop("storm",closing and 0.14+pressure*0.3 or 0,1)
     if phase=="Countdown" and finite(snapshot.endsAt) then
@@ -186,7 +178,7 @@ function BattleAudio:_ambience(snapshot)
     elseif fighting then
         if self.ambientPhase=="Countdown" then self:_shot("whistle",0.55,1); self:_shot("cheer",0.4,1) end
         if closing and not self.wasClosing then self:_shot("thunder",0.6,1) end
-        local left=math.ceil(BattleAudio.ROUND_TIME-elapsed)
+        local left=math.ceil((simulation and finite(simulation.maxTime) and simulation.maxTime or BattleAudio.ROUND_TIME)-elapsed)
         if left<=5 and left>0 and left~=self.lastTick then self.lastTick=left; self:_shot("beep",0.3,1.6) end
     end
     self.wasClosing=closing
@@ -280,10 +272,10 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
     local actor=event.actor==2 and 2 or 1
     local time=finite(event.at) and event.at or elapsed
     local key=kind..":"..actor
-    local cooldown=(kind=="bump" and 0.3) or (kind=="windup" and 0.25) or 0.08
+    local cooldown=(kind=="bump" and 0.16) or 0.08
     if time-(self.lastAt[key] or -math.huge)<cooldown then return end
     self.lastAt[key]=time
-    -- Both aircraft remain audible; a small timbral difference separates them.
+    -- Both tops remain audible; a small timbral difference separates them.
     local gain=actor==2 and 0.88 or 1
     local pitchShift=actor==2 and 1.06 or 1
     local function voice(name,volume,pitch,duration,finishPitch,swell)
@@ -291,196 +283,59 @@ function BattleAudio:_playEvent(event,elapsed,simulation)
             finishPitch and finishPitch*pitchShift,swell,actor)
     end
     local function shot(name,volume,speed) self:_shot(name,volume*gain,speed) end
+    local power=finite(event.power) and event.power or 20
     if kind=="launch" then
         shot("whoosh",0.22,0.85)
         voice("jump",0.14,0.75,0.28,1.5)
-    elseif kind=="windup" then
-        local fighter=simulation.fighters and simulation.fighters[actor]
-        if fighter and fighter.offenceId=="Meteor" then
-            -- Low rising charge, then a separate downward sweep on commitment.
-            local duration=finite(fighter.windupDuration) and fighter.windupDuration>0
-                and math.max(0.2,math.min(3,fighter.windupDuration)) or 0.65
-            local age=math.max(0,elapsed-time)
-            local remaining=math.max(0.08,duration-age)
-            voice("jump",0.16,0.55,remaining,1.15,true)
-            voice("chime",0.055,0.7,math.min(0.48,remaining),1.0)
-            shot("rise",0.42,math.clamp(1.9/remaining,0.8,2.4))
-        else
-            -- A tiny bright arming cue leaves space for rocket ignition.
-            voice("chime",0.11,1.85,0.24,2.1)
-            voice("land",0.045,2.25,0.09)
-            shot("beep",0.2,1.9)
-        end
-    elseif kind=="dive" then
-        self:_stopCharges(actor)
-        -- Commitment sounds fast and weighty, but never claims an armor hit.
-        voice("jump",0.25,1.65,0.46,0.55)
-        voice("land",0.10,0.75,0.16,0.5)
-        shot("whoosh",0.6,0.75); shot("ignite",0.35,0.9)
-    elseif kind=="rocket" then
-        voice("jump",0.22,1.15,0.3,1.9)
-        voice("boom",0.12,2.1,0.14,1.6)
-        shot("ignite",0.55,1.15)
-    elseif kind=="burst" then
-        voice("land",0.12,2.5,0.12)
-        shot("click",0.36,1.7); shot("beep",0.13,1.5)
-    elseif kind=="tracer_hit" then
-        -- Connections are light ticks; only the threshold event breaks armor.
-        voice("chime",0.065,2.1,0.08)
-    elseif kind=="ricochet" then
-        -- Pinball is the arcade power: a flipper thwack and a rising bleep.
-        voice("jump",0.24,0.8,0.24,2.2); voice("chime",0.16,1.2,0.2,2.4)
-        shot("comic",0.5,1.5); shot("click",0.4,0.8)
-    elseif kind=="pinball_bounce" then
-        -- Each wall is a bumper: a bright ping that climbs with every bounce.
-        voice("chime",0.2,1.9,0.16,2.6); voice("land",0.1,2.2,0.08)
-        shot("beep",0.35,2.2); shot("comic",0.3,1.8)
-    elseif kind=="magnet" then
-        -- A heavy electric hum that drops as the rival is dragged in.
-        voice("jump",0.22,1.9,0.6,0.45); voice("chime",0.14,0.6,0.5,0.4)
-        shot("sub",0.5,1.3); shot("rise",0.35,0.7)
-    elseif kind=="secondwind" then
-        -- The comeback: thunder, a rising rush and the crowd on its feet.
-        voice("chime",0.22,0.9,0.6,1.9)
-        shot("thunder",0.7,1.1); shot("rise",0.45,1.3); shot("cheer",0.4,1.1)
-    elseif kind=="vampire" then
-        -- A wet gulp: a low thud that slides up as the armor is drained.
-        voice("jump",0.24,0.5,0.4,1.5); voice("land",0.16,0.7,0.2,0.4)
-        shot("sub",0.45,1.6); shot("comic",0.45,0.6)
-    elseif kind=="chicken" then
-        -- A squawk and a pop: high, silly and nothing like a weapon.
-        voice("jump",0.26,2.6,0.14,1.5); voice("jump",0.2,2.1,0.22,2.9)
-        shot("whistle",0.3,0.5); shot("comic",0.55,2)
-    elseif kind=="eject" then
-        -- The plane goes up, the seat goes out, the parachute snaps open.
-        voice("jump",0.26,0.7,0.5,2.4)
-        shot("bigBlast",0.6,1.2); shot("rise",0.5,1.6); shot("whoosh",0.4,0.7)
-    elseif kind=="wrap" then
-        -- A quick sci-fi blip, up then down.
-        voice("chime",0.14,2.4,0.14,0.9); shot("beep",0.25,2.6)
-    elseif kind=="potato" then
-        -- The biggest bang in the game.
-        voice("boom",0.4,0.7,0.5,0.4); shot("bigBlast",0.8,0.9); shot("sub",0.6,1); shot("gasp",0.4,1)
-    elseif kind=="potato_pass" then
-        -- A hot-hands yelp.
-        voice("jump",0.2,1.8,0.12,2.6); shot("click",0.4,1.2); shot("beep",0.25,1.1)
-    elseif kind=="decoy_pop" then
-        -- A balloon.
-        voice("land",0.2,2.8,0.06); shot("comic",0.5,2.4); shot("click",0.4,2.4)
-    elseif kind=="thief" then
-        -- A sneaky slide and a cash-register ping.
-        voice("jump",0.18,1.2,0.25,2); voice("chime",0.2,2.4,0.2,2.6); shot("whoosh",0.3,1.8)
-    elseif kind=="boomerang" then
-        -- A low whirr that rises as the blade spins away.
-        voice("jump",0.2,0.9,0.5,1.6); shot("whoosh",0.5,0.8); shot("rise",0.25,1.1)
-    elseif kind=="catch" then
-        voice("land",0.16,1.6,0.08); shot("click",0.35,1.5)
-    elseif kind=="hole" then
-        -- The sky tears: a deep drop with a long downward slide.
-        voice("jump",0.26,1.4,0.9,0.25); voice("boom",0.2,0.5,0.6,0.3)
-        shot("sub",0.7,0.7); shot("rise",0.4,0.5)
-    elseif kind=="hole_close" then
-        voice("chime",0.14,0.5,0.25,1.6); shot("thump",0.4,0.7)
-    elseif kind=="beam" then
-        -- A wobbling sci-fi hum that climbs while the rival is held.
-        voice("chime",0.22,0.7,0.6,1.8); voice("jump",0.16,2.2,0.6,2.8)
-        shot("beep",0.4,0.8); shot("rise",0.45,1.5)
-    elseif kind=="beam_miss" then
-        voice("chime",0.12,1.6,0.2,0.7); shot("beep",0.2,0.6)
-    elseif kind=="throw" then
-        voice("jump",0.26,1.2,0.4,0.5); shot("whoosh",0.65,1.1)
-    elseif kind=="slam" then
-        -- Metal meets wall.
-        voice("boom",0.3,0.9,0.3,0.6); shot("crunch",0.7,0.9); shot("thump",0.6,0.8)
-    elseif kind=="drone" then
-        -- Two quick hatches popping open.
-        voice("land",0.16,2,0.08); voice("jump",0.2,1.6,0.3,2.4)
-        shot("click",0.4,1.3); shot("whoosh",0.35,1.7)
-    elseif kind=="drone_fire" then
-        voice("chime",0.1,2.3,0.1); shot("beep",0.22,2.4)
-    elseif kind=="drone_pop" then
-        voice("land",0.18,2.2,0.08); shot("punch",0.4,1.8); shot("click",0.3,2)
-    elseif kind=="rewind" then
-        -- A tape spooling backwards: everything slides up in pitch and stops dead.
-        voice("jump",0.28,0.5,0.6,3); voice("chime",0.2,0.6,0.6,2.8)
-        shot("rise",0.6,2.2); shot("whoosh",0.45,2); shot("click",0.5,0.9)
-    elseif kind=="snowball" then
-        -- A soft crunch that drops in pitch as the plane swells.
-        voice("land",0.2,1.4,0.3,0.7); shot("crunch",0.4,1.5); shot("thump",0.4,1.3)
-    elseif kind=="swap" then
-        -- Two whooshes crossing over, then a chime.
-        voice("chime",0.22,2,0.5,0.8); voice("chime",0.22,0.8,0.5,2)
-        shot("whoosh",0.5,1.4); shot("rise",0.4,1.8)
-    elseif kind=="gambler" then
-        -- Dice on a table.
-        voice("land",0.14,2.4,0.1); shot("click",0.5,1.6); shot("click",0.4,2.1); shot("beep",0.25,1.8)
-    elseif kind=="sniper" then
-        -- A single dry crack with a long tail, nothing like the other guns.
-        voice("boom",0.3,2.2,0.12,1.2); shot("punch",0.7,0.7); shot("whoosh",0.3,2.2); shot("thunder",0.3,1.8)
-    elseif kind=="combo" then
-        -- A named build gets its own little announcement.
-        voice("chime",0.2,1.1,0.3,2.2)
-        shot("beep",0.3,1.4); shot("cheer",0.25,1.3)
-    elseif kind=="fizz" then
-        -- A shaken can: a hiss and a pop.
-        voice("land",0.1,2.6,0.25,1.6)
-        shot("ignite",0.3,1.9); shot("click",0.3,1.3)
-    elseif kind=="hit" then
-        if event.source=="machinegun" then
-            voice("land",0.2,1.4,0.16); shot("punch",0.55,1.35); shot("thump",0.35,1.3)
-        elseif event.source=="pinball" then
-            -- Jackpot: the smack, then a falling arcade trill.
-            voice("jump",0.26,2.0,0.3,0.6); voice("chime",0.2,2.4,0.3,1.2)
-            shot("comic",0.65,0.85); shot("thump",0.7,1.2); shot("beep",0.3,1.6)
-        elseif event.source=="meteor" then
-            voice("boom",0.30,0.8,0.46,0.55)
-            voice("land",0.30,0.55,0.18)
-            -- A slam: low thump, a knuckle crack and bending metal.
-            shot("thump",0.8,0.9); shot("punch",0.65,0.85); shot("crunch",0.5,0.9)
-        else
-            voice("boom",0.29,1.5,0.32,0.95)
-            voice("land",0.21,1.05,0.13)
-            -- A rocket: the bang first, then the same body blow underneath.
-            shot("blast",0.7,1.1); shot("thump",0.55,1.1); shot("punch",0.4,1.15)
-        end
-        -- Every damaging hit breaks one armor pip: glass, a deep body blow
-        -- under it, and the crowd feels it.
-        shot("shatter",0.42,1.1); shot("sub",0.55,1.15); shot("gasp",0.34,1)
-    elseif kind=="bumper_block" then
-        -- A giant spring: the boing, then a metal clang as both planes fly apart.
-        voice("jump",0.32,0.7,0.5,2.3)
-        voice("chime",0.16,1.6,0.3)
-        shot("comic",0.75,0.8); shot("crunch",0.45,1.4)
-    elseif kind=="wake_hit" then
-        -- The cloud bursts: a wet pop and a hiss, then the armor cracks.
-        voice("land",0.26,1.6,0.2)
-        voice("boom",0.2,2.2,0.3,1.2)
-        shot("ignite",0.45,1.7); shot("punch",0.45,1.3); shot("shatter",0.34,1.3); shot("sub",0.4,1.3)
-    elseif kind=="afterburner" then
-        -- A jet lighting: ignition roar and a long fly-by.
-        voice("jump",0.24,0.5,0.5,2.0)
-        shot("ignite",0.7,0.75); shot("whoosh",0.6,1.3)
-    elseif kind=="dodge" then
-        -- A barrel roll out of the way: a quick, bright swish.
-        shot("whoosh",0.42,1.7)
-        voice("jump",0.08,1.6,0.16,2.4)
     elseif kind=="bump" then
-        -- A normal collision pushes without armor loss: never use the hit mix.
-        voice("land",0.065,1.55,0.11)
-        shot("comic",0.26,1.35)
-    elseif kind=="knockout" or (kind=="finish" and simulation.reason=="knockout") then
+        -- The everyday clack of two tops touching: louder the harder it was.
+        local weight=math.clamp(power/BattleAudio.BIG_HIT,0.25,1)
+        shot("punch",0.2+0.3*weight,1.25-0.25*weight)
+        voice("land",0.1+0.12*weight,1.5,0.12,1.1)
+    elseif kind=="big_hit" then
+        self:_stopCharges(event.target==2 and 2 or 1)
+        shot("punch",0.7,0.85); shot("thump",0.7,0.9); shot("comic",0.4,1.1)
+        voice("boom",0.16,1.2,0.22,0.8)
+        if power>=55 then shot("sub",0.6,1.1); shot("gasp",0.35,1.1) end
+    elseif kind=="windup:dash" then
+        -- A rising whine while the top winds itself up.
+        voice("chime",0.2,0.7,0.5,1.9,true)
+        shot("rise",0.25,1.5)
+    elseif kind=="attack:dash" then
+        self:_stopCharges(actor)
+        shot("whoosh",0.6,1.4); shot("ignite",0.35,1.3)
+    elseif kind=="attack:swoop" then
+        shot("whoosh",0.45,0.95); voice("jump",0.12,1.1,0.4,1.7)
+    elseif kind=="attack:shove" then
+        shot("thunder",0.3,1.4); voice("boom",0.1,0.6,0.5,0.9)
+    elseif kind=="windup:jump" then
+        voice("jump",0.16,0.55,0.35,0.9,true)
+    elseif kind=="attack:jump" then
+        self:_stopCharges(actor)
+        voice("jump",0.3,0.9,0.4,1.6); shot("whoosh",0.3,1.1)
+    elseif kind=="slam" then
+        shot("thump",0.75,0.75); shot("crunch",0.35,1.1)
+        voice("land",0.3,0.6,0.25,0.45)
+    elseif kind=="slam_hit" then
+        shot("punch",0.6,0.8); shot("comic",0.4,0.95)
+    elseif kind=="land" then
+        voice("land",0.26,0.8,0.2,0.6); shot("thump",0.4,1.1)
+    elseif kind=="bumper_block" then
+        voice("jump",0.34,1.5,0.3,0.7); shot("comic",0.6,1.4); shot("punch",0.4,1.3)
+    elseif kind=="jetpack" then
+        shot("ignite",0.7,1); shot("rise",0.45,1.2); shot("cheer",0.4,1)
+    elseif kind=="close" then
+        shot("gasp",0.4,1.2); voice("chime",0.16,1.3,0.3,1.8)
+    elseif kind=="ringout" then
         self:_stopCharges()
-        -- Armor breaking ends the fight. The heavier ground thud belongs to
-        -- playCrash, when the defeated plane actually reaches the floor.
+        -- Going over the edge is the finishing blow: its own, larger sound,
+        -- and the stands erupt. The fall itself belongs to playCrash.
         voice("boom",0.13,1.25,0.24,0.85)
-        voice("chime",0.21,0.95,0.48,1.4)
-        -- The finishing blow is its own, larger sound, and the stands erupt.
-        shot("bigBlast",0.85,0.9); shot("sub",0.9,1); shot("cheer",0.7,1)
+        shot("bigBlast",0.7,0.95); shot("sub",0.8,1); shot("cheer",0.7,1)
     elseif kind=="finish" then
         self:_stopCharges()
-        voice("land",0.12,0.9,0.2)
         voice("chime",0.23,1.1,0.5)
-        shot("whistle",0.55,0.9); shot("cheer",0.5,1)
+        if simulation.reason~="ringout" then shot("whistle",0.55,0.9); shot("cheer",0.5,1) end
     end
     self.played=self.played+1
     self.folder:SetAttribute("PlayedEvents",self.played)
@@ -491,15 +346,15 @@ function BattleAudio:playCrash(roundId,actor)
     if self.destroyed or not self.key or tostring(roundId)~=self.key
         or (actor~=1 and actor~=2) or self.phase~="Results" or not self.crashAllowed
         or not self.resultsAt or os.clock()-self.resultsAt>BattleAudio.MAX_CRASH_AGE
-        or not self.resultArmor or not finite(self.resultArmor[actor]) or self.resultArmor[actor]>0
+        or not self.resultOut or self.resultOut[actor]~=true
         or self.crashes[actor] then return false end
-    -- Consume muted landings too: unmuting must never replay an old crash.
+    -- Consume muted falls too: unmuting must never replay an old one.
     self.crashes[actor]=true
     if self.muted then return false end
     local gain=actor==2 and 0.88 or 1
-    self:_voice("land",0.38*gain,0.5,0.24,0.4)
-    self:_voice("boom",0.26*gain,0.62,0.48,0.45)
-    self:_shot("crunch",0.85*gain,0.75); self:_shot("thump",0.8*gain,0.8)
+    -- A long falling whistle as the top drops out of the sky.
+    self:_voice("chime",0.3*gain,1.6,1.1,0.35)
+    self:_shot("whoosh",0.5*gain,0.6)
     self.played=self.played+1
     self.folder:SetAttribute("PlayedEvents",self.played)
     self.folder:SetAttribute("LastEvent","crash")
@@ -511,7 +366,7 @@ function BattleAudio:stop()
     self:_silence()
     self.key=nil; self.started=false; self.lastSerial=0; self.lastAt={}
     self.phase=nil; self.sawFight=false; self.resultsAt=nil; self.crashAllowed=false
-    self.resultArmor=nil; self.crashes={}
+    self.resultOut=nil; self.crashes={}
 end
 
 function BattleAudio:update(snapshot)
@@ -536,11 +391,11 @@ function BattleAudio:update(snapshot)
         self.sawFight=true
     elseif phase=="Results" then
         if previousPhase~="Results" then self.resultsAt=os.clock(); self:_stopCharges() end
-        self.crashAllowed=self.sawFight==true and simulation.finished==true and simulation.reason=="knockout"
-        self.resultArmor={}
+        self.crashAllowed=self.sawFight==true and simulation.finished==true and simulation.reason=="ringout"
+        self.resultOut={}
         for index,fighter in ipairs(simulation.fighters or {}) do
             if index>2 then break end
-            self.resultArmor[fighter.id or index]=fighter.armor
+            self.resultOut[fighter.id or index]=fighter.out==true
         end
     end
     local elapsed=finite(simulation.elapsed) and simulation.elapsed or 0

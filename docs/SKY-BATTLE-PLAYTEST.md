@@ -1,5 +1,7 @@
 # Sky Battle: Milestones 1–2 playtest
 
+> **Unpublished change, October 11, 2026.** The source in this repository is now the ring-out game: four spinning tops, six upgrades, last top on the platform wins the round. Everything below this note describes **published version 23, the plane fight**, and is kept as the record of that build. Before the next publication this sheet needs rewriting for the new game. To try the new source: build, open `build/Sky-Battle-Playtest.rbxlx`, press Play, then PLAY. A first match is a guided Boulder-versus-Bolt fight against a bot; later picks offer Heavy Core and Spikes, then Turbo as well. See [the README](../README.md), [the rules](COMBAT-CONTRACT.md) and [the numbers](BALANCE-REPORT.md).
+
 This is a free playtest candidate with the revised loadout draft and expanded power roster. Monetization, daily rewards and season passes remain outside scope. Passing local tests does not close the published/phone or unfamiliar-player gates.
 
 **Current published build:** [Skybound Test](https://www.roblox.com/games/86507299893768/Skybound-Test), place **86507299893768**, universe **10770074500**, published **version 23** at **2026-10-11 08:51:09 UTC** (October 11, 01:51:09 PDT), from source **`5f2506393406f2277d38d1174c70fa7c369cf924`**, based on feature commit `111e567`. Native Studio confirmed publication, playtester availability and version notes for v23. [Publication proof](validation/qa-2026-10-11/published-version-23.jpg).

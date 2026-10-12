@@ -30,10 +30,13 @@ local function copyBattle(source)
     local result = { mastery = {}, discovered = {}, starterAvailable = source and source.starterAvailable == true or false,
         starterChoice = source and source.starterChoice or nil, goalId = source and source.goalId or CosmeticCatalog.BATTLE_GOAL_ID }
     for _,field in ipairs(BATTLE_FIELDS) do result[field] = source and source[field] or 0 end
-    for id,value in pairs(source and source.mastery or {}) do result.mastery[id] = value end
-    -- Cards this pilot has been dealt, flown or faced. Saves from before the
+    -- Cards retired with the plane fight are dropped from a profile as it is read.
+    for id,value in pairs(source and source.mastery or {}) do if not SkillCatalog.RETIRED[id] then result.mastery[id] = value end end
+    -- Cards this pilot has been dealt, used or faced. Saves from before the
     -- record existed simply start empty.
-    for id,value in pairs(source and source.discovered or {}) do if value == true then result.discovered[id] = true end end
+    for id,value in pairs(source and source.discovered or {}) do
+        if value == true and not SkillCatalog.RETIRED[id] then result.discovered[id] = true end
+    end
     return result
 end
 local function starter(id)
@@ -46,12 +49,12 @@ local function decodeBattle(value)
         if not finite(value[field]) or value[field] < 0 or value[field] % 1 ~= 0 or value[field] > 1e12 then return nil end
     end
     for id,amount in pairs(value.mastery) do
-        if not SkillCatalog.valid(id) or not finite(amount) or amount < 0 or amount % 1 ~= 0 or amount > 1e12 then return nil end
+        if not (SkillCatalog.valid(id) or SkillCatalog.RETIRED[id]) or not finite(amount) or amount < 0 or amount % 1 ~= 0 or amount > 1e12 then return nil end
     end
     if value.discovered ~= nil then
         if type(value.discovered) ~= "table" then return nil end
         for id,seen in pairs(value.discovered) do
-            if seen ~= true or not SkillCatalog.valid(id) then return nil end
+            if seen ~= true or not (SkillCatalog.valid(id) or SkillCatalog.RETIRED[id]) then return nil end
         end
     end
     if value.starterChoice ~= nil and not starter(value.starterChoice) then return nil end

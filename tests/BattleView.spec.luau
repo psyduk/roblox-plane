@@ -1,7 +1,7 @@
--- Native Roblox engine checks for post-result presentation, not subjective feel.
+-- Native Roblox engine checks for the ring's presentation, not subjective feel.
 -- require(thisModule)(BattleView, World, BattleSimulation). Fixtures are destroyed.
 return function(View, World, Simulation)
-    local PlaneCatalog=require(game:GetService("ReplicatedStorage").FlightGame.PlaneCatalog)
+    local Lighting=game:GetService("Lighting")
     local passed=0
     local function test(name,body)
         local cues={}
@@ -13,18 +13,15 @@ return function(View, World, Simulation)
                 if i%12==0 then task.wait() end
             end
         end
-        local function snapshot(roundId,phase,armor1,armor2,reason)
-            local sim=Simulation.newRound(731)
-            sim.fighters[1].x,sim.fighters[1].y=-20,70
-            sim.fighters[2].x,sim.fighters[2].y=30,60
-            for i,f in ipairs(sim.fighters) do
-                f.armor=i==1 and armor1 or armor2
-                f.vx,f.vy,f.armed=0,0,false
-            end
-            sim.finished=phase=="Results"; sim.reason=reason
-            sim.winner=armor1==armor2 and 0 or (armor1>armor2 and 1 or 2)
-            sim.events={}; sim.elapsed=20
-            return {roundId=roundId,phase=phase,active=true,simulation=sim}
+        -- Two tops standing still at known places, mid-fight.
+        local function snapshot(roundId,phase,a,b)
+            local sim=Simulation.newRound(731,a or {offenceId="Boulder"},b or {offenceId="Bolt"})
+            sim.fighters[1].x,sim.fighters[1].y=-12,6
+            sim.fighters[2].x,sim.fighters[2].y=15,-9
+            for _,f in ipairs(sim.fighters) do f.vx,f.vy,f.moveLeft=0,0,1000 end
+            sim.events={}; sim.elapsed=4
+            return {roundId=roundId,phase=phase,active=true,simulation=sim,
+                players={{userId=1,name="Ada",color=1,trailId="classic"},{userId=0,name="Comet",bot=true,color=2,trailId="classic"}}}
         end
         local ok,err=pcall(body,view,cues,advance,snapshot)
         view:destroy()
@@ -32,254 +29,142 @@ return function(View, World, Simulation)
         assert(ok,name..": "..tostring(err))
         passed=passed+1
     end
-    local function lowestSolid(model)
-        local lowest=math.huge
-        for _,p in ipairs(model:GetDescendants()) do
-            if p:IsA("BasePart") and p.Transparency<0.5 and not string.find(p.Name,"Smoke") then
-                local c,s=p.CFrame,p.Size
-                local extent=(math.abs(c.RightVector.Y)*s.X+math.abs(c.UpVector.Y)*s.Y+math.abs(c.LookVector.Y)*s.Z)/2
-                lowest=math.min(lowest,p.Position.Y-extent)
-            end
-        end
-        return lowest
+    local function at(model) return model.PrimaryPart.Position end
+    local function named(model,name)
+        local found={}
+        for _,piece in ipairs(model:GetChildren()) do if piece.Name==name then found[#found+1]=piece end end
+        return found
     end
-    test("KO falls onto the visible floor once without moving the winner or simulation",function(view,cues,advance,snapshot)
-        local s=snapshot(1,"Fight",1,2)
+    test("each top stands on the deck where the simulation says it is",function(view,cues,advance,snapshot)
+        local s=snapshot(1,"Fight")
+        advance(s,0.3)
+        local ground=view.folder:GetAttribute("GroundY")
+        local deck=view.folder.Stadium.Deck
+        local a,b=at(view.fighters[1].model),at(view.fighters[2].model)
+        assert(math.abs(a.X-(deck.Position.X-12))<0.5 and math.abs(a.Z-(deck.Position.Z+6))<0.5,"Top 1 is not where the simulation put it")
+        assert(math.abs(b.X-(deck.Position.X+15))<0.5 and math.abs(b.Z-(deck.Position.Z-9))<0.5,"Top 2 is not where the simulation put it")
+        assert(math.abs(a.Y-ground)<0.2 and math.abs(b.Y-ground)<0.2,"A top is not standing on the deck")
+        assert(math.abs(deck.Position.Y+deck.Size.X/2-ground)<0.3,"The deck's surface is not at ground level")
+        assert(view.fighters[1].radius>view.fighters[2].radius,"Boulder is not drawn bigger than Bolt")
+        assert(#cues==0,"A cue fired with both tops on the ring")
+    end)
+    test("tops spin, and the two are painted apart",function(view,cues,advance,snapshot)
+        local s=snapshot(1,"Fight")
         view:update(s,1/60)
-        local start=view.fighters[1].model:GetPivot().Position
-        local winner=view.fighters[2].model:GetPivot().Position
-        s.phase="Results";s.simulation.finished=true;s.simulation.reason="knockout";s.simulation.fighters[1].armor=0
-        advance(s,0.25)
-        assert(view.fighters[1].model:GetPivot().Position.Y<start.Y,"Defeated plane did not descend")
-        assert(#cues==0,"Ground sound played before landing")
-        advance(s,2)
-        assert(#cues==1 and cues[1].kind=="crash" and cues[1].actor==1 and cues[1].roundId==1,"Missing or duplicate landing cue")
-        assert(view.fighters[1].model:GetAttribute("CrashState")=="Landed","KO did not settle")
-        local lip=view.folder.Stadium.FloorLip
-        local ground=lip.Position.Y+lip.Size.Y/2
-        assert(math.abs(lowestSolid(view.fighters[1].model)-ground)<0.8,"Wreck floats above or penetrates the floor")
-        assert((view.fighters[2].model:GetPivot().Position-winner).Magnitude<0.01,"Winner fell or moved")
-        assert(s.simulation.fighters[1].y==70 and s.simulation.winner==2,"Presentation changed authoritative result")
-        advance(s,1)
-        assert(#cues==1,"Ground cue repeated on Results snapshots")
+        local stripe=named(view.fighters[1].model,"SpinStripe")[1]
+        local before=stripe.CFrame.RightVector
+        advance(s,0.1)
+        assert((stripe.CFrame.RightVector-before).Magnitude>0.2,"The top is not spinning")
+        assert(view:accent(1)~=view:accent(2),"Both tops wear the same paint")
+        assert(view.fighters[1].model.AttackRing.Color==view:accent(1),"The top is not in its pilot's paint")
     end)
-    test("simultaneous knockout crashes both planes",function(view,cues,advance,snapshot)
-        local s=snapshot(2,"Results",0,0,"knockout")
-        advance(s,2.5)
-        assert(#cues==2 and cues[1].actor~=cues[2].actor,"Double KO did not land both planes once")
-        for _,f in pairs(view.fighters) do assert(f.model:GetAttribute("CrashState")=="Landed") end
-        assert(s.simulation.winner==0,"Crash changed the draw")
-    end)
-    test("timeout survivors do not crash",function(view,cues,advance,snapshot)
-        local s=snapshot(3,"Results",1,2,"timeout")
+    test("the platform closes in with the simulation's ring",function(view,cues,advance,snapshot)
+        local s=snapshot(1,"Fight")
         view:update(s,1/60)
-        local y=view.fighters[1].model:GetPivot().Position.Y
-        advance(s,2)
-        assert(#cues==0 and view.fighters[1].model:GetAttribute("CrashState")==nil,"Timeout survivor crashed")
-        assert(math.abs(view.fighters[1].model:GetPivot().Position.Y-y)<0.01,"Timeout survivor fell")
+        local deck=view.folder.Stadium.Deck
+        local full=deck.Size.Y
+        s.simulation.ring=20;s.simulation.pressure=0.6
+        view:update(s,1/60)
+        assert(deck.Size.Y<full*0.6 and deck.Size.Y>10,"The deck did not shrink with the ring")
+        assert(view.folder.Stadium.DangerBand.Size.Y>deck.Size.Y,"The danger band is not outside the deck")
+        assert(view.folder.Stadium.LostRing.Transparency<1,"The lost part of the ring leaves no trace")
     end)
-    test("retry during a fall cancels the old landing",function(view,cues,advance,snapshot)
-        advance(snapshot(4,"Results",0,2,"knockout"),0.2)
-        local nextRound=snapshot(5,"Configure",3,3)
-        advance(nextRound,2)
-        assert(#cues==0,"Old crash sounded after retry")
-        for _,f in pairs(view.fighters) do assert(f.model:GetAttribute("CrashState")==nil,"Retry kept crash state") end
-    end)
-    test("destroy during a fall cancels pending presentation",function(view,cues,advance,snapshot)
-        local s=snapshot(6,"Results",0,2,"knockout")
+    test("a top that leaves the ring drops out of the sky once and the winner stays put",function(view,cues,advance,snapshot)
+        local s=snapshot(1,"Fight")
         advance(s,0.2)
-        view:destroy()
-        advance(s,2)
-        assert(#cues==0,"Destroyed view emitted a delayed landing")
+        local winner=at(view.fighters[1].model)
+        local loser=s.simulation.fighters[2]
+        loser.x,loser.y,loser.vx,loser.out,loser.phase=41,0,30,true,"Out"
+        s.simulation.finished=true;s.simulation.reason="ringout";s.simulation.winner=1
+        s.phase="RoundOver"
+        advance(s,1.5)
+        local ground=view.folder:GetAttribute("GroundY")
+        assert(at(view.fighters[2].model).Y<ground-20,"The fallen top did not drop")
+        assert((at(view.fighters[1].model)-winner).Magnitude<0.5,"The winner moved")
+        assert(#cues==1 and cues[1].kind=="crash" and cues[1].actor==2 and cues[1].roundId==1,"Missing or duplicate fall cue")
+        assert(view.fighters[2].model:GetAttribute("Phase")=="Out")
+        advance(s,1);assert(#cues==1,"The fall cue repeated")
     end)
-    test("near-floor knockout reaches first contact and cues in the same update",function(view,cues,advance,snapshot)
-        for sample,height in ipairs({8,10,14}) do
-            local s=snapshot(20+sample,"Fight",1,2)
-            s.simulation.fighters[1].y=height
-            view:update(s,1/60)
-            s.phase="Results";s.simulation.finished=true;s.simulation.reason="knockout";s.simulation.fighters[1].armor=0
-            local before=#cues
-            local previousBottom=math.huge
-            local landed=false
-            for frame=1,90 do
-                view:update(s,1/60)
-                local fighter=view.fighters[1]
-                local bottom=lowestSolid(fighter.model)
-                local gap=bottom-view.groundY
-                assert(gap>=-0.002,"Near-floor crash penetrated the floor")
-                assert(bottom<=previousBottom+0.002,"Near-floor wreck lifted away from the floor")
-                previousBottom=bottom
-                if fighter.model:GetAttribute("CrashState")=="Landed" then
-                    assert(math.abs(gap)<0.002,"Landing cue happened before actual contact")
-                    assert(#cues==before+1 and cues[#cues].roundId==s.roundId,"Contact did not emit exactly one current-round cue")
-                    landed=true
-                    break
-                end
-                assert(gap>0.002 and #cues==before,"Wreck touched the floor before landing cue")
-                if frame%12==0 then task.wait() end
-            end
-            assert(landed,"Near-floor crash did not settle")
-            advance(s,0.25)
-            assert(#cues==before+1,"Near-floor landing cue repeated")
-        end
-    end)
-    test("every equipped skin keeps its geometry under every active offence",function(view,cues,advance,snapshot)
-        for skinIndex,skin in ipairs(PlaneCatalog.ORDER) do
-            local s=snapshot(100+skinIndex,"Pick",3,3)
-            s.players={{userId=1,name="You",planeId=skin,color=1},{userId=2,name="Rival",planeId=skin,color=1}}
-            s.simulation.finished=false; s.simulation.fighters[1].offenceId=""
-            s.simulation.fighters[2].offenceId=""
-            view:update(s,1/60)
-            local fighter=view.fighters[1]; local bodySize=fighter.body.Size
-            local cosmetic=PlaneCatalog.get(skin).cosmeticOnly==true
-            local visual=fighter.model:FindFirstChild("MountVisual")
-            if cosmetic then
-                assert(fighter.model:GetAttribute("MountVisualLoaded")==true and visual,"Legendary template failed to load: "..skin)
-                assert(fighter.body.Transparency==1,"Cosmetic shell became visible: "..skin)
-            end
-            local geometry,geometryCount={},0
-            for _,piece in ipairs((visual or fighter.model):GetDescendants()) do
-                if piece:IsA("BasePart") and piece.Transparency<0.5 then
-                    geometry[piece]={size=piece.Size,transparency=piece.Transparency}
-                    geometryCount=geometryCount+1
-                end
-            end
-            assert(geometryCount>0,"Equipped skin had no visible geometry: "..skin)
-            for _,ghost in ipairs(fighter.afterimages) do assert(#ghost.pieces>0,"Afterimage lost equipped skin: "..skin) end
-            for _,name in ipairs({"Nose","Belly","WingLeft","WingRight","Tail","Centre","Top"}) do
-                assert(fighter.model.PrimaryPart:FindFirstChild(name):IsA("Attachment"),"Missing "..skin.." "..name)
-            end
-            for _,offence in ipairs({"Meteor","Firework","MachineGun","Pinball"}) do
-                s.phase="Fight";s.simulation.fighters[1].offenceId=offence
-                s.simulation.fighters[1].phase="Windup";s.simulation.fighters[1].phaseLeft=0.5
-                view:update(s,1/60)
-                assert(fighter.body.Size==bodySize,"Skill reshaped equipped fuselage")
-                for piece,original in pairs(geometry) do
-                    assert(piece.Size==original.size and piece.Transparency==original.transparency,"Skill hid or reshaped "..skin.." "..piece.Name)
-                end
-                if cosmetic then assert(fighter.body.Transparency==1,"Battle frame revealed cosmetic shell: "..skin) end
-                assert(fighter.model:GetAttribute("PlaneId")==skin,"Wrong equipped skin")
-            end
-            assert(view.fighters[2].model:GetAttribute("PlaneId")==skin,"Mirror replaced rival skin")
-            assert(view.fighters[1].color==view.fighters[2].color,"Mirror replaced rival paint")
-            assert(view.fighters[1].sideColor~=view.fighters[2].sideColor,"Mirror lost side identity")
-        end
-    end)
-    test("match phases retain authoritative crash and clear new-skill effects",function(view,cues,advance,snapshot)
-        local s=snapshot(200,"Fight",1,2)
-        s.simulation.fighters[1].offenceId="MachineGun"; s.simulation.fighters[1].magnetLeft=1
-        s.simulation.fighters[1].secondWind=true
+    test("upgrades are drawn on the top, and one-shot upgrades show when they are spent",function(view,cues,advance,snapshot)
+        local s=snapshot(1,"Fight",{offenceId="Cyclone",wildIds={"Spikes","Bumper"}},{offenceId="Pogo",wildIds={"Jetpack","Heavy"}})
         view:update(s,1/60)
-        assert(view.fighters[1].magnetRing[1].Transparency<1,"Magnet missing its cue")
-        assert(view.fighters[1].windRing[1].Transparency<1,"Second Wind missing its cue")
-        s.phase="RoundOver";s.simulation.finished=true;s.simulation.reason="knockout";s.simulation.fighters[1].armor=0
-        advance(s,2.5)
-        assert(#cues==1,"RoundOver did not land the authoritative knockout")
-        local nextRound=snapshot(201,"Pick",3,3)
-        advance(nextRound,0.1)
-        assert(view.fighters[1].magnetRing[1].Transparency==1 and view.fighters[1].windRing[1].Transparency==1,"Pick retained old cues")
-    end)
-    test("reduced motion suppresses afterimages and flashes while preserving skill tells",function(view,cues,advance,snapshot)
-        view.reducedMotion=true
-        local s=snapshot(202,"Fight",3,3)
-        s.simulation.fighters[1].offenceId="Meteor";s.simulation.fighters[1].phase="Attack";s.simulation.fighters[1].armed=true
+        local a,b=view.fighters[1].model,view.fighters[2].model
+        assert(#named(a,"Spike")==6 and #named(a,"Fin")==3,"Spikes or Cyclone's fins are missing")
+        assert(a.BumperShield.Transparency<1,"A loaded bumper is invisible")
+        assert(#named(b,"JetTank")==2 and #named(b,"HeavyBand")==1 and #named(b,"Spring")==3,"Pogo's upgrades are missing")
+        s.simulation.fighters[1].bumperReady=false
         view:update(s,1/60)
+        assert(a.BumperShield.Transparency==1,"A spent bumper is still drawn")
+        s.simulation.fighters[2].jetReady=false
+        view:update(s,1/60)
+        assert(named(b,"JetTank")[1].Transparency>0.5,"An empty jetpack looks full")
+    end)
+    test("a jumping top leaves the deck, its halo stays, and its landing is marked",function(view,cues,advance,snapshot)
+        local s=snapshot(1,"Fight",{offenceId="Pogo"},{offenceId="Bolt"})
+        local pogo=s.simulation.fighters[1]
+        pogo.phase,pogo.flying,pogo.z,pogo.lockX,pogo.lockY="Air","jump",12,10,-4
+        advance(s,0.3)
+        local ground=view.folder:GetAttribute("GroundY")
         local fighter=view.fighters[1]
-        assert(fighter.chargeShell.Transparency<1,"Reduced motion hid commitment cue")
-        for _,ghost in ipairs(fighter.afterimages) do for _,piece in ipairs(ghost.pieces) do assert(piece.Transparency==1,"Reduced motion left afterimage") end end
-        assert(view.screenFlash==0,"Reduced motion flashed")
+        assert(at(fighter.model).Y>ground+8,"The jump has no height")
+        assert(math.abs(fighter.halo.Position.Y-ground)<1,"The halo left the deck")
+        assert(fighter.target.Transparency<1 and math.abs(fighter.target.Position.X-(view.folder.Stadium.Deck.Position.X+10))<0.5,"The landing is not marked")
+        pogo.phase,pogo.flying,pogo.z="Roam",nil,0
+        advance(s,0.3)
+        assert(fighter.target.Transparency==1 and at(fighter.model).Y<ground+1,"The top did not come down")
     end)
-    test("storm follows every authoritative boundary and resets grade on results",function(view,cues,advance,snapshot)
-        for index,pressure in ipairs({0.1,0.5,1}) do
-            local s=snapshot(300+index,"Fight",3,3)
-            s.simulation.pressure=pressure
-            s.simulation.bounds={left=-72+24*pressure,right=72-24*pressure,bottom=8+10*pressure,top=96-14*pressure}
-            view:update(s,1/60)
-            local bounds=s.simulation.bounds
-            local origin=Vector3.new(0,80,-4000)
-            assert(math.abs(view.edges[1].Position.X-origin.X-bounds.left)<0.001)
-            assert(math.abs(view.edges[2].Position.X-origin.X-bounds.right)<0.001)
-            assert(math.abs(view.edges[3].Position.Y-origin.Y-bounds.top)<0.001)
-            assert(math.abs(view.edges[4].Position.Y-origin.Y-bounds.bottom)<0.001)
-            assert(view.windStreaks[1][1].Transparency<1,"Closing wind did not track pressure")
-            assert(view.grade.Brightness>=0 and math.abs(view.grade.Saturation-0.14)<0.001,"Closing wind darkened the sky")
-            view.reducedMotion=true;view:update(s,1/60)
-            s.phase="MatchOver";view:update(s,1/60)
-            assert(math.abs(view.grade.Brightness)<0.001 and math.abs(view.grade.Saturation-0.14)<0.001,"Result kept storm grade")
-            view.reducedMotion=false
-        end
-        view:_resetRound(400)
-        for side=1,4 do assert(view.windStreaks[side][1].Transparency==1,"Round reset left closing wind") end
-    end)
-    test("generic non-aircraft contract supports equipment and crash without plane parts",function(view,cues,advance,snapshot)
-        local originalWorld=view.World
-        view.World={trailLook=originalWorld.trailLook,createPlane=function(parent,name,colorIndex,planeId)
-            local model=Instance.new("Model");model.Name=name;model:SetAttribute("PlaneId",planeId);model:SetAttribute("BattleVisualSize",8)
-            local body=Instance.new("Part");body.Name="BroomBody";body.Size=Vector3.new(8,1,1);body.Anchored=true;body.CanCollide=false;body.Parent=model;model.PrimaryPart=body
-            for mountName,position in pairs({Nose=Vector3.new(4,0,0),Tail=Vector3.new(-4,0,0),Belly=Vector3.new(0,-0.5,0),Centre=Vector3.zero,Top=Vector3.new(0,1,0),WingLeft=Vector3.new(0,0,-1),WingRight=Vector3.new(0,0,1)}) do
-                local attachment=Instance.new("Attachment");attachment.Name=mountName;attachment.Position=position;attachment.Parent=body
-            end
-            model.Parent=parent;return model
-        end}
-        local s=snapshot(410,"Fight",2,3);s.simulation.fighters[1].offenceId="Firework"
-        view:update(s,1/60);assert(view.fighters[1].propeller==nil and view.fighters[1].body.Name=="BroomBody")
-        s.phase="MatchOver";s.simulation.finished=true;s.simulation.reason="knockout";s.simulation.fighters[1].armor=0
-        advance(s,2.5)
-        assert(#cues==1 and view.fighters[1].crashLanded,"Generic skin failed to land once")
-        assert(#view.fighters[1].debris==5,"Generic fallback grew unbounded debris")
-    end)
-    test("bounce stays bounded after one ground cue and cleanup cancels the sequence",function(view,cues,advance,snapshot)
-        local s=snapshot(420,"Fight",1,3);view:update(s,1/60)
-        s.phase="MatchOver";s.simulation.finished=true;s.simulation.reason="knockout";s.simulation.fighters[1].armor=0
-        local landed=false;local bounced=false
-        for frame=1,180 do
-            view:update(s,1/60)
-            if view.fighters[1].crashLanded then
-                landed=true
-                local gap=view.fighters[1].crashContactY-view.groundY
-                assert(gap>=-0.002 and gap<=0.81,"Bounce left bounded floor region")
-                if gap>0.05 then bounced=true end
-            end
-            if frame%12==0 then task.wait() end
-        end
-        assert(landed and bounced and #cues==1,"Bounce failed or repeated first contact")
-        assert(math.abs(view.fighters[1].crashContactY-view.groundY)<0.002,"Bounce did not settle")
-        advance(snapshot(421,"Pick",3,3),0.1);assert(view.fighters[1].crash==nil,"Next draft kept old fall")
-    end)
-    test("the load gauge fills while circling and lights fully only when the attack is loaded",function(view,cues,advance,snapshot)
-        local s=snapshot(430,"Fight",3,3);local f=s.simulation.fighters[1]
-        f.vx=20;f.phase,f.phaseLeft,f.circling="Approach",3,true
+    test("a charging dash shows where it will go",function(view,cues,advance,snapshot)
+        local s=snapshot(1,"Fight",{offenceId="Bolt"},{offenceId="Boulder"})
+        local bolt=s.simulation.fighters[1]
+        bolt.phase,bolt.phaseLeft,bolt.lockX,bolt.lockY="Windup",0.3,15,-9
         advance(s,0.1)
-        local ring=view.fighters[1].loadRing
-        local function lit() local n=0;for _,piece in ipairs(ring) do if piece.Transparency<0.8 then n=n+1 end end;return n end
-        assert(#ring==10 and lit()==0 and view.fighters[1].model:GetAttribute("AttackLoaded")==false,"An empty attack looked loaded")
-        f.phaseLeft=1.5;advance(s,0.1)
-        assert(lit()>=4 and lit()<=6,"Half-loaded gauge did not show about half")
-        f.circling=false;advance(s,0.1)
-        assert(lit()==10 and view.fighters[1].model:GetAttribute("AttackLoaded")==true,"A loaded attack did not light the whole gauge")
-        f.phase,f.phaseLeft="Windup",1;advance(s,0.1);assert(lit()==10,"Gauge went dark during the windup")
-        f.phase,f.phaseLeft="Recover",2;advance(s,0.1)
-        assert(lit()==0 and view.fighters[1].model:GetAttribute("AttackLoaded")==false,"Gauge stayed lit while banking away")
+        local fighter=view.fighters[1]
+        assert(fighter.line.Transparency<1 and fighter.line.Size.Z>20,"No aim line while charging")
+        assert(fighter.label.Text=="CHARGING...","The top does not say what it is doing")
+        bolt.phase="Roam";advance(s,0.1)
+        assert(fighter.line.Transparency==1 and fighter.label.Text=="YOU","The aim line outlived the charge")
     end)
-    test("each power shows its own equipment: ball, beam, jet and aura",function(view,cues,advance,snapshot)
-        local s=snapshot(440,"Fight",3,3);local sim=s.simulation;local f=sim.fighters[1]
-        f.vx=20;f.phase,f.phaseLeft="Recover",2
-        sim.projectiles={{id=1,owner=1,x=0,y=50,vx=60,vy=0,life=2,radius=3.2,source="pinball",bounces=3}}
-        advance(s,0.1)
-        local ball;for _,rocket in pairs(view.rockets) do ball=rocket end
-        assert(ball and ball.ball.Transparency<0.5 and ball.body.Transparency==1 and ball.nose.Transparency==1,"Pinball's ball looked like a rocket")
-        sim.projectiles={{id=2,owner=1,x=0,y=50,vx=60,vy=0,life=2,radius=3.5}}
-        advance(s,0.1)
-        local rocket;for _,item in pairs(view.rockets) do rocket=item end
-        assert(rocket.ball.Transparency==1 and rocket.body.Transparency==0,"A rocket looked like Pinball's ball")
-        local me=view.fighters[1]
-        assert(me.magnetBeam.Transparency==1 and me.burnerFlames[1].Transparency==1 and me.windAura.Transparency==1,"A power effect showed with no power active")
-        f.magnetLeft=0.5;advance(s,0.1)
-        assert(me.magnetBeam.Transparency<0.5 and me.magnetBeam.Size.X>20,"Magnet drew no beam to the rival")
-        f.magnetLeft=0;f.boostLeft=0.8;advance(s,0.1)
-        assert(me.magnetBeam.Transparency==1 and me.burnerFlames[1].Transparency<0.5 and me.burnerFlames[1].Size.X>15,"Afterburner drew no jet")
-        f.boostLeft=0;f.secondWind=true;advance(s,0.1)
-        assert(me.burnerFlames[1].Transparency==1 and me.windAura.Transparency<0.6,"Second Wind drew no aura")
+    test("a new round or a changed build makes new tops, and a pick puts them away",function(view,cues,advance,snapshot)
+        local s=snapshot(1,"Fight")
+        view:update(s,1/60)
+        local first=view.fighters[1].model
+        view:update(s,1/60);assert(view.fighters[1].model==first,"A repeated snapshot rebuilt the top")
+        local nextRound=snapshot(2,"Countdown",{offenceId="Pogo"},{offenceId="Bolt"})
+        view:update(nextRound,1/60)
+        assert(first.Parent==nil and view.fighters[1].model~=first and view.fighters[1].model.Head,"The old top survived a new round")
+        nextRound.phase="Pick";view:update(nextRound,1/60)
+        assert(at(view.fighters[1].model).Y<-1000,"A top is still on the ring while pilots are picking")
+        assert(view.folder:GetAttribute("Phase")=="Pick" and view.folder:GetAttribute("RoundId")=="2")
     end)
-    return string.format("BattleView: %d native presentation tests passed",passed)
+    test("the camera looks down on the whole ring and big hits shake it unless motion is reduced",function(view,cues,advance,snapshot)
+        local s=snapshot(1,"Fight")
+        view:update(s,1/60,{left=0,right=800,top=100,bottom=600})
+        local camera=workspace.CurrentCamera
+        local deck=view.folder.Stadium.Deck.Position
+        assert(camera.CameraType==Enum.CameraType.Scriptable and camera.CFrame.Position.Y>deck.Y+60,"The camera is not above the ring")
+        assert(camera.CFrame.LookVector.Y<-0.5,"The camera is not looking down")
+        local height=view.folder:GetAttribute("VisibleHeight")
+        assert(height==height and height>60 and height<400,"The frame does not hold the ring")
+        s.simulation.elapsed=4.1
+        s.simulation.events={{serial=5,kind="clash",at=4.1,x=0,y=0,actor=1,target=2,power=60,source="bump"}}
+        view:update(s,1/60)
+        assert(view.shake>0.5 and view.screenFlash>0.3,"A big hit did not land on screen")
+        view.shake,view.screenFlash,view.reducedMotion=0,0,true
+        s.simulation.elapsed=4.2
+        s.simulation.events={{serial=6,kind="clash",at=4.2,x=0,y=0,actor=1,target=2,power=60,source="bump"}}
+        view:update(s,1/60)
+        assert(view.shake<0.5,"Reduced motion still shakes hard")
+    end)
+    test("an old event is not replayed and effects leave with the view",function(view,cues,advance,snapshot)
+        local s=snapshot(1,"Fight")
+        s.simulation.elapsed=10
+        s.simulation.events={{serial=3,kind="clash",at=2,x=0,y=0,actor=1,target=2,power=60,source="bump"}}
+        view:update(s,1/60)
+        assert(view.shake==0 and view.lastEvent==3,"A stale event shook the screen or was not consumed")
+        assert(Lighting:FindFirstChild("SkyboundBattleBloom") and Lighting:FindFirstChild("SkyboundBattleGrade"))
+        view:destroy();view:destroy()
+        assert(not Lighting:FindFirstChild("SkyboundBattleBloom") and not Lighting:FindFirstChild("SkyboundBattleGrade"),"Lighting effects outlived the view")
+        view:update(s,1/60)
+    end)
+    return tostring(passed).." battle-view tests passed"
 end

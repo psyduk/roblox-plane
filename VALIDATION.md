@@ -1,3 +1,13 @@
+# Ring-out pivot — October 11, 2026 (not published)
+
+The plane fight was replaced with a ring-out game between spinning tops. Nothing was published; Skybound Test is still version 23.
+
+Python checks passed **20 simulation, 7 catalog and 48 server scenarios** (15 battle, 33 archived distance), with 30 match-orchestration, 12 client and 52 profile cases inside the server run. In Studio, on the freshly built `build/Sky-Battle-Playtest.rbxlx`, native checks passed **20 simulation, 7 catalog, 30 match, 52 profile, 10 view, 22 audio and 12 client cases**. The package check matched all 37 sources.
+
+Two guided matches were then played in Studio with real clicks: PLAY, a Boulder-versus-Bolt round, the upgrade pick (Spikes chosen and locked), a second round, and the match result. The platform, both tops, the dash aim line, big-hit calls, the shrinking ring, the fall and the upgrade cards all drew as intended, and the output log showed no script errors. [Frames](previews/ring-out-1-bolt-charging.jpg).
+
+Not checked: sound by ear, a phone, two human players, a published server, saving, the normal (unguided) draft on screen, Cyclone, Pogo, Claws, Spring Bumper and Jetpack on screen (their rules and drawing are covered by tests only), and whether anyone finds it more fun than the plane fight. A saved profile that lists retired plane cards now loads with those cards dropped; that is covered by a test, not by a live save.
+
 # Version 23 publication — dogfight movement, October 11, 2026
 
 **Published to Skybound Test**, place `86507299893768` / universe `10770074500`, source **`5f2506393406f2277d38d1174c70fa7c369cf924`** (feature base `111e567`), at **2026-10-11T08:51:09Z** (October 11, 01:51:09 PDT). Studio confirmed publication, Playtester availability and **v23**. [Publication proof](docs/validation/qa-2026-10-11/published-version-23.jpg).

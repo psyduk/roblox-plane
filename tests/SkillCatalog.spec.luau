@@ -35,36 +35,36 @@ return function(Catalog)
 		for _, entry in ipairs(wild) do check(entry.kind == "wild", "Wrong kind in wild list") end
 		check(#Catalog.starters("offence") >= 1 and #Catalog.starters("wild") >= Catalog.MAX_WILD, "Starters cannot fill a build")
 		check(Catalog.valid(Catalog.DEFAULT_OFFENCE, "offence"), "Default offence is missing")
-		check(Catalog.valid("Meteor") and Catalog.valid("Meteor", "offence") and not Catalog.valid("Meteor", "wild"), "Kind check failed")
+		check(Catalog.valid("Boulder") and Catalog.valid("Boulder", "offence") and not Catalog.valid("Boulder", "wild"), "Kind check failed")
 		check(not Catalog.valid("Paid") and not Catalog.valid({}) and not Catalog.valid(nil) and Catalog.get("Paid") == nil, "Unknown id accepted")
 	end)
 
 	test("the public first-test roster is equal and excludes expansion", function()
-		local wanted = { Meteor = true, Firework = true, MachineGun = true, Pinball = true,
-			Afterburner = true, SpringBumper = true, FizzyFuel = true, Magnet = true, SecondWind = true,
-			Squadron = true, Giant = true, Eject = true, Vampire = true, Chicken = true,
-			Sniper = true, Bug = true, Snowball = true, Swap = true, Gambler = true,
-			Boomerang = true, Wrap = true, HotPotato = true, Decoy = true, Thief = true,
-			BlackHole = true, UFOBeam = true, Mothership = true, Rewind = true }
-		check(#Catalog.all("offence") == 8 and #Catalog.all("wild") == 20, "Approved roster changed")
+		local wanted = { Boulder = true, Bolt = true, Cyclone = true, Pogo = true,
+			Heavy = true, Spikes = true, Turbo = true, Claws = true, Bumper = true, Jetpack = true }
+		check(#Catalog.all("offence") == 4 and #Catalog.all("wild") == 6, "Approved roster changed")
 		for _, entry in ipairs(Catalog.all()) do
 			check(wanted[entry.id] and entry.starter, "Skill is gated or outside agreed roster")
 		end
-		check(not Catalog.valid("Copycat") and not Catalog.valid("Harpoon"), "Expansion leaked into active roster")
-		check(Catalog.ROSTER_VERSION == "sky-battle-public-v1", "Roster has no version")
+		check(not Catalog.valid("Copycat") and not Catalog.valid("Meteor"), "Something outside the roster is valid")
+		check(Catalog.ROSTER_VERSION == "sky-battle-tops-v1", "Roster has no version")
 	end)
 
-	test("every card has a teaser that does not give its name away, and attack words follow the plane's form", function()
+	test("every card has a teaser that does not give its name away, and every top has its words", function()
 		for _, entry in ipairs(Catalog.all()) do
 			check(type(entry.teaser) == "string" and #entry.teaser > 3 and #entry.teaser <= 44, entry.id .. " has no short teaser")
 			check(not string.find(string.lower(entry.teaser), string.lower(entry.name), 1, true), entry.id .. "'s teaser names it")
 		end
-		local plain = Catalog.tells("Meteor", { phase = "Windup" })
-		check(plain.windupTell == Catalog.get("Meteor").windupTell and plain.name == "Meteor", "A plain plane lost its attack words")
-		check(Catalog.tells("Meteor", { form = "PeaShooter" }).attackTell == "PEW!", "An ejected pilot still shouts the plane's attack")
-		check(Catalog.tells("Sniper", { mothership = true }).attackTell == "LAUNCH!", "A mothership still shouts its own attack")
-		check(Catalog.tells("Sniper", { mothership = true, form = "PeaShooter" }).name == "Pea-Shooter", "Ejecting from a mothership kept the drones")
-		check(Catalog.tells("Nope", {}) == nil and Catalog.tells("Meteor").name == "Meteor", "Missing state or skill was not handled")
+		local plain = Catalog.tells("Bolt")
+		check(plain.windupTell == Catalog.get("Bolt").windupTell and plain.name == "Bolt", "A top lost its words")
+		check(Catalog.tells("Nope") == nil and Catalog.tells("Heavy").windupTell == nil, "Missing skill or an upgrade was not handled")
+	end)
+
+	test("cards from the plane fight are retired, not valid", function()
+		for _, id in ipairs({ "Meteor", "Firework", "SpringBumper", "Rewind" }) do
+			check(Catalog.RETIRED[id] == true and not Catalog.valid(id), id .. " is still live or not retired")
+		end
+		for _, entry in ipairs(Catalog.all()) do check(Catalog.RETIRED[entry.id] == nil, entry.id .. " is both live and retired") end
 	end)
 
 	test("records are detached from the catalog", function()
@@ -77,29 +77,30 @@ return function(Catalog)
 	end)
 
 	test("a build is one offence and up to two different wild cards", function()
-		local build = Catalog.build("Meteor", { "SpringBumper", "Afterburner" })
-		check(build and build.offenceId == "Meteor" and #build.wildIds == 2, "Valid build rejected")
-		check(build.wildIds[1] == "SpringBumper" and build.wildIds[2] == "Afterburner", "Pick order was not kept")
-		local source = { "FizzyFuel" }
-		local copy = Catalog.build("Firework", source)
-		source[1] = "Afterburner"
-		check(copy.wildIds[1] == "FizzyFuel", "Build shares the caller's table")
-		check(#Catalog.build("Firework").wildIds == 0 and #Catalog.build("Firework", {}).wildIds == 0, "A build with no wild cards was rejected")
+		local build = Catalog.build("Boulder", { "Bumper", "Turbo" })
+		check(build and build.offenceId == "Boulder" and #build.wildIds == 2, "Valid build rejected")
+		check(build.wildIds[1] == "Bumper" and build.wildIds[2] == "Turbo", "Pick order was not kept")
+		local source = { "Spikes" }
+		local copy = Catalog.build("Bolt", source)
+		source[1] = "Turbo"
+		check(copy.wildIds[1] == "Spikes", "Build shares the caller's table")
+		check(#Catalog.build("Bolt").wildIds == 0 and #Catalog.build("Bolt", {}).wildIds == 0, "A build with no wild cards was rejected")
 		local function refused(offence, wild, reason)
 			local result, why = Catalog.build(offence, wild)
 			check(result == nil and why == reason, "Expected " .. reason .. ", got " .. tostring(why))
 		end
 		refused("Unknown", {}, "offence")
 		refused(nil, {}, "offence")
-		refused("Afterburner", {}, "offence")
-		refused("Meteor", { "Unknown" }, "wild")
-		refused("Meteor", { "Firework" }, "wild")
-		refused("Meteor", "Afterburner", "wild")
-		refused("Meteor", { 5 }, "wild")
-		refused("Meteor", { first = "Afterburner" }, "wild")
-		refused("Meteor", { [2] = "Afterburner" }, "wild")
-		refused("Meteor", { "Afterburner", "Afterburner" }, "duplicate")
-		refused("Meteor", { "Afterburner", "SpringBumper", "FizzyFuel" }, "too many")
+		refused("Turbo", {}, "offence")
+		refused("Boulder", { "Unknown" }, "wild")
+		refused("Boulder", { "Bolt" }, "wild")
+		refused("Boulder", "Turbo", "wild")
+		refused("Boulder", { 5 }, "wild")
+		refused("Boulder", { first = "Turbo" }, "wild")
+		refused("Boulder", { [2] = "Turbo" }, "wild")
+		refused("Boulder", { "Turbo", "Turbo" }, "duplicate")
+		refused("Boulder", { "Turbo", "Bumper", "Spikes" }, "too many")
+		refused("Meteor", {}, "offence")
 	end)
 
 	return string.format("SkillCatalog: %d tests passed (copy, kinds, starters, detached records, build rules)", passed)

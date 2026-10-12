@@ -50,7 +50,7 @@ local function autoPick()
     if autoKeys[key] then return end
     local pick=(battle.offer or {})[1]
     if not pick then return end
-    for _,preferred in ipairs({"FizzyFuel","Afterburner","Magnet"}) do
+    for _,preferred in ipairs({"Spikes","Turbo","Claws"}) do
         if table.find(battle.offer,preferred) then pick=preferred;break end
     end
     autoKeys[key]=true

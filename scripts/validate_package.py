@@ -115,8 +115,8 @@ def validate(place):
     assert set(packaged) == expected, f"Missing/extra modules: {expected ^ set(packaged)}"
     return {"place": place.name, "placeSha256": digest(place.read_bytes()),
             "sourceCount": len(packaged), "sources": dict(sorted(packaged.items())),
-            "scope": "Sky Battle Milestones 1 and 2; free playtest",
-            "defaultMode": "plane_battle", "diagnosticOverridesAbsent": True,
+            "scope": "Sky Battle ring-out; free playtest",
+            "defaultMode": "ring_out", "diagnosticOverridesAbsent": True,
             "publishedVersion": None, "publishedAndRealPhoneVerified": False}
 
 
@@ -128,4 +128,4 @@ if __name__ == "__main__":
     result = validate(args.place)
     if args.manifest:
         args.manifest.write_text(json.dumps(result, indent=2) + "\n")
-    print(f"{result['sourceCount']} packaged scripts match source; plane-battle defaults and no installed QA overrides; SHA-256 {result['placeSha256']}")
+    print(f"{result['sourceCount']} packaged scripts match source; ring-out defaults and no installed QA overrides; SHA-256 {result['placeSha256']}")

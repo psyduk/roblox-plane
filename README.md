@@ -1,26 +1,25 @@
 # Sky Battle
 
-Build a flying fighter, watch your choices matter, then outsmart the same rival next round. The free playtest candidate implements approved **Milestones 1 and 2**. Milestones 3 and 4, paid products and combat roster expansion remain outside scope.
+Pick a spinning top, drop it on a platform in the sky, and knock your rival off. Last top on the ring wins the round; first to two rounds wins the match. There is no health bar: how close a top is to the edge is how much trouble it is in.
 
-The approved direction is in [the ticket review](docs/SKY-BATTLE-TICKET-REVIEW.md). Current evidence and limitations are in [VALIDATION.md](VALIDATION.md); use [the playtest handoff](docs/SKY-BATTLE-PLAYTEST.md) for the published two-player and real-phone gate. This build is ready for iteration, not a claim of proven balance, comprehension or retention.
+**October 11, 2026: the game changed.** Sky Battle was a plane auto-battler with eight attacks, twenty wild cards and armor. Playtest feedback was that a fight was too complicated to follow, so the fight was replaced with the ring-out game described here. The match flow, draft, rewards, saving, hangar and cosmetics are unchanged. This source is **not published**; the Skybound Test place is still version 23, the plane fight. The rules are in [the combat contract](docs/COMBAT-CONTRACT.md), the numbers in [the balance report](docs/BALANCE-REPORT.md), and what has and has not been checked in [VALIDATION.md](VALIDATION.md).
+
+![A Bolt charging its dash at a Boulder](previews/ring-out-1-bolt-charging.jpg)
 
 ## Play
 
-Build with the commands below, then open **`build/Sky-Battle-Playtest.rbxlx` from this checkout** in Roblox Studio. Confirm that distinct filename in the Studio window title; an older `Skybound.rbxlx` window may belong to a different worktree. Press Studio **Play**, then the hangar's main **PLAY** button. The expected flow is **rival search → card pick → first-to-two plane battle**. If you see distance, launch-angle or furthest-flight results, stop: that is the old mode, not this candidate.
+Build with the commands below, then open **`build/Sky-Battle-Playtest.rbxlx` from this checkout** in Roblox Studio. Press Studio **Play**, then the hangar's main **PLAY** button. The expected flow is **rival search → pick a top → first-to-two ring-out match**.
 
-A human searching in the same server joins immediately; after eight seconds alone you get a named, clearly labelled bot. Choose an offence from three offers and **LOCK IN**. Your pilot fights automatically. The ten-second pick deadline takes the first offered card.
+A human searching in the same server joins immediately; after eight seconds alone you get a named, clearly labelled bot. A pilot's first match is guided: it starts at once against a bot with a Boulder against a Bolt, and the picks that follow offer a short hand.
 
-- **First to two round wins.** Both players gain a wild-card pick after each decisive round, up to two different wild cards. New picks stay hidden until both lock, then reveal together. Every match and rematch starts with empty builds.
-- **Shared roster:** Meteor, Firework, Machine Gun and Pinball; Afterburner, Spring Bumper, Fizzy Fuel, Magnet and Second Wind. Every human and bot has identical access. The aircraft, paint and trail you choose are cosmetic.
-- **One free Reroll and one free Pick Any per match.** These remain spent through drawn rounds. Reroll never returns the identical eligible set when an alternative exists.
-- **Three armor pips per round.** After 18 seconds the visible wind boundary closes. At 35 seconds, more armor wins and equal armor draws. Draws add neither a point nor a new pick. A match stops at five physical rounds or 240 seconds; only completed-round wins determine that result. There is no hidden tiebreak.
-- **Same rival:** REMATCH requires both humans. Next opponent searches again. The hangar's **Challenge a pilot** invites someone in the same server; Accept/Decline, cancel and expiry are explicit. No invite interrupts an active match.
-- **Automatic participation counts.** A qualifying completion gives 50 coins, plus 25 for a win. A first-match trail choice and a 250-coin Aurora goal are cosmetic. Mastery titles at 1, 5 and 15 completions add no combat power. Five qualifying losses from zero buy the goal. See [the eligibility rules](docs/ECONOMY-CONTRACT.md).
-- Results show the score, final builds, factual turning point, reward, save status and goal. Replay remains available while optional cosmetics are shown. Hangar exits every phase. Sound and reduced-motion controls are available in battle.
+- **Four tops.** Boulder is big and heavy. Bolt is light, charges up and dashes. Cyclone is fast and swoops in. Pogo jumps and lands with a shockwave. Every top chases its rival by itself; nobody steers during a round.
+- **Six upgrades.** Heavy Core, Spikes, Turbo, Claws, Spring Bumper and Jetpack. Each winner-decided round opens one upgrade slot, up to two. New picks stay hidden until both pilots lock, then reveal together. Anything already chosen can be swapped.
+- **The ring closes.** After 8 seconds the platform starts to shrink, and bumps get harder as the round goes on. A round cannot last longer than 26 seconds; one that somehow reaches the limit goes to the top nearer the middle.
+- **Same rival:** REMATCH requires both humans. Next opponent searches again. The hangar's **Challenge a pilot** invites someone in the same server.
+- **Automatic participation counts.** A qualifying completion gives 50 coins, plus 25 for a win. See [the eligibility rules](docs/ECONOMY-CONTRACT.md).
+- **Paint and trail carry over.** A top wears its pilot's paint and leaves their trail. The hangar's planes and legendary mounts are still there and still cosmetic, but they are not shown in the fight any more; that is an open question for the hangar, not a bug.
 
-Combat and progression are server-owned. Clients cannot choose the rival's cards, fabricate a reward, alter the simulation clock or buy combat access. No Robux purchase path is enabled.
-
-**Legendary flying cosmetics:** Stormcrown Eagle, Ironwing Eagle, Eclipse Phoenix, and Rift Manta join the three existing planes. Open `build/Sky-Battle-Mounts-Final.rbxlx`, press Studio **Play**, use the hangar's **< / >** arrows to choose a look, then press the main **PLAY** button. Their wings animate in the hangar and battle, and your avatar rides the saddle. The templates use a 16-stud visual wingspan, `PilotScale=0.6`, and a 0.65-stud rider root offset above the normalized saddle. All four use Cruiser's flight profile and the unchanged shared battle contracts, including `BattleVisualSize=12`. They are free prototype cosmetics with Legendary labels and no purchase requirement. Published to [Skybound Test](https://www.roblox.com/games/86507299893768/Skybound-Test) as version **21** on **October 11, 2026 at 07:35:07 UTC**; the source and templates were verified in the target Studio place before publication. Live-server asset loading, independent-player gameplay, and phone performance remain unverified. All four flew through the normal UI in the earlier native candidate. The freshly opened final build passed the catalog, mount, and battle-view checks; all four final Studio previews also verified the rider-pose fix for the tested avatar. See [screenshots, asset pipeline, contracts, and validation](docs/LEGENDARY-FLIGHT-COSMETICS.md).
+The fight and progression are server-owned. Clients cannot choose the rival's cards, fabricate a reward, alter the simulation clock or buy power. No Robux purchase path is enabled.
 
 ## Build and checks
 
@@ -41,11 +40,10 @@ Offline checks use optional `lupa` (the existing environment is `build/testenv/b
 ```sh
 build/testenv/bin/python scripts/sample_battle.py --tests-only
 build/testenv/bin/python scripts/test_server.py
-build/testenv/bin/python scripts/sample_battle.py --samples 20 --markdown
-build/testenv/bin/python scripts/sample_battle.py --samples 3 --wild-sample --json
+build/testenv/bin/python scripts/sample_battle.py --samples 60 --upgrades
 ```
 
-The sampler discovers the active catalog. It reports ordered pairings, both seats, raw draws/caps, half-point scores, median/p90 duration, seed-level uncertainty, wild-card lifts and paired-card interactions. `--skill Firework` narrows a run; `--quick` is a disclosed screening mode. `--baseline /path/to/old/BattleSimulation.luau --baseline-scope outcomes` compares outcomes; existing exact baseline modes remain. Use `--help` for all options. [Balance report](docs/BALANCE-REPORT.md) records commands, samples and failing tuning targets; sample results are not player-experience evidence. Expansion skills are not included.
+The sampler runs the pure specs, then every top against every top in both seats; `--upgrades` adds each upgrade against a bare top. `scripts/qa/ring_feel.py` is the same measurement with `NAME=value` overrides for tuning. [Balance report](docs/BALANCE-REPORT.md) records the latest numbers; they describe the simulation, not whether people enjoy it.
 
 Native Studio **server** command-bar checks during Play:
 
@@ -75,13 +73,13 @@ For an isolated Studio roster experiment, set `BattleExperimental=true`, `Battle
 
 | Area | Source |
 | --- | --- |
-| Shared active cards and build rules | `src/shared/SkillCatalog.luau` |
-| Deterministic skill hooks and combat | `BattleSkills.luau`, `BattleSimulation.luau`; [combat contract](docs/COMBAT-CONTRACT.md) |
+| Tops, upgrades and build rules | `src/shared/SkillCatalog.luau` |
+| What each top and upgrade is made of; the ring-out physics | `BattleSkills.luau`, `BattleSimulation.luau`; [combat contract](docs/COMBAT-CONTRACT.md) |
 | Queues, invitations, hidden draft, caps and authoritative results | `src/server/BattleLab.luau` |
 | Profiles, fenced saving, reward receipts and cosmetic/mastery progression | `src/server/PlayerStats.luau` |
 | Main integration and bounded replay funnel | `src/server/Main.server.luau`, `Telemetry.luau` |
 | Draft, reveal, result, reward and replay interface | `src/client/BattleLab.luau` |
-| Aircraft signatures, storm, impact and crash presentation | `src/client/BattleView.luau` |
+| The platform, the tops, hits and falls | `src/client/BattleView.luau` |
 | Shared sound vocabulary and combat audio | `src/client/BattleAudio.luau` |
 | Same-server invitation interface | `src/client/ChallengePanel.luau` |
 | Cosmetic preview, goal selection and hangar | `EffectsShop.luau`, `HangarBay.luau`, `World.luau` |

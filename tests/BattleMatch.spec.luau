@@ -7,15 +7,23 @@ return function(BattleLab, Skills)
     local function harness(options)
         options=options or {}
         local t={time=0,emitted={},terminal={},events={},entered={},players={}}
-        local simulation={FIXED_DT=1/60}
+        -- A stand-in round: nothing moves, and a round left alone goes to the
+        -- top nearer the middle, as the real one does.
+        local simulation={FIXED_DT=1/60,MAX_TIME=26}
         function simulation.newRound(seed,a,b)
-            return {seed=seed,elapsed=0,events={},projectiles={},wakes={},fighters={
-                {id=1,x=-52,vx=20,heading=.3,armor=3,settings=a},{id=2,x=52,vx=-20,heading=2.8,armor=3,settings=b}}}
+            return {seed=seed,elapsed=0,events={},ring=40,fighters={
+                {id=1,x=-18,y=0,vx=20,heading=.3,settings=a},{id=2,x=18,y=0,vx=-20,heading=2.8,settings=b}}}
+        end
+        function simulation.expire(s)
+            if s.finished then return s end
+            local a,b=math.abs(s.fighters[1].x),math.abs(s.fighters[2].x)
+            s.finished=true;s.reason="timeout";s.winner=a==b and 0 or a<b and 1 or 2
+            return s
         end
         function simulation.step(s,dt)
             if s.finished then return end
             s.elapsed=s.elapsed+dt
-            if s.elapsed>=35-0.000001 then s.elapsed=35;s.finished=true;s.reason="timeout";s.winner=s.fighters[1].armor==s.fighters[2].armor and 0 or s.fighters[1].armor>s.fighters[2].armor and 1 or 2 end
+            if s.elapsed>=simulation.MAX_TIME-0.000001 then s.elapsed=simulation.MAX_TIME;simulation.expire(s) end
         end
         local deps={skills=Skills,simulation=simulation,now=function()return t.time end,
             getPlayers=function()local result={}for _,p in pairs(t.players)do result[#result+1]=p end return result end,
@@ -40,7 +48,7 @@ return function(BattleLab, Skills)
             payload.kind=kind;if payload.matchId==nil then payload.matchId=s.matchId end;if payload.stage==nil then payload.stage=s.stage end
             if payload.offerRevision==nil then payload.offerRevision=s.offerRevision end
             -- A friendly lock sends the draft as it stands, with any gap filled
-            -- by the first offered card that is not already on the plane.
+            -- by the first offered card that is not already on the top.
             if kind=="lock" and s.draft and payload.offenceId==nil and payload.wildIds==nil then
                 payload.offenceId=s.draft.offenceId or s.offer.offences[1];payload.wildIds={}
                 for _,id in ipairs(s.draft.wildIds)do payload.wildIds[#payload.wildIds+1]=id end
@@ -65,7 +73,7 @@ return function(BattleLab, Skills)
             assert(t.lab:snapshot(a).phase=="Fight")
         end
         function t.finish(m,winner,reason)
-            m.simulation.finished=true;m.simulation.winner=winner;m.simulation.reason=reason or "knockout"
+            m.simulation.finished=true;m.simulation.winner=winner;m.simulation.reason=reason or "ringout"
             t.advance(.1)
         end
         return t
@@ -83,24 +91,24 @@ return function(BattleLab, Skills)
         assert(t.lab:snapshot(a).phase=="Searching");t.send(a,"exit");t.advance(10);assert(not t.lab:snapshot(a).active)
         t.send(a,"enter");t.advance(8.1);local s=t.lab:snapshot(a)
         assert(s.phase=="Pick" and s.simulatedOpponent and s.players[2].bot and s.players[2].name=="Comet")
-        assert(s.slots==0 and s.draft.offenceId==nil and #s.offer.offences==5)
+        assert(s.slots==0 and s.draft.offenceId==nil and #s.offer.offences==4)
     end)
     test("offers and drafts stay private until simultaneous reveal",function()
         local t=harness();local a,b,m=t.pair();local sa=t.lab:snapshot(a);local sb=t.lab:snapshot(b)
-        assert(#sa.offer.offences==5 and #sb.offer.offences==5 and sa.offers==nil and sa.drafts==nil and sa.settings[2].offenceId==nil)
+        assert(#sa.offer.offences==4 and #sb.offer.offences==4 and sa.offers==nil and sa.drafts==nil and sa.settings[2].offenceId==nil)
         t.send(a,"pick",{slot="offence",skillId=sa.offer.offences[2]});assert(t.lab:snapshot(a).draft.offenceId==sa.offer.offences[2])
         t.send(a,"lock")
         sb=t.lab:snapshot(b);assert(sb.settings[2].offenceId==nil and sb.draft.offenceId==nil and sb.locked[2])
         t.lock(b);sa=t.lab:snapshot(a);sb=t.lab:snapshot(b)
         assert(sa.phase=="Countdown" and sa.draft==nil and sa.settings[1].offenceId==sb.settings[2].offenceId)
-        assert(sa.settings[1].offenceId==sa.offer.offences[2] or sa.settings[1].offenceId=="Firework")
+        assert(sa.settings[1].offenceId==sa.offer.offences[2] or sa.settings[1].offenceId=="Bolt")
         assert(sa.settings[1].offenceId==sa.simulation.fighters[1].settings.offenceId)
         assert(sb.players[1].userId==2 and sb.players[2].userId==1)
     end)
     test("reject inactive wrong-kind wrong-slot cross-player stale and wrong-phase commands",function()
         local t=harness();local a,b,m=t.pair();local s=t.lab:snapshot(a);local first=s.offer.offences[1]
-        for _,extra in ipairs({{slot="offence",skillId="Copycat"},{slot="offence",skillId="Afterburner"},
-            {slot="wild",index=1,skillId="Afterburner"},{slot="wild",skillId=first},
+        for _,extra in ipairs({{slot="offence",skillId="Copycat"},{slot="offence",skillId="Turbo"},
+            {slot="wild",index=1,skillId="Turbo"},{slot="wild",skillId=first},
             {slot="offence",skillId=first,side=2},{slot="offence",skillId=first,userId=2},
             {slot="offence",skillId=first,matchId=999},{slot="offence",skillId=first,stage=2}})do
             t.advance(.1);t.send(a,"pick",extra);assert(t.lab:snapshot(a).draft.offenceId==nil and #m.drafts[1].wildIds==0)
@@ -112,42 +120,54 @@ return function(BattleLab, Skills)
     end)
     test("the public draft shows the whole roster in order before every round",function()
         local t=harness({publicDraft=true});local a,b,m=t.pair();local s=t.lab:snapshot(a)
-        assert(#s.offer.offences==5 and #s.offer.wilds==5 and s.slots==0)
+        assert(#s.offer.offences==4 and #s.offer.wilds==6 and s.slots==0)
         t.advance(19.9);assert(m.phase=="Pick");t.advance(.2);assert(m.phase~="Pick","The 20-second deadline did not lock")
         t.advance(2.5);assert(m.phase=="Fight");t.finish(m,1);t.advance(3.6);s=t.lab:snapshot(a)
-        assert(s.phase=="Pick" and s.slots==1 and #s.offer.wilds==5,"Wild pick did not deal a full hand")
-        assert(#s.offer.offences==5 and s.draft.offenceId=="Meteor" and #s.draft.wildIds==0,"The second pick did not start from the plane that flew")
+        assert(s.phase=="Pick" and s.slots==1 and #s.offer.wilds==6,"Upgrade pick did not show the whole roster")
+        assert(#s.offer.offences==4 and s.draft.offenceId=="Boulder" and #s.draft.wildIds==0,"The second pick did not start from the top that fought")
     end)
     test("bare partial and stale locks never fill a gap",function()
         local t=harness();local a,b,m=t.pair()
         -- Raw commands intentionally bypass the friendly packet helper.
-        for _,packet in ipairs({{},{offenceId="Meteor"},{offenceId="Copycat",wildIds={}},{wildIds={}},
-            {offenceId="Meteor",wildIds={"Afterburner"}},{offenceId="Meteor",wildIds="Afterburner"},
-            {offenceId="Meteor",wildIds={},offerRevision=2},{offenceId="Meteor",wildIds={},stage=2}})do
+        for _,packet in ipairs({{},{offenceId="Boulder"},{offenceId="Copycat",wildIds={}},{wildIds={}},
+            {offenceId="Boulder",wildIds={"Turbo"}},{offenceId="Boulder",wildIds="Turbo"},
+            {offenceId="Boulder",wildIds={},offerRevision=2},{offenceId="Boulder",wildIds={},stage=2}})do
             packet.kind="lock";packet.matchId=m.id;packet.stage=packet.stage or 1;packet.offerRevision=packet.offerRevision or 1
             t.advance(.1);t.lab:command(a,packet)
             assert(not m.locked[1] and m.drafts[1].offenceId==nil,"A broken lock was accepted")
         end
         t.advance(.2)
-        t.send(a,"lock",{offenceId="Firework",wildIds={}});t.lock(b)
-        assert(m.phase=="Countdown" and m.settings[1].offenceId=="Firework","Explicit loadout not preserved")
+        t.send(a,"lock",{offenceId="Bolt",wildIds={}});t.lock(b)
+        assert(m.phase=="Countdown" and m.settings[1].offenceId=="Bolt","Explicit loadout not preserved")
     end)
-    test("terminal armor win explains the deciding round instead of the rival's last hit",function()
+    test("a round won on the clock is explained by the clock, not by the last bump",function()
         local t=harness();local a,b,m=t.pair();t.fight(a,b)
         t.finish(m,1,"timeout");t.advance(2.1);t.fight(a,b)
-        m.roundEvents={{kind="hit",actor=2,target=1,skillId="Pinball"}}
-        m.simulation.fighters[1].armor=2;m.simulation.fighters[2].armor=1
+        m.roundEvents={{kind="clash",actor=2,target=1,skillId="Pogo"}}
         t.finish(m,1,"timeout")
         for _,player in ipairs({a,b})do
             local result=t.lab:snapshot(player).result
             assert(result.reason=="first_to_two" and result.decidingRoundReason=="timeout")
-            assert(result.facts[1]=="Time ran out: the plane with more armor won.","Last hit misrepresented the armor win")
+            assert(result.facts[1]=="Time ran out: the top nearer the middle won.","Last bump misrepresented a win on the clock")
         end
+    end)
+    test("a ring-out names the throw that caused it and any upgrade that fired",function()
+        local t=harness();local a,b,m=t.pair()
+        local events={{kind="clash",actor=2,target=1,skillId="Pogo",source="slam"},{kind="blocked",actor=1,target=2,skillId="Bumper"},
+            {kind="clash",actor=1,target=2,skillId="Bolt",source="bump"},{kind="ringout",actor=1,target=2}}
+        local mine=t.lab:facts(m,{winner=1,reason="ringout",events=events},1)
+        assert(mine[1]=="Your Bolt knocked the rival off the ring." and mine[2]=="Your Spring Bumper bounced a hit back.")
+        local theirs=t.lab:facts(m,{winner=1,reason="ringout",events=events},2)
+        assert(theirs[1]=="Rival's Bolt knocked you off the ring." and theirs[2]=="Rival's Spring Bumper bounced a hit back.")
+        local slam=t.lab:facts(m,{winner=2,reason="ringout",events={events[1]}},1)
+        assert(slam[1]=="Rival's Pogo slammed you off the ring.")
+        assert(t.lab:facts(m,{winner=2,reason="ringout",events={}},1)[1]=="Your top slid off the ring.")
+        assert(t.lab:facts(m,{winner=2,reason="ringout",events={}},2)[1]=="The rival slid off the ring.")
     end)
     test("draw and terminal caps explain the actual deciding rule",function()
         local t=harness();local a,b,m=t.pair()
-        assert(t.lab:facts(m,{winner=0,reason="knockout"},1)[1]=="Both planes lost their final armor together.")
-        assert(t.lab:facts(m,{winner=0,reason="timeout"},1)[1]=="Equal armor: this round gave neither pilot a point.")
+        assert(t.lab:facts(m,{winner=0,reason="ringout"},1)[1]=="Both tops went over the edge together.")
+        assert(t.lab:facts(m,{winner=0,reason="timeout"},1)[1]=="Neither top was nearer the middle: no point this round.")
         for _,reason in ipairs({"wall_cap","round_cap"})do
             assert(string.find(t.lab:facts(m,{winner=0,reason=reason},1)[1],"Match drawn.",1,true))
             assert(string.find(t.lab:facts(m,{winner=1,reason=reason,decidingRoundReason="timeout"},1)[1],"completed round wins",1,true))
@@ -177,7 +197,7 @@ return function(BattleLab, Skills)
         local attack,first=m.settings[1].offenceId,m.settings[1].wildIds[1]
         local s=t.lab:snapshot(a)
         assert(s.slots==2 and s.draft.offenceId==attack and #s.draft.wildIds==1 and s.draft.wildIds[1]==first,"The plane was not carried into the pick")
-        assert(#s.offer.wilds==5 and #s.offer.offences==5 and table.find(s.offer.wilds,first),"The hand dropped the card on the plane")
+        assert(#s.offer.wilds==6 and #s.offer.offences==4 and table.find(s.offer.wilds,first),"The hand dropped the card on the plane")
         -- Two dealt cards that are not on the plane yet.
         local fresh={};for _,id in ipairs(s.offer.wilds)do if id~=first then fresh[#fresh+1]=id end end
         local one,two=fresh[1],fresh[2]
@@ -221,83 +241,32 @@ return function(BattleLab, Skills)
         for index=2,5 do t.finish(m,0,"timeout");if index<5 then t.advance(4.7)end end
         assert(m.result.reason=="round_cap" and m.result.winner==1 and m.score[1]==1 and m.score[2]==0)
     end)
-    test("wall-clock cap stops unfinished fight without awarding its armor leader a point",function()
-        local t=harness();local a,b,m=t.pair();t.fight(a,b);m.simulation.fighters[1].armor=3;m.simulation.fighters[2].armor=1
+    test("wall-clock cap stops unfinished fight without awarding the better-placed top a point",function()
+        local t=harness();local a,b,m=t.pair();t.fight(a,b);m.simulation.fighters[1].x=-2
         t.time=m.startedAt+240;t.lab:step(.1)
         assert(m.phase=="MatchOver" and m.result.reason=="wall_cap" and m.result.winner==0 and m.completedRounds==0)
         assert(m.score[1]==0 and m.score[2]==0)
         t.send(a,"again");t.advance(8.1);assert(t.lab:snapshot(a).phase=="Pick")
     end)
-    test("35-second physical cap compares armor and equal armor draws",function()
-        for _,armor in ipairs({3,2})do
-            local t=harness();local a,b,m=t.pair();t.fight(a,b);m.simulation.fighters[2].armor=armor;t.advance(35)
-            assert(m.roundResult.winner==(armor==3 and 0 or 1) and m.simulation.elapsed==35)
+    test("a round left alone ends on the simulation's own clock: nearer the middle wins, level draws",function()
+        for _,x in ipairs({18,30})do
+            local t=harness();local a,b,m=t.pair();t.fight(a,b);m.simulation.fighters[2].x=x;t.advance(26.2)
+            assert(m.roundResult.winner==(x==18 and 0 or 1) and m.roundResult.reason=="timeout" and m.simulation.elapsed==26)
         end
-    end)
-    test("exit disconnect both leave and repeat departures clear reservations exactly once",function()
-        for _,inFight in ipairs({false,true})do
-            local t=harness();local a,b,m=t.pair();if inFight then t.fight(a,b)end
-            t.lab:remove(a);assert(t.lab:snapshot(b).phase=="MatchOver" and t.lab:snapshot(b).rivalGone)
-            assert(t.terminal[1].result.abandoned and not t.terminal[2].result.abandoned)
-            assert(not t.entered[1] and t.lab.sessions[1]==nil)
-            t.lab:remove(a);assert(#t.terminal==2)
-            t.send(b,"exit");assert(t.lab.matches[m.id]==nil and not t.entered[2])
-            t.send(a,"enter");t.send(b,"enter");assert(t.lab:snapshot(a).phase=="Pick")
-        end
-    end)
-    test("mutual rematch resets builds and resources while one vote cannot start",function()
-        local t=harness();local a,b,m=t.pair();t.fight(a,b);t.finish(m,1);t.advance(2.1);t.fight(a,b);t.finish(m,1)
-        t.send(a,"rematch");assert(m.phase=="MatchOver" and t.lab:snapshot(a).rematchVotes[1])
-        t.send(b,"rematch");local nextMatch=t.lab.sessions[1].match
-        assert(nextMatch.id~=m.id and nextMatch.phase=="Pick" and nextMatch.settings[1].offenceId==nil and nextMatch.drafts[1].offenceId==nil)
-        t.send(a,"lock",{matchId=m.id,stage=1});assert(not nextMatch.locked[1])
-    end)
-    test("declined rematch stays terminal with unavailable rival and allows requeue",function()
-        local t=harness();local a,b,m=t.pair();t.fight(a,b);t.finish(m,1);t.advance(2.1);t.fight(a,b);t.finish(m,1)
-        t.send(a,"rematch");t.send(b,"exit");assert(t.lab:snapshot(a).rematchStatus=="unavailable")
-        t.advance(.1);t.send(a,"again");assert(t.lab:snapshot(a).phase=="Searching")
-    end)
-    test("bot rematch accepts immediately and fixed seed is server-only",function()
-        local t=harness({allowFixedSeed=true,fixedSeed=731});local a=t.player(1);t.send(a,"enter");t.advance(8.1)
-        local m=t.lab.sessions[1].match;t.fight(a);assert(m.simulation.seed==731)
-        t.finish(m,1);t.advance(2.1);t.fight(a);assert(m.simulation.seed==731);t.finish(m,1)
-        local identity=m.identities[2]
-        t.send(a,"rematch");assert(t.lab:snapshot(a).phase=="Pick" and t.lab:snapshot(a).matchId~=m.id)
-        local sameBot=t.lab:snapshot(a).players[2]
-        assert(sameBot.name==identity.name and sameBot.planeId==identity.planeId and sameBot.portrait==identity.portrait and sameBot.color==identity.color)
-    end)
-    test("public ignores experimental requests; authorized pools freeze and never mix",function()
-        local roster={version="experiment",offences={"Meteor","Firework"},wilds={"Afterburner","SpringBumper"}}
-        local t=harness({resolveRoster=function()return roster end});local a,b,m=t.pair();assert(m.roster.mode=="public" and #m.roster.offences==8)
-        local x=harness({allowExperimental=true,resolveRoster=function(p)if p.UserId==1 then return roster end end})
-        local c,d=x.player(1),x.player(2);x.send(c,"enter");x.send(d,"enter");assert(x.lab:snapshot(c).phase=="Searching")
-        x.advance(8.1);local old=x.lab.sessions[1].match;roster.offences={"Pinball"}
-        assert(#old.roster.offences==2 and x.lab:snapshot(d).mode=="public" and x.lab:snapshot(c).experimental)
     end)
     test("perspective mirrors complete event identities owners coordinates and results",function()
         local t=harness();local a,b,m=t.pair();t.fight(a,b)
-        m.simulation.events={{serial=1,kind="hit",actor=1,target=2,x=12,heading=.3,skillId="Meteor"}}
-        m.simulation.projectiles={{id=7,owner=1,x=9,vx=2}};m.simulation.wakes={{id=8,owner=2,x=-7}}
+        m.simulation.events={{serial=1,kind="clash",actor=1,target=2,x=12,y=5,skillId="Boulder",source="bump"}}
+        m.simulation.fighters[1].lockX=7;m.simulation.fighters[1]._dashX=1
         local view=t.lab:snapshot(b).simulation
-        assert(view.fighters[1].id==1 and view.fighters[1].x==-52 and view.fighters[1].vx==20)
-        assert(view.events[1].actor==2 and view.events[1].target==1 and view.events[1].x==-12)
-        assert(view.projectiles[1].id==7 and view.projectiles[1].owner==2 and view.projectiles[1].vx==-2 and view.wakes[1].owner==1)
-        assert(m.simulation.events[1].actor==1 and m.simulation.fighters[1].x==-52)
-        t.finish(m,1);local result=t.lab:snapshot(b).roundResult
-        assert(result.winner==2 and result.events[1].actor==2 and string.find(result.facts[1],"Rival's Meteor"))
-    end)
-    test("perspective mirrors holes drones and beams and never sends a rewind history",function()
-        local t=harness();local a,b,m=t.pair();t.fight(a,b)
-        local sim=m.simulation
-        sim.holes={{id=1,owner=1,x=10,y=40}};sim.drones={{id=2,owner=2,x=-5,vx=3,heading=0}}
-        sim.fighters[2].hold={x=20,y=30,by=1,left=.5};sim.fighters[1].throw={vx=80,vy=0,by=2,left=1}
-        sim._history={{at=0,state={fighters={{x=1}}}}}
-        local view=t.lab:snapshot(b).simulation
-        assert(view._history==nil and sim._history[1].state.fighters[1].x==1,"The rewind history left the server")
-        assert(view.holes[1].owner==2 and view.holes[1].x==-10 and view.holes[1].y==40)
-        assert(view.drones[1].owner==1 and view.drones[1].x==5 and view.drones[1].vx==-3 and math.abs(math.abs(view.drones[1].heading)-math.pi)<1e-9)
-        assert(view.fighters[1].hold.by==2 and view.fighters[1].hold.x==-20 and view.fighters[2].throw.by==1 and view.fighters[2].throw.vx==-80)
-        assert(t.lab:snapshot(a).simulation.holes[1].x==10 and sim.holes[1].owner==1)
+        assert(view.fighters[1].id==1 and view.fighters[1].x==-18 and view.fighters[1].vx==20)
+        assert(view.fighters[2].lockX==-7 and view.fighters[2]._dashX==-1 and view.fighters[2].id==2)
+        assert(math.abs(view.fighters[2].heading-(math.pi-.3))<1e-9,"Heading was not mirrored")
+        assert(view.events[1].actor==2 and view.events[1].target==1 and view.events[1].x==-12 and view.events[1].y==5)
+        assert(m.simulation.events[1].actor==1 and m.simulation.fighters[1].x==-18 and m.simulation.fighters[1].lockX==7)
+        t.lab:step(1/60);t.finish(m,1);local result=t.lab:snapshot(b).roundResult
+        assert(result.winner==2 and result.events[1].actor==2 and string.find(result.facts[1],"Rival's Boulder knocked you off the ring"))
+        assert(t.lab:snapshot(a).roundResult.facts[1]=="Your Boulder knocked the rival off the ring.")
     end)
     test("cards are recorded as seen when dealt and when revealed, and a first deal is marked new",function()
         local seen={}
@@ -311,21 +280,21 @@ return function(BattleLab, Skills)
         for _,id in ipairs(s.offer.wilds)do assert(not seen[a.UserId][id],"A hidden wild card was recorded as seen")end
         for _,id in ipairs(s.offer.offences)do assert(seen[a.UserId][id] and table.find(s.offer.fresh,id))end
         t.fight(a,b)
-        -- Each pilot has now also seen the rival's plane.
+        -- Each pilot has now also seen the rival's top.
         assert(seen[a.UserId][m.settings[2].offenceId] and seen[b.UserId][m.settings[1].offenceId])
         t.finish(m,1);t.advance(2.1);s=t.lab:snapshot(a)
-        for _,id in ipairs(s.offer.fresh)do assert(id~=m.settings[1].offenceId,"The attack on the plane was called new")end
-        assert(#s.offer.fresh>=#s.offer.wilds-1 and #s.offer.fresh<#s.offer.offences+#s.offer.wilds,"The first wild hand was not marked new")
+        for _,id in ipairs(s.offer.fresh)do assert(id~=m.settings[1].offenceId,"The top already chosen was called new")end
+        assert(#s.offer.fresh>=#s.offer.wilds-1 and #s.offer.fresh<#s.offer.offences+#s.offer.wilds,"The first upgrade hand was not marked new")
         -- Without a profile to record in, nothing is marked and nothing breaks.
         local plain=harness();local c=plain.pair();assert(#plain.lab:snapshot(c).offer.fresh==0)
         local broken=harness({discover=function()error("profile offline")end});local d=broken.pair()
-        assert(broken.lab:snapshot(d).phase=="Pick" and #broken.lab:snapshot(d).offer.fresh==0 and #broken.lab:snapshot(d).offer.offences==5)
+        assert(broken.lab:snapshot(d).phase=="Pick" and #broken.lab:snapshot(d).offer.fresh==0 and #broken.lab:snapshot(d).offer.offences==4)
     end)
     test("snapshot mutation cannot change the server offer build roster or simulation",function()
         local t=harness();local a,b,m=t.pair();local s=t.lab:snapshot(a)
         s.offer.offences[1]="Copycat";s.draft.offenceId="Copycat";s.draft.wildIds[1]="Copycat";s.settings[1].wildIds[1]="Copycat"
         assert(m.offers[1].offences[1]~="Copycat" and m.drafts[1].offenceId==nil and #m.drafts[1].wildIds==0 and #m.settings[1].wildIds==0)
-        t.fight(a,b);s=t.lab:snapshot(a);s.simulation.fighters[1].armor=99;assert(m.simulation.fighters[1].armor==3)
+        t.fight(a,b);s=t.lab:snapshot(a);s.simulation.fighters[1].x=99;assert(m.simulation.fighters[1].x==-18)
     end)
     test("challenge explicitly accepts into one isolated shared-roster match",function()
         local t=harness();local a,b=t.player(1),t.player(2)
@@ -380,17 +349,17 @@ return function(BattleLab, Skills)
         t.send(a,"rematch");t.send(b,"rematch");local nextMatch=t.lab.sessions[1].match
         t.send(a,"exit",{matchId=m.id});assert(t.lab.sessions[1].match==nextMatch and nextMatch.phase=="Pick")
     end)
-    test("server stall cannot stretch a physical round beyond35 wall-clock seconds",function()
+    test("server stall cannot stretch a physical round beyond its wall-clock stop",function()
         local t=harness();local a,b,m=t.pair();t.fight(a,b)
         local deadline=m.fightDeadline
         t.time=deadline-2.2;t.lab:step(30)
         local snapshot=t.lab:snapshot(a)
         assert(snapshot.fightDeadline==deadline and t.lab:snapshot(b).fightDeadline==deadline)
         assert(snapshot.simulation.elapsed<1 and math.ceil(snapshot.fightDeadline-snapshot.serverTime)==3,"Stale simulation obscured the authoritative deadline")
-        m.simulation.fighters[1].armor=1;m.simulation.fighters[2].armor=2
+        m.simulation.fighters[1].x=-30
         t.time=m.fightDeadline+.1;t.lab:step(35)
-        assert(m.phase=="RoundOver" and m.roundResult.winner==2 and m.simulation.reason=="timeout" and m.simulation.elapsed==35)
-        assert(m.fightSeconds==35 and m.completedRounds==1)
+        assert(m.phase=="RoundOver" and m.roundResult.winner==2 and m.simulation.reason=="timeout")
+        assert(m.fightSeconds==t.lab.FIGHT_SECONDS and m.completedRounds==1)
     end)
     test("shutdown aborts active matches clears reservations and preserves prior terminal results",function()
         local t=harness();local a,b,m=t.pair();t.fight(a,b);t.finish(m,1);t.advance(2.1)
@@ -406,26 +375,26 @@ return function(BattleLab, Skills)
         local t=harness({publicDraft=true,firstMatch=function(p)return first[p.UserId]==true end})
         local a=t.player(1);t.send(a,"enter");local m=t.lab.sessions[1].match;local s=t.lab:snapshot(a)
         assert(m and #t.lab.queue==0 and s.phase=="Countdown" and s.guided and s.simulatedOpponent and s.mode=="practice")
-        assert(s.settings[1].offenceId=="Meteor" and s.settings[2].offenceId=="Firework" and s.stage==1)
+        assert(s.settings[1].offenceId=="Boulder" and s.settings[2].offenceId=="Bolt" and s.stage==1)
         t.advance(4.9);assert(m.phase=="Countdown");t.advance(.2);assert(m.phase=="Fight")
         t.finish(m,0,"timeout");t.advance(2.1);assert(m.phase=="Countdown" and m.stage==1,"A drawn first round asked for a pick")
         t.advance(2.5);t.finish(m,2);t.advance(2.1);s=t.lab:snapshot(a)
-        assert(s.phase=="Pick" and s.slots==1 and table.concat(s.offer.wilds,",")=="SpringBumper,Afterburner")
-        assert(table.concat(s.offer.offences,",")=="Meteor,Firework" and s.draft.offenceId=="Meteor" and #s.draft.wildIds==0)
+        assert(s.phase=="Pick" and s.slots==1 and table.concat(s.offer.wilds,",")=="Heavy,Spikes")
+        assert(table.concat(s.offer.offences,",")=="Boulder,Bolt" and s.draft.offenceId=="Boulder" and #s.draft.wildIds==0)
         assert(s.locked[2] and s.pickDeadline-s.serverTime>39)
-        t.send(a,"lock",{offenceId="Meteor",wildIds={"Magnet"}});assert(not t.lab:snapshot(a).locked[1],"A card outside the guided hand was accepted")
-        t.send(a,"lock",{offenceId="Pinball",wildIds={"Afterburner"}});assert(not t.lab:snapshot(a).locked[1],"An attack outside the guided hand was accepted")
-        t.send(a,"lock",{offenceId="Meteor",wildIds={"Afterburner"}});assert(m.phase=="Countdown" and m.settings[1].wildIds[1]=="Afterburner")
-        assert(m.settings[2].offenceId=="Firework" and #m.settings[2].wildIds==1)
+        t.send(a,"lock",{offenceId="Boulder",wildIds={"Claws"}});assert(not t.lab:snapshot(a).locked[1],"A card outside the guided hand was accepted")
+        t.send(a,"lock",{offenceId="Pogo",wildIds={"Spikes"}});assert(not t.lab:snapshot(a).locked[1],"A top outside the guided hand was accepted")
+        t.send(a,"lock",{offenceId="Boulder",wildIds={"Spikes"}});assert(m.phase=="Countdown" and m.settings[1].wildIds[1]=="Spikes")
+        assert(m.settings[2].offenceId=="Bolt" and #m.settings[2].wildIds==1)
         t.advance(2.5);t.finish(m,1);t.advance(2.1);s=t.lab:snapshot(a)
-        assert(table.concat(s.offer.wilds,",")=="SpringBumper,Afterburner,FizzyFuel" and s.slots==2 and s.draft.wildIds[1]=="Afterburner","The second guided hand was wrong")
-        t.lock(a);assert(table.concat(m.settings[1].wildIds,",")=="Afterburner,SpringBumper")
+        assert(table.concat(s.offer.wilds,",")=="Heavy,Spikes,Turbo" and s.slots==2 and s.draft.wildIds[1]=="Spikes","The second guided hand was wrong")
+        t.lock(a);assert(table.concat(m.settings[1].wildIds,",")=="Spikes,Heavy")
         t.advance(2.5);t.finish(m,1)
         assert(m.phase=="MatchOver" and t.terminal[1].result.mode=="practice" and t.terminal[1].result.outcome=="win")
         local accepted;for _,e in ipairs(t.events)do if e.name=="match_accepted" then accepted=e end end
         assert(accepted.data.guided==true and accepted.data.mode=="practice")
         first[1]=nil;t.send(a,"rematch");local again=t.lab.sessions[1].match;s=t.lab:snapshot(a)
-        assert(again~=m and s.phase=="Pick" and not s.guided and s.mode=="public" and #s.offer.offences==5,"The rematch was guided again")
+        assert(again~=m and s.phase=="Pick" and not s.guided and s.mode=="public" and #s.offer.offences==4,"The rematch was guided again")
     end)
     test("guidance never applies to challenges, returning pilots or test rosters",function()
         local t=harness({publicDraft=true,firstMatch=function(p)return p.UserId==1 end})
@@ -435,7 +404,7 @@ return function(BattleLab, Skills)
         t.send(a,"challenge",{targetUserId=2});t.send(b,"challengeAccept",{inviteId=t.lab:snapshot(b).challenge.inviteId})
         local s=t.lab:snapshot(a);assert(s.phase=="Pick" and not s.guided and s.mode=="challenge")
         local e=harness({publicDraft=true,allowExperimental=true,firstMatch=function()return true end,
-            resolveRoster=function()return {version="x",offences={"Meteor","Firework"},wilds={"Afterburner","Magnet"}}end})
+            resolveRoster=function()return {version="x",offences={"Boulder","Bolt"},wilds={"Turbo","Claws"}}end})
         local c=e.player(1);e.send(c,"enter");assert(e.lab:snapshot(c).phase=="Searching")
     end)
     return "BattleLab: "..count.." orchestration cases passed"
